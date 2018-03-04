@@ -7,6 +7,7 @@
     <script src="mousetrap.min.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
     <script src='spectrum.js'></script>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel='stylesheet' href='spectrum.css' />
     <style>
         body {
@@ -431,7 +432,7 @@ min="1" max="60" value="5" />
 <div id="status" class="hidden"><span id="seconds"> </span> seconds of safety<p/>
 <span id="words"> </span> words<p/>
 <span id="session_left"> </span> left of writing session<p/>
-<span id="exit_guide">Press Ctrl-X to stop. </span></div>
+<span id="exit_guide">Press Ctrl-X to stop, or click here: <input type="button" value="Stop!" onclick="stop();"/></span></div>
 <div id="progress" class="hidden"></div>
 
 </body>
