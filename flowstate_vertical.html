@@ -6,7 +6,6 @@
     <script src="jquery.min.js"></script>
     <script src="mousetrap.min.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
-    <script src="screenfull.js"></script>
     <script src='spectrum.js'></script>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel='stylesheet' href='spectrum.css' />
@@ -23,8 +22,8 @@
 	        color: #aaa;
         }
         .full{
-            height: 90vh;
-            width: 100vw;
+            width: 80vw;
+            height: 100vh;
             position: absolute;
             top: 0;
             left: 0;
@@ -32,16 +31,13 @@
             z-index: 10;
         }
         .status{
-            background-color: black;
-            color: white;
             position: absolute;
             padding: 10px;
-            height: 10vh;
-            text-align: center;
-            bottom: 0px;
-            left: 0px;
+            text-align: right;
             right: 0px;
+            width: 20vw;
             font-family: sans-serif;
+            font-size: 14pt;
             font-weight: bold;
             z-index: 10;
         }
@@ -49,7 +45,7 @@
             visibility: hidden;
         }
         .progress{
-            height: 90vh;
+            height: 100vh;
             width: 100vw;
             position: absolute;
             top: 0;
@@ -195,19 +191,7 @@
         // Enable textarea
         $("#main_area").removeAttr('disabled');
         $("#main_area").focus();
-        if($("#full").is(":checked")){
-            screenfull.request($('#container')[0]);
-        }   
-    }
         
-    function exitFullscreen() {
-      if(document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if(document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
-      } else if(document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      }
     }
         
     function delete_local(){
@@ -249,9 +233,6 @@
     }
         
     function stop(){
-        if($("#full").is(":checked")){
-            screenfull.exit();
-        }
         cancel_countdown();
         cancel_session();
         update_locals();
@@ -307,7 +288,7 @@
             window.countdown_timer = 0;
         }
         $("#progress").stop();
-        $("#progress").css("height", "90vh");
+        $("#progress").css("height", "100vh");
         start_colour = $("#start_colour").spectrum("get");
         $("#progress").css("background-color", start_colour.toHexString());
     }
@@ -318,11 +299,9 @@
             window.current_text = $("#main_area").val();
             if(((e.keyCode==8)||(e.keyCode==46))&&($("#ignore_delete").is(":checked"))){
                 return;
+            }else{
+                reset_countdown();
             }
-            if((e.keyCode==32)&&($("#ignore_space").is(":checked"))){
-                return;
-            }
-            reset_countdown();
         }
     }
         
@@ -436,10 +415,8 @@ Seconds before deletion: <input id="safe_time" style="width: 50px;" type="number
 min="1" max="60" value="5" />
 <input id="no_progress" type="checkbox" />Hide progress bar<p/>
 <h3>Hardcore options</h3>
-<input id="full" type="checkbox" checked/>Fullscreen mode<p/>
 <input id="no_exit" type="checkbox" />Disable exit key<p/>
 <input id="no_close" type="checkbox" />Disable browser close<p/>
-<input id="ignore_space" type="checkbox" />Typing space doesn't stop countdown<p/>
 <input id="ignore_delete" type="checkbox" />Deleting doesn't stop countdown<p/>
 <input id="no_delete" type="checkbox" />Disable delete key<p/>
 <input id="delete_accels" type="checkbox" checked/>Deletion speeds up<p/>
@@ -449,12 +426,13 @@ min="1" max="60" value="5" />
 <input id="toggle_button" type="button" value="Start timer!" />
 <p/>
 </div>
-<div id="#container">
 <textarea disabled id="main_area" rows="20" cols="100" class="mousetrap"></textarea>
 <div class="menu" id="load_previous">
 </div>
-<div id="status" class="hidden"><span id="seconds"> </span> seconds of safety, <span id="session_left"> </span> left of session<br/>
-<span id="words"> </span> words.<span id="exit_guide">Press Ctrl-X to stop, or click here: <input type="button" value="Stop!" onclick="stop();"/></span></div>
+<div id="status" class="hidden"><span id="seconds"> </span> seconds of safety<p/>
+<span id="words"> </span> words<p/>
+<span id="session_left"> </span> left of writing session<p/>
+<span id="exit_guide">Press Ctrl-X to stop, or click here: <input type="button" value="Stop!" onclick="stop();"/></span></div>
 <div id="progress" class="hidden"></div>
-</div>
+
 </body>
