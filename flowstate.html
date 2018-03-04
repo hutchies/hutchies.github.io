@@ -1,0 +1,437 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>FlowState-a-like</title>
+    <script src="jquery.min.js"></script>
+    <script src="mousetrap.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src='spectrum.js'></script>
+    <link rel='stylesheet' href='spectrum.css' />
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #222;
+	        color: #aaa;
+        }
+        textarea {
+            font-family: sans-serif;
+            font-size: 12pt;
+            background-color: #222;
+	        color: #aaa;
+        }
+        .full{
+            width: 80vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0.8;
+            z-index: 10;
+        }
+        .status{
+            position: absolute;
+            padding: 10px;
+            text-align: right;
+            right: 0px;
+            width: 20vw;
+            font-family: sans-serif;
+            font-size: 14pt;
+            font-weight: bold;
+            z-index: 10;
+        }
+        .hidden{
+            visibility: hidden;
+        }
+        .progress{
+            height: 100vh;
+            width: 100vw;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 5;
+        }
+        
+        .boxed{
+            border-style: solid;
+            border-width: 1px;
+            padding: 5px;
+            display: inline-block;
+        }
+        
+        .local{
+            cursor: pointer;
+        }
+        
+        .clickable{
+            cursor: pointer;
+        }
+        
+        .current{
+            color: deepskyblue;
+        }
+    </style>
+    <script>
+        $(document).ready(function(){
+            $("#toggle_button").on("click", start);
+            Mousetrap.bind("ctrl+s", start);
+            window.deletion_timer = 0;
+            window.countdown_timer= 0;
+            window.session_timer = 0;
+            window.start_time = 0;
+            window.session_start = 0;
+            window.current_interval = 0;
+            window.session_interval = 0;
+            window.deletion_interval = 500;
+            $("#bg_colour").spectrum({
+                move: function(colour){
+                    $("body").css("background-color", colour.toHexString());
+                    $("textarea").css("background-color", colour.toHexString());
+                }
+            });
+            $("#txt_colour").spectrum({
+                move: function(colour){
+                    $("body").css("color", colour.toHexString());
+                    $("textarea").css("color", colour.toHexString());
+                }
+            });
+            $("#start_colour").spectrum();
+            $("#end_colour").spectrum();
+            window.current_local = "";
+            window.current_text ="";        
+            update_locals();
+            
+        });
+        
+    function update_locals(){
+        if (typeof(Storage) !== "undefined") {
+                // Set up local store stuff
+                $("#load_previous").html('');
+                $("#local_info").html('');
+                for (var i = 0; i < localStorage.length; i++){
+                    // do something with localStorage.getItem(localStorage.key(i));
+                    if(window.current_local === localStorage.key(i)){
+                        $("#load_previous").append("<div class=\"local current\" >"+localStorage.key(i)+"</div>");
+                    }else{
+                        $("#load_previous").append("<div class=\"local\" >"+localStorage.key(i)+"</div>");
+                    }
+                }
+                if(window.current_local !== ""){
+                    $("#local_info").append('<input id="delete_local" type="button" value="Delete current saved item" />');
+                    $("#delete_local").click(delete_check);
+                    $("#local_info").append('<input id="add_new" type="button" value="Add new item" />');
+                    $("#add_new").on("click", add_new);
+                }else{
+                    $("#local_info").append('<div> Name of new item: <input type="text" id="text_name" class="mousetrap" value="Untitled"/></div>');
+                }
+                $(".local").click(switch_local);
+        }else{
+                window.current_local = -1;
+        }
+    }
+        
+    function start(){
+        $("#toggle_button").val("Stop timer!");
+        $("#toggle_button").off("click");
+        $("#toggle_button").click(stop);
+        $("#main_area").addClass("full");
+        $("#status").removeClass("hidden");
+        $("#status").addClass("status");
+        if($("#no_progress").is(":checked")){
+        }else{
+            $("#progress").addClass("progress");
+            $("#progress").removeClass("hidden");
+        }
+        $(".menu").addClass("hidden");
+        if($("#no_exit").is(":checked")){
+            $("#exit_guide").addClass("hidden");
+        }else{
+            Mousetrap.bind("ctrl+x", stop);
+        }
+        if($("#no_close").is(":checked")){
+            Mousetrap.bind("mod+w", function(){
+                return false;
+            });
+        }
+        if($("#no_delete").is(":checked")){
+            Mousetrap.bind("backspace", function(){
+                return false;
+            });
+            Mousetrap.bind("delete", function(){
+                return false;
+            });
+        }
+        Mousetrap.unbind("ctrl+s");
+        
+        // Set up events
+        $("#main_area").keydown(check_key);
+        window.current_text = $("#main_area").val();
+        
+        // Set up countdown timer
+        milliseconds = $("#safe_time").val() * 1000;
+        window.current_interval = milliseconds;
+        reset_countdown();
+        
+        // Set up session timer
+        session_millis = $("#session_length").val() * 60 * 1000;
+        window.session_interval = session_millis;
+        start_session();
+        
+        // Set up local save
+        if(window.current_local === ""){
+            // New block
+            name = $("#text_name").val() + " (" + (new Date()).toString() + ")";
+            window.current_local = name; 
+            
+        }else{
+            // Updating existing block
+        }
+        
+        // Enable textarea
+        $("#main_area").removeAttr('disabled');
+        $("#main_area").focus();
+        
+    }
+        
+    function delete_local(){
+            localStorage.removeItem(window.current_local);
+            update_locals();
+            add_new();
+    }
+        
+    function delete_check(){
+        $("#delete_local").val("Really delete?");
+        $("#delete_local").off("click");
+        $("#delete_local").click(delete_local);
+    }
+        
+    function add_new(){ // Can presume local storage here.
+        window.current_local = "";
+        $("#main_area").val("");
+        $("#text_name").val("Untitled");
+        update_locals();
+    }
+        
+    function millis_to_readable(millisec) {
+        var seconds = (millisec / 1000).toFixed(0);
+        var minutes = Math.floor(seconds / 60);
+        var hours = "";
+        if (minutes > 59) {
+            hours = Math.floor(minutes / 60);
+            hours = (hours >= 10) ? hours : "0" + hours;
+            minutes = minutes - (hours * 60);
+            minutes = (minutes >= 10) ? minutes : "0" + minutes;
+        }
+
+        seconds = Math.floor(seconds % 60);
+        seconds = (seconds >= 10) ? seconds : "0" + seconds;
+        if (hours != "") {
+            return hours + ":" + minutes + ":" + seconds;
+        }
+        return minutes + ":" + seconds;
+    }
+        
+    function stop(){
+        cancel_countdown();
+        cancel_session();
+        update_locals();
+        $("#toggle_button").val("Start timer!");
+        $("#toggle_button").off("click");
+        $("#toggle_button").click(start);
+        $("#main_area").removeClass("full");
+        $("#status").addClass("hidden");
+        $("#status").removeClass("status");
+        $("#progress").addClass("hidden");
+        start_colour = $("#start_colour").spectrum("get");
+        $("#progress").css("background-color", start_colour);
+        $("#progress").removeClass("progress");
+        $(".menu").removeClass("hidden");
+        Mousetrap.unbind("ctrl+x");
+        Mousetrap.unbind("mod+w");
+        Mousetrap.unbind("delete");
+        Mousetrap.unbind("backspace");
+        Mousetrap.bind("ctrl+s", start);
+        $("#main_area").off("keypress");
+        if($("#no_exit").is(":checked")){
+            $("#exit_guide").removeClass("hidden");
+        }
+        $('#main_area').attr('disabled', 'disabled');
+        // Save typing
+        save_local();
+    }
+        
+    function start_session(){
+        window.session_timer = setTimeout(session_done, window.session_interval);
+        window.session_start = (new Date()).getTime();
+    }
+        
+    function cancel_session(){
+        if(window.session_timer != 0){
+            clearTimeout(window.session_timer);
+            window.session_timer = 0;
+        }
+    }
+        
+    function session_done(){
+        alert("Session finished – well done!");
+        stop();
+    }
+        
+    function cancel_countdown(){
+        if(window.deletion_timer != 0){
+            clearTimeout(window.deletion_timer);
+            window.deletion_timer = 0;
+        }
+        if(window.countdown_timer != 0){
+            clearInterval(window.countdown_timer);
+            window.countdown_timer = 0;
+        }
+        $("#progress").stop();
+        $("#progress").css("height", "100vh");
+        start_colour = $("#start_colour").spectrum("get");
+        $("#progress").css("background-color", start_colour.toHexString());
+    }
+        
+    function check_key(e){
+        if($("#main_area").val() !== window.current_text){
+            // Only fire if text has changed; i.e. disregard modifier keys
+            window.current_text = $("#main_area").val();
+            if(((e.keyCode==8)||(e.keyCode==46))&&($("#ignore_delete").is(":checked"))){
+                return;
+            }else{
+                reset_countdown();
+            }
+        }
+    }
+        
+    function reset_countdown(){
+        cancel_countdown();
+        window.countdown_timer = setInterval(update_countdown, 200);
+        window.start_time = (new Date()).getTime();
+        update_countdown();
+        window.deletion_interval = 500;
+        end_colour = $("#end_colour").spectrum("get");
+        $("#progress").animate({
+            height: 0,
+            backgroundColor: end_colour.toHexString()
+        }, {
+            duration: window.current_interval,
+            complete: delete_text
+        });
+        
+        // Update word count
+        update_word_count();
+    }
+    
+    function delete_text(){
+        //Cancel countdown
+        clearInterval(window.countdown_timer);
+        window.countdown_timer = 0;
+        $("#seconds").text("0");
+        
+        // Delete text
+        text = $("#main_area").val();
+        var lastIndex = text.lastIndexOf(" ");
+        if(lastIndex == -1){
+            $("#main_area").val(""); // Nothing left!
+            return;
+        }
+        text = text.substring(0, lastIndex);
+        $("#main_area").val(text);
+        
+        // Update word count
+        update_word_count();
+        
+        // Timeout for next deletion
+        window.deletion_timer = setTimeout(delete_text, window.deletion_interval);
+        if($("#delete_accels").is(":checked")){
+            window.deletion_interval -= 10;
+        }
+    }
+        
+    function update_word_count(){
+        text = $("#main_area").val();
+        wc = text.split(" ").length;
+        $("#words").text(wc);
+        save_local();
+    }
+        
+    function save_local(){
+        if (typeof(Storage) !== "undefined") {
+            // And also update local storage
+            localStorage.setItem(window.current_local, $("#main_area").val());
+        }
+    }
+        
+    function switch_local(){
+        save_local();
+        name = $(this).text();
+        window.current_local = name;
+        $("#main_area").val(localStorage.getItem(name));
+        update_locals();
+    }
+        
+    function update_countdown() {
+        time_left = window.current_interval - ( (new Date()).getTime() - window.start_time );
+        secs = Math.round(time_left / 1000);
+        $("#seconds").text(secs);
+        
+        // Update session timer
+        session_left = window.session_interval - ( (new Date()).getTime() - window.session_start );
+        readable = millis_to_readable(session_left);
+        $("#session_left").text(readable);
+        
+        //percent = (time_left / window.current_interval) * 100;
+        //height = ""+percent+"vh";
+        //$("#progress").css("height", height);
+    }
+        
+    function set_length(l){
+        $("#session_length").val(l);
+    }
+        
+    </script>
+</head>
+<body>
+<div class="menu">
+<h1>FlowState imitator!</h1>
+Press Ctrl-S to start<br />
+<div id="options" class="boxed">
+<h2>Options</h2>
+Background colour: <input type='text' id="bg_colour" value="#222"/>
+Text colour: <input type='text' id="txt_colour" value="#aaa"/> <p/>
+Progress bar start colour: <input type='text' id="start_colour" value="green"/>
+Progress bar end colour: <input type='text' id="end_colour" value="red"/>
+<p/>
+Length of session: <input id="session_length" style="width: 50px;" type="number" 
+min="1" max="60" value="15" /> minutes 
+<input type="button" value="5" onclick="set_length(5);"/>
+<input type="button" value="10" onclick="set_length(10);"/>
+<input type="button" value="15" onclick="set_length(15);"/>
+<input type="button" value="30" onclick="set_length(30);"/>
+ <p/>
+Seconds before deletion: <input id="safe_time" style="width: 50px;" type="number" 
+min="1" max="60" value="5" />
+<input id="no_progress" type="checkbox" />Hide progress bar<p/>
+<h3>Hardcore options</h3>
+<input id="no_exit" type="checkbox" />Disable exit key<p/>
+<input id="no_close" type="checkbox" />Disable browser close<p/>
+<input id="ignore_delete" type="checkbox" />Deleting doesn't stop countdown<p/>
+<input id="no_delete" type="checkbox" />Disable delete key<p/>
+<input id="delete_accels" type="checkbox" checked/>Deletion speeds up<p/>
+</div>
+<p/>
+<span id="local_info"></span>
+<input id="toggle_button" type="button" value="Start timer!" />
+<p/>
+</div>
+<textarea disabled id="main_area" rows="20" cols="100" class="mousetrap"></textarea>
+<div class="menu" id="load_previous">
+</div>
+<div id="status" class="hidden"><span id="seconds"> </span> seconds of safety<p/>
+<span id="words"> </span> words<p/>
+<span id="session_left"> </span> left of writing session<p/>
+<span id="exit_guide">Press Ctrl-X to stop. </span></div>
+<div id="progress" class="hidden"></div>
+
+</body>

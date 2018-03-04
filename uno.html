@@ -1,0 +1,360 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>UNO</title>
+    <style>
+        .card {
+            display: inline-block;
+            font-family: sans-serif;
+            font-size: 24pt;
+            text-align: center;
+            color: white;
+            width: 40pt;
+            height: 50pt;
+            margin: 1pt;
+            line-height: 50pt;
+            vertical-align: middle;
+            border: 1px solid black;
+            -moz-user-select: -moz-none;
+            -khtml-user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            cursor: default;
+        }
+        
+        .clickable {
+            cursor: pointer;
+            border: 1px solid red;
+        }
+        
+        .red {
+            background-color: red;
+        }
+        
+        .green {
+            background-color: green;
+        }
+        
+        .yellow {
+            background-color: gold;
+        }
+        
+        .blue {
+            background-color: blue;
+        }
+        
+        .extra {
+            background-color: black;
+        }
+    </style>
+    <script src="mousetrap.min.js"></script>
+    <script src="jquery.min.js"></script>
+    <script>
+        // Things to add:
+        // abstract game functionality into game class?
+        // all game data into data object that can be passed by JSON:
+        // - deck, discard, and hand contents
+        // - record of past actions (possibly), for looking back/undoing
+        // - current player
+        // - number of players
+        // add basic game functionality so it is playable with computers
+        // make it servable: 
+        // - player can create named empty game, add computer players, launch game
+        // - other players can see available empty games and join
+        // - game data object stored on a server somewhere and updated by current player each time (so no need to lock/synchronise)
+        // - each game process polls server (unless push/callback can be arranged) to see when turn changes
+        // - upon completion, game is deleted
+        // once this has done, consider jump-in feature and some way of doing 'uno'?
+        
+        $(document).ready(function(){
+            uno = {};
+            
+            uno.Card = function(colour, number){
+                this.colour = colour;
+                this.number = number;
+            }
+            
+            uno.Card.prototype.getColour = function(){
+                return this.colour;
+            }
+            uno.Card.prototype.getNumber = function(){
+                return this.number;
+            }
+            uno.Card.prototype.isSpecial = function(){
+                if(this.colour == "extra") return true;
+                if(this.number == "+2") return true;
+                if(this.number == "X") return true;
+                if(this.number == "<-") return true;
+                return false;
+            }
+            uno.Card.prototype.toHTML = function(){
+                return '<span class="card '+this.colour+'">'+this.number+'</span>';
+            }
+            
+            uno.Card.prototype.toDOM = function(){
+                var el = document.createElement('span');
+                el.className = 'card '+this.colour;
+                var t = document.createTextNode(this.number);
+                el.appendChild(t);
+                return el;
+            }
+            
+            reset_game();
+            
+            //update_view();
+         });
+        
+        function make_deck(deck){
+            var colour, number, extra;
+            for(colour=0; colour < uno.colours.length; colour++){
+                for(number=0; number < uno.numbers.length; number++){
+                    var card = new uno.Card(uno.colours[colour], uno.numbers[number]);
+                    deck.push(card);
+                }
+            }
+            for(extra=0; extra < uno.extras.length; extra++){
+                var card = new uno.Card('extra',uno.extras[extra]);
+                deck.push(card);
+            }
+        }
+        
+        function shuffle(array) {
+            // Fisher-Yates
+            var i = 0, j = 0, temp = null;
+            
+            for (i = array.length - 1; i > 0; i -= 1) {
+                j = Math.floor(Math.random() * (i + 1));
+                temp = array[i];
+                array[i] = array[j]
+                array[j] = temp;
+            }
+            
+        }
+        
+        function reset_game(){
+            uno.deck = [];
+            uno.discard = [];
+            uno.current_card = "";
+            uno.numbers = ["0","1","1","2","2","3","3","4","4","5","5","6","6","7","7","8","8","9","9","+2","+2","X","X","<-","<-"];
+            uno.extras = ["W","W","W","W","+4","+4","+4","+4"];
+            uno.colours = ["red", "green", "yellow", "blue"]
+            uno.hands = [];
+            uno.empty_card = '<span class="card"></span>';
+            uno.turn = 0;
+            uno.play_direction = 1;
+            
+            make_deck(uno.deck);
+            shuffle(uno.deck);
+        }
+        
+        function play_card(hand, num){
+            // Assumes legality
+            //alert("Playing "+hand+","+num);
+            var card = uno.hands[hand][num];
+            uno.hands[hand].splice(num, 1);
+            if(card.isSpecial()){
+                alert("Fun things now happen!");
+            }
+            uno.discard.unshift(card);
+           
+            draw_board();
+        }
+        
+        function draw_board(){
+            var players_div = document.getElementById("players");
+            var tbl = document.createElement("table");
+            players_div.innerHTML = "";
+            players_div.appendChild(tbl);
+            var names = tbl.insertRow();
+            var any_gettable = false;
+            
+            for(var i = 0; i < uno.hands.length; i++){
+                var n = names.insertCell();
+                n.appendChild(document.createTextNode("Player "+i));
+            }
+            var decks = tbl.insertRow();
+            for(var i = 0; i < uno.hands.length; i++){
+                if(is_human(i)){
+                    // Make it playable, show cards
+                    var d = decks.insertCell();
+                    uno.hands[i].sort(function(a, b){
+                        if(a.getColour() == b.getColour())
+                            return a.getNumber().localeCompare(b.getNumber());
+                        return a.getColour().localeCompare(b.getColour());
+                    });
+                    for(var j = 0; j < uno.hands[i].length; j++){
+                        var e = uno.hands[i][j].toDOM();
+                        d.appendChild(e);
+                        if(uno.turn == i){ // Make clickable
+                            if(legal_move(uno.discard[0], uno.hands[i][j])){
+                                var current_i, current_j;
+                                current_i = i;
+                                current_j = j;
+                                func = function(){
+                                    play_card(current_i, current_j);
+                                };
+                                e.addEventListener("click", func);
+                                e.className += " clickable";
+                                any_gettable = true;
+                            }
+                        }
+                    }
+                }else{
+                    var d = decks.insertCell();
+                    for(var j = 0; j < uno.hands[i].length; j++){
+                        d.innerHTML += uno.empty_card;
+                    }
+                }
+            }
+            
+
+            
+            var dp = document.getElementById("discard");
+            if(uno.discard.length > 0){      
+                dp.innerHTML = uno.discard[0].toHTML();
+            }else{
+                dp.innerHTML = uno.empty_card;
+            }
+            
+            if(any_gettable == false){
+                // Offer the draw pile
+                var draw_pile = document.getElementById("draw");
+                var d = document.createElement('span');
+                d.className = "card extra clickable";
+                d.appendChild(document.createTextNode("Draw"));
+                d.addEventListener("click", function(){
+                     draw_card(uno.hands[uno.turn]);
+                });
+                draw_pile.innerHTML = "";
+                draw_pile.appendChild(d);
+            }else{
+                var draw_pile = document.getElementById("draw");
+                var d = document.createElement('span');
+                d.className = "card extra";
+                draw_pile.innerHTML = "";
+                draw_pile.appendChild(d);
+            }
+            
+            show_deck();
+        }
+        
+        function card_html(card){
+            return card.toHTML();
+        }
+        
+        function show_deck(){
+            var text_deck = uno.deck.map(card_html).join("");
+            document.getElementById("full_deck").innerHTML="Full deck:<p />"+text_deck;
+        }
+        
+        function next_card(){
+            draw_card(uno.discard);
+        }
+        
+        function draw_card(destination){
+            //uno.discard.unshift(uno.current_card);
+            if(uno.deck.length <= 0){
+                // Draw deck empty; shuffle discard pile
+                alert("Draw deck empty; shuffling discard pile");
+                shuffle(uno.discard);
+                //uno.deck = uno.discard.slice(); Try other way first
+                uno.deck = uno.discard;
+                uno.discard = []; // !! Will this work?
+                
+            }
+            destination.unshift(uno.deck.shift());
+            draw_board();
+        }
+        
+        function is_human(num){
+            if(num == 0)
+                return true;
+            return false;
+        }
+            
+        function is_special(card){
+            var c = get_colour(card);
+            var n = get_number(card);
+            if(c == "extra") return true;
+            if(n == "+2") return true;
+            if(n == "X") return true;
+            if(n == "<-") return true;
+            
+            return false;
+        }
+        
+        function get_colour(card){
+            var c = document.createElement('div');
+            c.innerHTML = card;
+            for(var i = 0; i < uno.colours.length; i++){
+                //alert(c);
+                if(c.firstChild.classList.contains(uno.colours[i]))
+                    return uno.colours[i];
+            }
+            return "extra";
+        }
+        
+        function get_number(card){
+            var c = document.createElement('div');
+            
+            c.innerHTML = card;
+            for(var i = 0; i < uno.numbers.length; i++){
+                if(c.firstChild.textContent == uno.numbers[i])
+                    return uno.numbers[i];
+            }
+            return "extra";
+        }
+        
+        function legal_move(current, next){
+            if((typeof(current) === 'undefined')||(typeof(next) === 'undefined'))
+                return false;
+
+            if(next.getColour() == "extra") return true; // Can always play wildcards (unless uno??)
+            if(current.getColour() == "extra"){
+                return true; // !! Except this requires more info.
+            }
+            if(current.getColour() == next.getColour()) return true;
+            if(current.getNumber() == next.getNumber()) return true;
+            
+            return false;
+        }
+        
+        function deal(hand, num){
+            var i;
+            for(i = 0; i < num; i++){
+                draw_card(hand);
+            }
+        }
+        
+        function make_board(){
+        if(uno.hands.length != 0){
+            if(!confirm("You've already made a board. Reset it and make a new one?")) return;
+        }
+        reset_game();
+        uno.num_players = parseInt(document.getElementById("num_players").value);
+        uno.hands = [];
+        for(var i = 0; i < uno.num_players; i++){
+            var hand = [];
+            deal(hand, 7);
+            uno.hands.push(hand);
+        }
+        next_card();
+        draw_board();
+        }
+    </script>
+</head>
+<body>
+    <h1>UNO!</h1>
+    <div id="game_setup">
+    Number of players (including human): <input id="num_players" style="width: 50px;" type="number" min="2" max="8" step="1" value="2" />
+    <input type="button" value="Make board!" onclick="make_board()">
+    </div>
+    <div id="board" style="visibilit: hidden;">
+    <div id="players"></div>
+    <div>Play deck:</div><span id="discard"></span>
+        <span id="draw"></span>
+    <div id="full_deck" ></div>
+    </div>
+</body>

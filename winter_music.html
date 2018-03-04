@@ -1,0 +1,70 @@
+<html><head>
+<title>Winter Music tools</title>
+<script>
+// var page_size = 42; // cm
+
+function chord_calc(line_dur, chord_pos){
+	var proportion = chord_pos / page_size;
+	var result = line_dur * proportion;
+	return result;
+}
+
+
+function dur_calc(){
+	try{
+	    load_vars("page_size", "line_mins", "line_secs", "cumulative_mins", "cumulative_secs", "chord_pos");
+	    var line_duration = line_mins * 60;
+	    line_duration = line_duration+(1*line_secs);
+	    var cumulative_duration = cumulative_mins * 60;
+	    cumulative_duration = cumulative_duration+(1*cumulative_secs);
+	    var chords = chord_pos.split(" ");
+	    var durs = [];
+	    for(var i=0; i < chords.length; i++){
+	    	if(chords[i] != 0){
+	    		durs.push(niceify(chord_calc(line_duration, chords[i])+cumulative_duration));
+	    	}
+	    }
+	    result=durs.join(", ");
+		document.getElementById("dur_res").innerHTML = result;
+	}catch(e){
+		alert(e);
+	}
+}
+
+function load_vars(){
+	for (var i=0; i < arguments.length; i++){
+		window[arguments[i]] = document.getElementById(arguments[i]).value;
+	}	
+}
+	
+function niceify(duration){
+	var mins = 0;
+	var secs = 0;
+	if(duration > 60){
+		mins = Math.floor(duration/60);
+		secs = (duration % 60);
+		secs = Math.round( secs );
+		return mins+"'"+secs+"\"";
+	}else{
+		duration = Math.round( duration );
+		return duration+"\"";
+	}
+}
+</script>
+</head>
+<h1>Winter Music tools</h1>
+<h2>Duration calculator</h2>
+<form id="dur_calc">
+Width of the page (in cm): <input type="text" id="page_size" size="4"/> (A3 pages are 42cm wide, A4 pages are 29.7cm)
+<p/>
+Cumulative time: <input type="text" id="cumulative_mins" size="2" /> mins and <input type="text" id="cumulative_secs" size="2"/> seconds
+<p/>
+Duration of a line: <input type="text" id="line_mins" size="2" /> mins and <input type="text" id="line_secs" size="2"/> seconds
+<p/>
+Position of chord(s) on page (enter separated by spaces): <input type="text" id="chord_pos" /> cm
+<p/>
+<input type="reset" value="Clear" />
+<input type="button" value="Go!" onClick="dur_calc();"/>
+</form>
+<b>Result(s) to nearest second: <span id="dur_res"></span></b>
+</html>

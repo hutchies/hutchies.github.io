@@ -1,0 +1,742 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Cluedo helper</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            font-family: sans-serif;
+        }
+        
+        table, th, td {
+            border: 1px solid black;
+            padding: 3px;
+        }
+        
+        .heading {
+            border: none;
+            background-color: red;
+        }
+        
+        .excluded {
+            text-decoration: line-through;
+        }
+        
+        .solved {
+            font-weight: bold;
+            color: red;
+        }
+    
+    </style>
+    <script src="mousetrap.min.js"></script>
+    <script src="jquery.min.js"></script>
+    <script>
+    $(document).ready(function(){
+        
+        window.default_players = ["Mark", "Vanessa", "Mum", "Dad", "Gareth", "Jacqui"];
+        
+        window.evidence_types = ["suspect", "weapon", "location"];
+        
+        window.evidence = {
+            suspect: [
+                    "Col. Mustard",
+                    "Prof. Plum",
+                    "Rev. Green",
+                    "Mrs Peacock",
+                    "Miss Scarlett",
+                    "Mrs White"
+            ],
+            weapon: [
+                    "Dagger",
+                    "Candlestick",
+                    "Revolver",
+                    "Rope",
+                    "Lead Piping",
+                    "Spanner"
+            ],
+            location: [
+                    "Hall",
+                    "Lounge",
+                    "Dining Room",
+                    "Kitchen",
+                    "Ballroom",
+                    "Conservatory",
+                    "Billiard Room",
+                    "Library",
+                    "Study"
+                 ]
+        };
+        
+        window.data = {
+            tuples: [],
+            accusation_time: false,
+            crime_evidence: [],
+            players: [],
+            super_sleuth: true
+        }
+        
+        window.selected = {};
+        window.undo_states = [];
+        
+        Mousetrap.bind("y", set_yes);
+        Mousetrap.bind("n", set_no);
+        Mousetrap.bind("x", set_no);
+        Mousetrap.bind("?", add_tuple);
+        Mousetrap.bind("escape", clear_selection);
+        Mousetrap.bind("z", undo_func);
+        
+        layout_names();
+        
+        $('#num_players').bind('input', layout_names);
+    });
+          
+    function layout_names(){
+        var num = parseInt(document.getElementById("num_players").value);
+        var div = document.getElementById("player_names");
+        div.innerHTML = "";
+        for(var i = 0; i < num; i++){
+            var field = document.createElement("input");
+            field.setAttribute("type", "text");
+            field.setAttribute("id", "pname-"+i);
+            field.setAttribute("value", window.default_players[i]);
+            field.setAttribute("size", 10);
+            div.appendChild(field);
+        }
+    }
+        
+    function undo_func(){
+        var last = window.undo_states.pop();
+        if(last){
+            //alert("success!");
+            window.data = last;
+        }
+        clear_selection();
+    }
+        
+    function make_empty_player(){ // Notation: 0 = not known; -1 = definitely not; 1 = definitely yes; 2 = part of tuple
+        /*var default_cards = Infinity;
+        if(window.data.super_sleuth){
+            default_cards = 0;
+        }*/
+        blank = {
+            num_cards: 0,
+            requests_made: [],
+            requests_answered: []
+        };
+        for(var i = 0; i < window.evidence_types.length; i++){
+            var ev = {};
+            var t = window.evidence_types[i];           
+            for(var j = 0; j < window.evidence[t].length; j++){
+                ev[window.evidence[t][j]] = 0;
+            }
+            blank[t] = ev;
+        }
+        return blank;
+    }
+        
+    function same_selection(a, b){
+        if((a.player == b.player)&&(a.selected == b.selected))
+            return true;
+        return false;
+    }
+        
+    function select_bit(type, player, selected){
+        var new_one = {player: player, selected: selected};
+        if(same_selection(window.selected[type], new_one)){
+            // It's already clicked so set it to yes!
+            one_yes(type);
+            draw_board();
+            return;
+        }
+        window.selected[type] = new_one;
+        draw_board();
+    }
+    
+    function clear_selection(){
+        for(var i = 0; i < window.evidence_types.length; i++){
+            window.selected[window.evidence_types[i]] = {player: -1, selected: -1};
+        }
+        draw_board();
+    }
+        
+    function evidence_to_index(ev){
+        return window.evidence.indexOf(ev);
+    }
+        
+    function cards_available(){
+        var total_card_count = 0;
+        for(var i = 0; i < window.evidence_types.length; i++){ 
+            var type = window.evidence_types[i];
+            total_card_count += window.evidence[type].length - 1; // Minus 1 so that we don't count the crime cards!
+        }
+        return total_card_count;
+    }
+        
+    function all_cards_out(){
+        var total_cards_out = 0;
+        var total_card_count = cards_available();
+        
+        for(var i = 0; i < window.data.players.length; i++){
+            total_cards_out += parseInt(window.data.players[i].num_cards);
+        }
+        //console.log(total_card_count+" and out are "+total_cards_out);
+        
+        if(total_card_count <= total_cards_out){
+            //alert("All "+total_card_count+" cards are out!");
+            return true;
+        }
+        return false;
+    }
+        
+    function update_logic(){
+        // Reset conclusive things
+        window.data.crime_evidence = [];
+        var changes_made = false; // So you know when to run again!
+        
+        for(var k = 0; k < window.evidence_types.length; k++){
+            var type = window.evidence_types[k];
+            var ev_copy = window.evidence[type].slice(0);
+            //alert("ev_copy = "+ev_copy.join(','));
+            for(var i = 0; i < window.evidence[type].length; i++){
+                // Check whether any piece of evidence belongs to nobody – if so, it's the crime evidence!
+                var definitely_crime_evidence = true;
+                var definitely_owned = false;
+                
+                // Don't worry about elimination-based approaches if not all cards are out
+                if(window.data.super_sleuth && (!all_cards_out())){
+                    definitely_crime_evidence = false;
+                }
+                
+                for(var j = 0; j < window.num_players; j++){
+                    //alert("Crime evidence for "+
+                    //alert(window.evidence[type][i]+" = "+window.data.players[j][type][window.evidence[type][i]]);
+                    
+                    if(window.data.players[j][type][window.evidence[type][i]] != -1){
+                        definitely_crime_evidence = false; // ruled out!
+                    }
+                    if(window.data.players[j][type][window.evidence[type][i]] == 1){
+                        //alert("yes");
+                        definitely_owned = true;
+                    }
+                }
+                if(definitely_crime_evidence == true){
+                    window.data.crime_evidence.push(window.evidence[type][i]);
+                    //alert(window.evidence[type][i]+" did it! Evidence is now:"+window.data.crime_evidence.join(","));
+                }
+                if(definitely_owned == true){
+                    var index = ev_copy.indexOf(window.evidence[type][i]);
+                    if(index != -1){
+                      ev_copy.splice(ev_copy.indexOf(window.evidence[type][i]), 1);
+                        //alert(ev_copy.join(','));
+                    }
+                    
+                }
+            }
+            // Check for inconsistency...
+            if(ev_copy.length == 0){
+                alert("Game is inconsistent!");
+            }
+            // Check whether there's only one element that no-one owns – if so, it's the crime evidence!
+            if(ev_copy.length == 1){
+                var index = window.evidence[type].indexOf(ev_copy[0]);
+                window.data.crime_evidence.push(window.evidence[type][index]);
+                
+                // ...and augment the board to show that no-one else can have it
+                for(var j = 0; j < window.num_players; j++){
+                    if(window.data.players[j][type][window.evidence[type][index]] == 1){
+                        alert("Game is inconsistent!");
+                    }
+                    else if(window.data.players[j][type][window.evidence[type][index]] != -1){
+                        window.data.players[j][type][window.evidence[type][index]] = -1;
+                        changes_made = true;
+                    }
+                    
+                }
+                
+                //alert(window.evidence[type][index]+" did it!");
+            }
+        }
+        
+        // Check tuples to see if any are definitely on or off
+        for(var i = 0; i < window.data.tuples.length; i++){
+            var remove = false;
+            //alert("tuple "+window.data.tuples[i].join(",")+" is length "+window.data.tuples[i].length);
+            if(window.data.tuples[i].length == 1){
+                        // Only one left, so it must be owned by player!
+                        //alert("must be!");
+                        var chosen = window.data.tuples[i][0];
+                        window.data.players[chosen.player][chosen.type][chosen.evidence] = 1; //
+                        
+                        // And make sure no other players can have it
+                        for(var k = 0; k < window.data.players.length; k++){
+                            if(k != chosen.player){
+                                window.data.players[k][chosen.type][chosen.evidence] = -1;
+                            }
+                        }
+                        remove = true; // Tuple no longer needed
+                        changes_made = true;
+            }
+            for(var j = 0; j < window.data.tuples[i].length; j++){
+                var t = window.data.tuples[i][j];
+                
+                if(window.data.players[t.player][t.type][t.evidence] == 1){
+                    // Tuple no longer valid – one of the group is definite now
+                    remove = true;
+                    changes_made = true;
+                    // !! See if we can cope without resetting value of associated elements to 0, since it avoids faff      
+                    
+                }else if(window.data.players[t.player][t.type][t.evidence] == -1){
+                    // Item needs to be taken out of tuple, possibly leaving only one left
+                    
+                    window.data.tuples[i].splice(j, 1);
+                    if(window.data.tuples[i].length == 0){ // Now inconsistent!
+                        alert("Game is inconsistent!");
+                    }
+                    changes_made = true;
+                }
+            }
+            if(remove){
+                window.data.tuples.splice(i, 1);
+            }
+        }
+        
+        // Check if any player has their quota of cards, and tick off the others if so (and complain if they have too many!)
+        if(!window.data.super_sleuth || all_cards_out()){ // Only if all cards are out!
+            for(var i = 0; i < window.data.players.length; i++){
+            
+                var card_count = count_cards(i);
+            
+                if(card_count > window.data.players[i].num_cards){
+                    alert("Game is inconsistent - player has too many cards!");
+                }else if(card_count == window.data.players[i].num_cards){
+                    //alert("Player has all their cards");
+                    // Player's card count is full – cross off all other possible cards!
+                    for(var j = 0; j < window.evidence_types.length; j++){
+                        var type = window.evidence_types[j];
+                        for(var k = 0; k < window.evidence[type].length; k++){                  
+                            if((window.data.players[i][type][window.evidence[type][k]] != 1)&&(window.data.players[i][type][window.evidence[type][k]] != -1)){
+                                //console.log("changing "+i+","+type+","+k);
+                                window.data.players[i][type][window.evidence[type][k]] = -1;
+                                changes_made = true;
+                            }
+                        }
+                    }
+                }
+            }
+            
+        }
+        
+        
+        if(changes_made){
+            draw_board(); // To show changes and cascade any more
+        }
+        if(window.data.crime_evidence.length == window.evidence_types.length){
+            // Time to accuse!
+            window.data.accusation_time = true;
+        }
+    }
+        
+    function count_cards(player){
+        var card_count = 0;
+            for(var j = 0; j < window.evidence_types.length; j++){
+                var type = window.evidence_types[j]
+                for(var k = 0; k < window.evidence[type].length; k++){
+                    //alert(window.data.players[i][type][window.evidence[type][k]]);
+                    if(window.data.players[player][type][window.evidence[type][k]] == 1){
+                        card_count++;
+                        //alert(card_count);
+                    }
+                }
+            }
+        
+        return card_count;
+    }
+        
+    function has_selected(type){
+        if(window.selected[type].selected != -1)
+            return true;
+        return false;
+    }
+        
+    function add_undo(){
+        window.undo_states.push(jQuery.extend(true, {}, window.data));
+    }
+        
+    function one_yes(type){
+        add_undo();
+        if(has_selected(type)){
+                var p = window.selected[type].player;
+                var s = window.selected[type].selected;
+                window.data.players[p][type][window.evidence[type][s]] = 1;
+                for(var j = 0; j < window.num_players; j++){
+                    if(j != p){
+                        window.data.players[j][type][window.evidence[type][s]] = -1;
+                    }
+                }
+                while((count_cards(p) > window.data.players[p].num_cards) && (window.data.super_sleuth)){
+                    // Auto-increment card numbers
+                    add_card(p);
+                }
+        }
+        clear_selection();
+    }
+        
+    function set_yes(){
+        add_undo();
+        for(var i = 0; i < window.evidence_types.length; i++){
+            var type = window.evidence_types[i];
+            if(has_selected(type)){
+                var p = window.selected[type].player;
+                var s = window.selected[type].selected;
+                window.data.players[p][type][window.evidence[type][s]] = 1;
+                for(var j = 0; j < window.num_players; j++){
+                    if(j != p){
+                        window.data.players[j][type][window.evidence[type][s]] = -1;
+                    }
+                }
+                //alert(count_cards(p)+" and "+window.data.players[p].num_cards);
+                while((count_cards(p) > window.data.players[p].num_cards) && (window.data.super_sleuth)){
+                    // Auto-increment card numbers
+                    add_card(p);
+                }
+            }
+        }
+        clear_selection();
+    }
+        
+    function add_tuple(){
+        add_undo();
+        var tuple = [];
+        for(var i = 0; i < window.evidence_types.length; i++){
+            var type = window.evidence_types[i];
+            if(has_selected(type)){
+                var p = window.selected[type].player;
+                var s = window.selected[type].selected;
+                if(window.data.players[p][type][window.evidence[type][s]] == 1){ // A tuple with a seen element in is meaningless!
+                    clear_selection();
+                    return;
+                }
+                if(window.data.players[p][type][window.evidence[type][s]] == 0){ // Ignore elements that are already known
+                    window.data.players[p][type][window.evidence[type][s]] = 2;
+                    tuple.push({type: type, player: p, evidence: window.evidence[type][s]});
+                }
+            }
+        }
+        //if(tuple.length == 1){ // Single elements can just be set
+            
+        //}else
+            if(tuple.length > 0){ // Just in case we've made an empty tuple by mistake
+            window.data.tuples.push(tuple);
+        }
+        //console.log(tuple);
+        clear_selection();
+    }
+    
+    function set_no(){
+        add_undo();
+        for(var i = 0; i < window.evidence_types.length; i++){
+            var type = window.evidence_types[i];
+            if(has_selected(type)){
+                var p = window.selected[type].player;
+                var s = window.selected[type].selected;
+                window.data.players[p][type][window.evidence[type][s]] = -1;
+            }
+        }
+        clear_selection();
+    }
+        
+    function add_card(player){
+        add_undo();
+        window.data.players[player].num_cards++;
+        draw_board();
+    }
+        
+    function lose_card(player){
+        add_undo();
+        window.data.players[player].num_cards--;
+        draw_board();
+    }
+        
+    function create_selector(type, player, selected){
+        return function(){ select_bit(type, player, selected); }
+    }
+        
+    function create_cardnum(player){
+        return function(){ new_cardnum(player); }
+    }
+        
+    function create_add_card(player){
+        return function(){ add_card(player); }
+    }
+        
+    function create_lose_card(player){
+        return function(){ lose_card(player); }
+    }
+        
+    function create_oneyes(type){
+        return function(){ one_yes(type); }
+    }
+        
+    /*function toggle_sleuth(){
+        if(window.data.super_sleuth){
+            window.data.super_sleuth = false;
+            for(var i; i < window.data.players.length; i++){
+                if(window.data.players[i].num_cards == 0)
+                   window.data.players[i].num_cards = Infinity;
+            }
+        }else{
+            window.data.super_sleuth = true;
+            for(var i; i < window.data.players.length; i++){
+                if(window.data.players[i].num_cards == Infinity)
+                   window.data.players[i].num_cards = 0;
+            }
+        }
+        draw_board();
+    }*/
+        
+    function new_cardnum(player){
+        add_undo();
+        var number = prompt("Enter new card count for player:","5");
+        if(number == null)
+            return;
+        window.data.players[player].num_cards = number;
+        draw_board();
+    }
+        
+    function make_clicker(element, func, hover){
+        element.onclick = func;
+        element.style.cursor = "pointer";
+        element.title = hover;
+    }
+        
+    function tick_text(value, type, player, evidence){
+        if(value == 0){
+            return " ";
+        }
+        if(value == 1){
+            return "\u2713";
+        }
+        if(value == -1){
+            return "\u2717";
+        }
+        if(value == 2){
+            var matching_tuples = [];
+            for(var i = 0; i < window.data.tuples.length; i++){
+                for(var j = 0; j < window.data.tuples[i].length; j++){
+                    var block = window.data.tuples[i][j];
+                    //console.log("Checking ("+type+","+player+","+evidence+"): "+block.type+","+block.player+","+block.evidence);
+                    if((block.type == type)&&(block.player == player)&&(block.evidence == evidence)){
+                        // evidence is in tuple
+                        matching_tuples.push(i);
+                    }
+                }
+            }
+            if(matching_tuples.length == 1){
+                return "Gp "+matching_tuples[0];
+            }else if(matching_tuples.length > 1){
+                return "Gps "+matching_tuples.join(", ");
+            }else{
+                return " "; // Don't grumble at the mo, just see if it disturbs gameplay or not
+            }
+        }
+        return value;
+    }
+        
+    function draw_board(){
+        if(window.num_players < 2)
+            return;
+        
+        update_logic();
+        var tbl = document.createElement("table");
+        //tbl.setAttribute('border', '1');
+        //tbl.style.border = '1px solid black';
+        var dn = tbl.insertRow().insertCell();
+        dn.appendChild(document.createTextNode("Detective Notes"));
+        dn.setAttribute('colSpan', window.num_players + 1);
+        dn.style.textAlign = "center";
+        dn.style.fontWeight = "bold";
+        dn.className += "heading";
+        
+        for(var k = 0; k < window.evidence_types.length; k++){
+            var type = window.evidence_types[k];
+            var ev = tbl.insertRow();
+            var td = ev.insertCell();
+            td.appendChild(document.createTextNode(type.toUpperCase()));
+            if(has_selected(type)){
+                make_clicker(td, create_oneyes(type), "Click if you've seen the "+window.evidence[type][window.selected[type].selected]+" card");
+            }
+            for(var j = 0; j < window.num_players; j++){
+                var td = ev.insertCell();
+                td.appendChild(document.createTextNode(window.data.players[j].name));
+                make_clicker(td, create_cardnum(j), "Click to alter the number of cards "+window.data.players[j].name+" has");
+            }
+            ev.style.textAlign = "center";
+            ev.style.fontStyle = "italic";
+            ev.className += "heading";
+            for(var i = 0; i < window.evidence[type].length; i++){
+                var tr = tbl.insertRow();
+                var ename = tr.insertCell();
+                ename.appendChild(document.createTextNode(window.evidence[type][i]+":"));
+                if(has_selected(type)){
+                    make_clicker(ename, create_oneyes(type), "Click if you've seen the "+window.evidence[type][window.selected[type].selected]+" card");
+                }
+                if(window.data.crime_evidence.indexOf(window.evidence[type][i]) != -1){
+                //if(window.evidence[type][i] in window.data.crime_evidence){
+                    // Crime evidence!
+                    //alert(window.evidence[type][i]+" did it! "+window.data.crime_evidence.indexOf(window.evidence[type][i]));
+                    ename.className += "solved";
+                }
+                for(var j = 0; j < window.num_players; j++){
+                    var td = tr.insertCell();
+                    td.appendChild(document.createTextNode(tick_text(window.data.players[j][type][window.evidence[type][i]], type, j, window.evidence[type][i])));
+                    if((window.selected[type].player == j)&&(window.selected[type].selected == i)){
+                        td.style.backgroundColor = "yellow";
+                    }
+                    if(window.data.players[j][type][window.evidence[type][i]] == 1){ // Someone has this, so blank out the name
+                        ename.className += "excluded";
+                    }
+                    make_clicker(td, create_selector(type, j, i), "Click to select element");
+                }
+            }
+        }
+        
+        var cb = document.getElementById("cluedo_board");
+        cb.innerHTML = "";
+        
+        for(var j = 0; j < window.num_players; j++){
+            var real_num = count_cards(j);
+            var poss_num = window.data.players[j].num_cards;
+            if(poss_num == Infinity){
+                poss_num = "X";
+            }
+            
+            var text = document.createTextNode("You know "+real_num+" of "+poss_num+" of "+window.data.players[j].name+"'s cards");
+            cb.appendChild(text);
+
+            if(window.data.super_sleuth){
+                if(!all_cards_out()){
+                  var cardadd = document.createElement("input");
+                  cardadd.setAttribute("type", "button");
+                  cardadd.setAttribute("value", "Pick up new card");
+                  cardadd.onclick = create_add_card(j);
+                  cb.appendChild(cardadd);
+                }
+            }else{
+                if(window.data.players[j].num_cards > 0){
+                    var cardlose = document.createElement("input");
+                    cardlose.setAttribute("type", "button");
+                    cardlose.setAttribute("value", "-");
+                    cardlose.onclick = create_lose_card(j);
+                    cb.appendChild(cardlose);
+                }
+                if(!all_cards_out()){
+                    var cardadd = document.createElement("input");
+                    cardadd.setAttribute("type", "button");
+                    cardadd.setAttribute("value", "+");
+                    cardadd.onclick = create_add_card(j);
+                    cb.appendChild(cardadd);
+                }
+            }
+            
+            var br = document.createElement("br");
+            cb.appendChild(br);
+        }
+        
+        if(window.data.accusation_time){
+            var bold = document.createElement("b");
+            var t = document.createTextNode("Accusation time!")
+            bold.appendChild(t);
+            cb.appendChild(bold);
+            cb.appendChild(document.createElement("br"));
+        }
+        
+        if(window.data.super_sleuth && all_cards_out()){
+            var italic = document.createElement("i");
+            var t = document.createTextNode("All cards out.")
+            italic.appendChild(t);
+            cb.appendChild(italic);
+            cb.appendChild(document.createElement("br"));
+        }
+        
+        var seen = document.createElement("input");
+        seen.setAttribute("type", "button");
+        seen.setAttribute("value", "Seen cards");
+        seen.onclick = set_yes;
+        
+        var none = document.createElement("input");
+        none.setAttribute("type", "button");
+        none.setAttribute("value", "No cards shown");
+        none.onclick = set_no;
+        
+        var tuple = document.createElement("input");
+        tuple.setAttribute("type", "button");
+        tuple.setAttribute("value", "Unseen card");
+        tuple.onclick = add_tuple;
+        
+        var undo_button = document.createElement("input");
+        undo_button.setAttribute("type", "button");
+        undo_button.setAttribute("value", "Undo last action");
+        undo_button.onclick = undo_func;
+        
+        var clear = document.createElement("input");
+        clear.setAttribute("type", "button");
+        clear.setAttribute("value", "Clear selection");
+        clear.onclick = undo_func;
+        
+        /*var sleuth = document.createElement("input");
+        sleuth.setAttribute("type", "checkbox");
+        //sleuth.setAttribute("checked", window.data.super_sleuth);  */          
+        
+        cb.appendChild(seen);
+        cb.appendChild(none);
+        cb.appendChild(tuple);
+        cb.appendChild(tbl);
+        cb.appendChild(undo_button);
+        cb.appendChild(clear);
+        //cb.appendChild(s_element);
+
+    }
+        
+    function make_board(){
+        if(window.data.players.length != 0){
+            if(!confirm("You've already made a board. Reset it and make a new one?")) return;
+        }
+        window.num_players = parseInt(document.getElementById("num_players").value);
+        window.data.super_sleuth = document.getElementById("super_sleuth").checked;
+        window.data.players = [];
+        for(var i = 0; i < window.num_players; i++){
+            var player = make_empty_player();
+            player.name = document.getElementById("pname-"+i).value;
+            window.data.players.push(player);
+        }
+        
+        if(!window.data.super_sleuth){
+            // Deal out the cards if it's not super-sleuth mode
+            var i = 0;
+            while(i <= cards_available()){
+                for(var j = 0; j < window.num_players; j++){
+                    i++;
+                    if(i <= cards_available()){ // To avoid overrunning on the last go
+                      window.data.players[j].num_cards++;
+                    }
+                }
+            }
+        }
+        
+        clear_selection();
+        draw_board();
+    }
+    </script>
+</head>
+<body>
+<h1>Cluedo helper</h1>
+Number of players: <input id="num_players" style="width: 50px;" type="number" min="2" max="8" step="1" value="2" />
+Super-sleuth mode? (Limited logic until all cards drawn)<input type="checkbox" id="super_sleuth" checked />
+<div id="player_names"></div>
+<br>
+<input type="button" value="Make board!" onclick="make_board()"></input>
+
+<div id="cluedo_board"></div>
+</body>
+</html>

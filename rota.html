@@ -1,0 +1,191 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Rota helper</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            font-family: sans-serif;
+        }
+        
+        table, th, td {
+            border: 1px solid black;
+            padding: 3px;
+        }
+        
+        .heading {
+            border: none;
+            background-color: lightgray;
+        }
+        
+        .deletion_primed {
+            border: none;
+            background-color: red;
+            opacity: 50%;
+        }
+    </style>
+    <script src="mousetrap.min.js"></script>
+    <script src="jquery.min.js"></script>
+    <script src="jquery-ui-1.12.1.custom/jquery-ui.min.js"></script>
+    <script>
+        $(document).ready(function(){
+            $("#accordion").accordion();
+            window.MAX = 999999;
+            
+            window.dates_to_fill = [
+                "1 Jan", "8 Jan", "16 Jan", "24 Jan"
+            ];
+
+            window.personnel = [
+                "Mark", "Vanessa", "Becki", "Katie",
+                "Stephen", "Jo", "James", "Louis",
+                "Colin", "Barbara", "Carol"
+            ];
+            
+            window.rotas = {
+                "kairos": {
+                    "1 Jan": ["Mark", "Becki"],
+                    "8 Jan":["Vanessa", "Katie"],
+                    "16 Jan":["Stephen", "Jo"],
+                    "24 Jan":["James", "Louis"]
+                },
+                "communion": {
+                    "1 Jan": ["Colin"],
+                    "8 Jan":["Barbara"],
+                    "16 Jan":["Carol"],
+                    "24 Jan":["Anna"]
+                },
+                "worship": {
+                    "1 Jan": ["Vanessa", "Katie"],
+                    "8 Jan":["Stephen", "Colin"],
+                    "16 Jan":["Carol", "Becki"],
+                    "24 Jan":["Vanessa", "Mark"]
+                }
+            };
+            
+            window.constraints = {};
+            window.possibles = {};
+            
+            make_constraints();
+            make_possibles();
+            
+            display_personnel();
+        });
+        
+        function make_constraints(){
+            for (name in window.personnel){
+                window.constraints[name] = {
+                    "elapsed": window.MAX,
+                    "not_leader": false,
+                    "avoid_pair": [],
+                    "mentor_pair": []
+                };
+            }
+        }
+        
+        function make_possibles(){
+            for (d_i in window.dates_to_fill){
+                var date = window.dates_to_fill[d_i];
+                window.possibles[date] = [];
+                for(n_i in window.personnel){
+                    var name = window.personnel[n_i];
+                    window.possibles[date].push(name);
+                    // All possible at start
+                }
+            }
+            for (rota in window.rotas){
+                for(date in window.rotas[rota]){
+                    var names = window.rotas[rota][date];
+                    for(n_i in names){
+                       var name = window.rotas[rota][date][n_i];
+                       window.possibles[date].splice( window.possibles[date].indexOf(name), 1);
+                    }                                                }
+            }
+            alert(JSON.stringify(window.possibles));
+        }
+                                                                            
+        function divvy_up(){
+            
+        }
+        
+        function make_clicker(element, func, hover){
+            element.onclick = func;
+            element.style.cursor = "pointer";
+            element.title = hover;
+        }
+        
+        function create_rotatoggle(name, rota, current){
+            return function(){ alert(name+" "+rota+" "+current); };
+        }
+        
+        function create_deleter(index){
+            return function(){ remove_person(index); };
+        }
+        
+        function toggle_rotapresence(name, rota, current){
+            
+        }
+        
+        function remove_person(index){
+            // Should probably alert to check! Or prime to delete?
+            // Also need to take out of rotas!
+            window.personnel.splice(index, 1);
+            display_personnel();
+        }
+        
+        function display_personnel(){
+            var tbl = document.createElement("table");
+            tbl.setAttribute("id", "personnel");
+            var hd = tbl.insertRow();
+            hd.style.textAlign = "center";
+            hd.style.fontWeight = "bold";
+            hd.className += "heading";
+            
+            hd.insertCell().appendChild(document.createTextNode("Name"));
+            for(rota in window.rotas){
+                hd.insertCell().appendChild(document.createTextNode("On "+rota+" rota?"));
+            } hd.insertCell().appendChild(document.createTextNode("Delete?"));
+            
+            for(var i=0; i < window.personnel.length; i++){
+                var rw = tbl.insertRow();
+                rw.insertCell().appendChild(document.createTextNode(window.personnel[i]));
+                for(rota in window.rotas){
+                    var c = rw.insertCell();
+                    c.appendChild(document.createTextNode("?"));
+                    make_clicker(c, create_rotatoggle(window.personnel[i], rota, "?"), "Click to toggle presence on rota"); 
+                }
+                var de = rw.insertCell();
+                de.appendChild(document.createTextNode("✖︎"));
+                make_clicker(de, remove_person(i), "Click to remove this person from all rotas");
+            };
+            
+            var pl = document.getElementById("personnel");
+            pl.innerHTML = "";
+            
+            pl.appendChild(tbl);
+        }
+        
+        function display_rotas(){
+            for(rota in window.rotas){
+                var table = document.createElement("table");
+                table.setAttribute("id", rota+"_display");
+                
+            }
+        }
+        
+    </script>
+    </head>
+    <body>
+    <h1>Rota maker</h1>
+        <div id="accordion">
+        <h3>People</h3>
+        <div id="personnel">
+        Text goes here.    
+        </div>
+        <h3>Rotas</h3>
+        <div id="rotas">
+        Text goes here.    
+        </div>
+        </div>
+    </body>

@@ -1,0 +1,432 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Index tracker</title>
+    <style type="text/css">
+    /* Reset body padding and margins */
+body { margin:0; padding:0; }
+
+tr.selected {
+    background:#ffc;
+}
+
+button:focus{
+    font-weight: bold;
+}
+ 
+/* Make Header Sticky */
+#header_container { background:#eee; border:1px solid #666; height:60px; left:0; position:fixed; width:100%; top:0; }
+#header{ line-height:0px; margin:10px auto; width:940px; text-align:left; }
+ 
+/* CSS for the content of page. I am giving top and bottom padding of 80px to make sure the header and footer do not overlap the content.*/
+#container { margin: 0 auto; overflow:auto; padding:80px 0; width:940px; }
+#content{}
+ 
+/* Make Footer Sticky */
+#footer_container { background:#eee; border:1px solid #666; bottom:0; left:0; position:fixed; width:100%; }
+#footer { line-height: 20px; margin:0 auto; width:940px; text-align:center; }
+    </style>
+    <script src="taffy.js"></script>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <script src="mousetrap.min.js"></script>
+    <script src="complete.ly.1.0.1.min.js"></script>
+    <script>
+        
+        var terms = TAFFY();
+        terms.store("index_pages");
+        var pages_db = TAFFY();
+        pages_db.store("index_pages_refs");
+        var current_page = 1;
+        var selected = "";
+        var separator = ", ";
+        var actual_text = "";
+        var just_autocompleted = false;
+        
+        $.fn.exists = function () {
+            return this.length !== 0;
+        }
+        
+        $(document).ready(function(){
+            update_view(terms());
+            term = document.querySelector("#index_term");
+            Mousetrap(term).bind('return', add_page);
+            Mousetrap(term).bind('backspace', clear_complete);
+            Mousetrap.bind('escape', reset_all);
+            Mousetrap.bind('command+backspace', delete_term);
+            Mousetrap.bind('command+return', do_select);
+            Mousetrap.bind('up', move_up);
+            Mousetrap.bind('down', move_down);
+            Mousetrap.bind('command+right', increment_page);
+            Mousetrap.bind('command+left', decrement_page);
+            Mousetrap.bind('mod+shift+r', rename);
+            
+            $('input').bind('keydown', function(e){
+                if((e.metaKey || e.ctrlKey)&&(e.keyCode == '37' || e.keyCode == '39')){
+                    e.preventDefault();
+                }
+                if(e.keyCode == '38' || e.keyCode == '40'){
+                    e.preventDefault();
+                }
+            });
+            
+            move_down();
+            $('#index_term').focus();
+            
+            function exportTableToCSV($table, filename) {
+
+            var $rows = $table.find('tr:has(td)'),
+
+            // Temporary delimiter characters unlikely to be typed by keyboard
+            // This is to avoid accidentally splitting the actual contents
+            tmpColDelim = String.fromCharCode(11), // vertical tab character
+            tmpRowDelim = String.fromCharCode(0), // null character
+
+            // actual delimiter characters for CSV format
+            colDelim = '","',
+            rowDelim = '"\r\n"',
+
+            // Grab text from table into CSV formatted string
+            csv = '"' + $rows.map(function (i, row) {
+                var $row = $(row),
+                    $cols = $row.find('td');
+
+                return $cols.map(function (j, col) {
+                    var $col = $(col),
+                        text = $col.text();
+
+                    return text.replace(/"/g, '""'); // escape double quotes
+
+                }).get().join(tmpColDelim);
+
+            }).get().join(tmpRowDelim)
+                .split(tmpRowDelim).join(rowDelim)
+                .split(tmpColDelim).join(colDelim) + '"',
+
+            // Data URI
+            csvData = 'data:application/csv;charset=utf-8,' + encodeURIComponent(csv);
+
+        $(this)
+            .attr({
+            'download': filename,
+                'href': csvData,
+                'target': '_blank'
+        });
+    }
+
+    // This must be a hyperlink
+    $(".export").on('click', function (event) {
+        // CSV
+        exportTableToCSV.apply(this, [$('#content>table'), 'export.csv']);
+        
+        // IF CSV, don't do event.preventDefault() or return false
+        // We actually need this to be a typical hyperlink
+    });
+
+            $(".save").on('click', function (event) {
+        toJSON.apply(this, ['index.json']);
+        });
+            
+            
+        function toJSON(filename){
+            
+            json = terms().stringify();
+            
+            // Data URI
+            jsonData = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+            
+            $(this)
+            .attr({
+            'download': filename,
+                'href': jsonData,
+                'target': '_blank'
+        });
+        }
+            
+        });
+        
+        function wipe(){
+            if(confirm("REALLY wipe??")){
+                terms().remove();
+                //terms = TAFFY();
+                //terms.store("indexing");
+                general_update();
+            }
+        }
+        
+        function fromJSON(event){
+            var x = document.getElementById("load_file");
+            //if('files' in x){
+                //alert("yes");
+            //file = x.files[0];
+                //alert(typeof file);
+            file = event.target;
+            var reader = new FileReader();
+            reader.onload = function(){
+                var string = reader.result;
+                //alert(string);
+                if(confirm("Really overwrite current database?")){
+                    //terms = TAFFY();
+                    //terms.store("indexing");
+                    terms().remove();
+                    terms.insert(string);
+                    terms = TAFFY(string);
+                    //terms.store("indexing");
+                    general_update();
+                }
+            };
+            reader.readAsText(x.files[0]);
+        }
+
+        
+        function reset_all(){
+            $('#index_term').val('');
+            $('#term_notes').val('');
+            actual_text='';
+            text_changed();
+            $('#index_term').focus();
+        }
+        
+        function general_update(){
+            //text = $('#index_term').val();
+            text = actual_text;
+            update_view(terms({word:{likenocase:text}}));
+        }
+        
+        function text_changed(){
+            //alert('change');
+            actual_text=$("#index_term").val();
+            selected=terms({word:{likenocase:actual_text}}).order("word").first().word;
+            //alert(terms({word:{likenocase:selected}}).);
+            general_update();
+        }
+        
+        function notes_changed(){
+            current = terms({word:selected});
+            if(current.count() > 0){
+                notes = $('#term_notes').val();
+                terms({word:w}).update({notes:notes});
+            }
+            general_update();
+        }
+        
+        function move_up(){
+            current_tr = $(".selected");
+            if(current_tr.exists()){
+                new_tr=current_tr.prev();
+                if(!new_tr.exists()){
+                    new_tr = $("tr").first();
+                 }
+                selecting(new_tr.attr("id"));
+            }else{
+                selecting($("tr").last().attr("id"));
+            }
+        }
+        
+        function rename(){
+            if(selected == "") return;
+            newname = prompt("Rename term:", terms({word:selected}).first().word);
+            if(newname != null){
+                //alert(newname);
+                terms({word:selected}).update({word:newname});
+                selecting(newname);
+            }            
+        }
+        
+        function move_down(){
+            current_tr = $(".selected");
+            if(current_tr.exists()){
+                new_tr=current_tr.next();
+                if(!new_tr.exists()) new_tr = $("tr").last();
+                selected=new_tr.attr("id");
+                selecting(new_tr.attr("id"));
+            }
+            else{
+                selecting($("tr").first().attr("id"));
+            }
+        }
+        
+        function selecting(word){
+            selected=word;
+            general_update();
+        }  
+        
+        function do_select(){
+            if($(document.activeElement).attr("id") != "index_term"){
+                return;
+            }
+             if(selected==null){
+                // Assume user wants to add a new term
+                add_page();
+            }
+            $("#index_term").val(selected);
+            general_update();
+            $('#index_term').focus();
+        }
+        
+        function render_pages(r){
+            var pages_array = [];
+            pages_db({term:r.word}).order("ref").each(function (rec){
+                pages_array.push(rec.ref);
+            });
+            return pages_array.join(", ");
+        }
+        
+        function update_view(query){
+            var output="<table>";
+            var matches_selected = false;
+            //$("#content").html('');
+            //$("#content").append('<table>');
+            var table = $("<table></table>");
+            query.order("word").each(function (r){
+                var text = "";
+                
+                tr = $('<tr></tr>')
+                             .attr("id", r.word)
+                             .dblclick(function (){ alert("yes");})
+                             .mouseleave(function () {text_changed();})
+                             .mouseenter(function () {selecting(r.word);})
+                             .append($('<td><em>'+r.word+'</em></td>'))
+                             .append($('<td>'+render_pages(r)+'</td>'))
+                             .append($('<td>'+r.notes+'</td>'));
+                if(r.word == selected){
+                    matches_selected = true;
+                    tr.addClass("selected");
+                    $("#term_notes").val(r.notes);
+                }       
+                table.append(tr);
+            });
+            //output += "</table>";
+            //$("#content").html(output);
+            $("#content").html(table);
+            if(matches_selected == false){
+                $("#term_notes").val('');
+            }else{
+                complete_textbox();
+            }
+            
+            $("#page_num").text("Page "+current_page);
+            $('#actual').text(actual_text);
+            
+            all_entries = terms().count();
+            viewing_entries = query.count();
+            $("#entry_count").text("Viewing "+viewing_entries+" of "+all_entries+" entries");
+            
+        }       
+        
+        function complete_textbox(){
+            if((actual_text.length > 0)&&(selected.toLowerCase().substring(0, actual_text.length) == actual_text.toLowerCase())){
+                $('#index_term').val(selected);
+                $('#index_term').get(0).setSelectionRange(actual_text.length, selected.length, "backward");
+                just_autocompleted = true;
+            }
+        }
+        
+        function clear_complete(){
+            // Reset following a backspace
+            if(just_autocompleted){
+                $('#index_term').val(actual_text);
+                just_autocompleted = false;
+            }
+        }
+        
+        function add_tally(){
+            var w = $('#index_term').val();
+            current = terms({word:w});
+            if(current.count() > 0){
+                tally = current.first().tally;
+                tally += 1;
+                terms({word:w}).update({tally:tally});
+            }else{
+                terms.insert({word:w,tally:1,notes:""});
+            }
+            text_changed();
+        }
+        
+        function add_page(){
+            var w = $('#index_term').val();
+            current = terms({word:w});
+            if(current.count() > 0){
+                pages_db.insert({term:current.first(), ref:current_page});
+                text_changed();
+            }   
+        }
+        
+        function increment_page(){
+            current_page++;
+            
+            general_update();
+        }
+        
+        function decrement_page(){
+            current_page--;
+            
+            general_update();
+        }
+        
+        function add_tally_selected(){
+            current = terms({word:selected});
+            tally = current.first().tally;
+           tally += 1;
+            terms({word:selected}).update({tally:tally});
+            general_update();
+        }
+        
+        function sub_tally_selected(){
+            current = terms({word:selected});
+            tally = current.first().tally;
+            tally -= 1;
+            terms({word:selected}).update({tally:tally});
+            general_update();
+        }
+        
+        function delete_term(){
+            if(confirm("Really delete?")){
+                terms({word:selected}).remove();
+                $("#index_term").val("");
+                move_down();
+                general_update();
+                move_up();
+            }
+        }
+    
+    </script>
+</head>
+<body>
+<div id="header_container"> 
+    <div id="header">
+    <input tabindex="1" class="mousetrap" id="index_term" type="text" name="term" oninput="text_changed()" size="20" />
+    <button tabindex="-1" type="button" onclick="add_page()" value="Add">Add</button>
+    <button tabindex="-1" type="button" onclick="reset_all();" value="Clear">Clear</button>
+    Pages:
+    <span id="refs"></span>
+    <input tabindex="2" class="mousetrap" id="term_refs" type="text" oninput="text_changed()" size="5" />
+    Notes:
+    <input tabindex="3" class="mousetrap" id="term_notes" type="text" oninput="notes_changed()" size="10" />
+    <button tabindex="-1" type="button" onclick="delete_term()" value="Delete">Delete</button>
+    <p />
+    <span id="page_num" style="font-style: italic">Page 1</span>  Actual:<span id="actual"></span>
+        
+    <div style="position: fixed; top: 10px; right: 10px"><span id="entry_count" style="font-style: italic">0 entries</span>&nbsp;&nbsp;<span style="font-weight: bold">Index creator</span>
+        <p />
+    <button><a href="#" class="save">Save</a></button><input type="file" id="load_file" name="files[]" multiple="false" onchange="fromJSON(event)" />
+        <button><a href="#" class="export">CSV</a></button>
+        <button onclick="wipe()">Wipe</button>
+        </div>
+    </div>
+</div>
+<div id="container">
+    <div id="content">
+        <table>
+        <tr>
+        </tr>
+        </table>
+    </div>
+</div>
+<div id="footer_container">
+    <div id="footer">
+        Shortcuts: <b>up and down arrow keys</b> to traverse, <b>command-left and right arrow keys</b> to increment and decrement page number, <b>tab</b> to move between main, page references and notes, <b>return</b> to add a term or add a page reference to the selected term, <b>command-delete</b> to remove a term, <b>command-return</b> to bring a term into the text box, <b>command-shift-r</b> to rename a term
+    </div>
+</div>
+</body>
+</html>
