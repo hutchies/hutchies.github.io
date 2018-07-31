@@ -1,0 +1,253 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+
+body {
+  background-color: black;
+  color: white;
+}
+.fame_chart {
+  font-family: monospace;
+}
+.rep_chart {
+  font-family: monospace;
+}
+.current {
+  font-size: 14pt;
+  font-weight: bold;
+}
+.fb {
+    background-color: green;
+    font-size: 14pt;
+    border: none;
+    color: white;
+    padding: 5px 5px;
+    text-align: center;
+    cursor: pointer;
+}
+.negb {
+    background-color: red;
+    font-size: 14pt;
+    border: none;
+    color: white;
+    padding: 5px 5px;
+    text-align: center;
+    cursor: pointer;
+}
+
+.button {
+      background-color: grey;
+      font-size: 14pt;
+      border: none;
+      color: white;
+      padding: 5px 5px;
+      text-align: center;
+      cursor: pointer;
+  }
+
+}
+
+.char_fame {
+  color: green;
+}
+</style>
+<script src="jquery.min.js"></script>
+<script src="NoSleep.js"></script>
+<script>
+window.max_fame = 119;
+window.start_fame = 0;
+window.start_level = 1;
+sk = "Add skill and advanced action";
+tok = "Add command token";
+window.level_ups = {
+  3: [2, sk],
+  8: [3, tok],
+  15: [4, sk],
+  24: [5, tok],
+  35: [6, sk],
+  48: [7, tok],
+  63: [8, sk],
+  80: [9, tok],
+  99: [10, sk]
+}
+
+window.max_rep = 14;
+window.start_rep = 7;
+
+window.rep_list = ['&nbsp;X', '-5', '-3', '-2', '-1', '-1', '&nbsp;0', '&nbsp;0', '&nbsp;0', '+1', '+1', '+2', '+2', '+3', '+5']
+
+window.level_lookup = [];
+window.screen_lock_disabled = false;
+
+function toggle_lock(){
+  if(window.screen_lock_disabled){
+    // Put lock on
+    window.noSleep.disable();
+    $('#lock').html('Disable screen lock');
+    window.screen_lock_disabled = false;
+  }else{
+    noSleep.enable();
+    $('#lock').html('Enable screen lock');
+    window.screen_lock_disabled = true;
+  }
+}
+
+function reset(){
+  window.char_fame = window.start_fame;
+  window.char_level = window.start_level;
+  window.char_rep = window.start_rep;
+  reset_actions();
+  update();
+}
+
+function reset_actions(){
+  $("#actions").html('');
+  $("#done_button").html('');
+}
+
+function draw_fame(){
+  f_text = "1 &nbsp;(C):";
+  for(var i = 0; i <= window.max_fame; i++){
+    if (i in window.level_ups){
+      f_text += "<br />"+window.level_ups[i][0];
+      if(window.level_ups[i][0] < 10)
+        f_text += "&nbsp;";
+      if(window.level_ups[i][1] == sk){
+        f_text += " (S):";
+      }else{
+        f_text += " (C):";
+      }
+    }
+    if(window.char_fame == i)
+      f_text += '<span class="char_fame">&#9608;</span>';
+    else
+      f_text += "&middot;";
+  }
+  $(".fame_chart").html(f_text);
+}
+
+function draw_rep(){
+  marker = "<b>&#9757;</b>";
+  r_text = "";
+  u_text = "";
+  for(var i = 0; i <= window.max_rep; i++){
+    r_text += window.rep_list[i]+"&nbsp;";
+    if(window.char_rep == i){ // Mark it!
+      u_text += '&nbsp;'+marker+'&nbsp;';
+    }else{
+      u_text += '&nbsp;&nbsp;&nbsp;'
+    }
+  }
+  whole_text = r_text + "<br />" + u_text;
+  $(".rep_chart").html(whole_text);
+}
+
+function update(){
+  draw_fame();
+  $("#fame").html(window.char_fame);
+  $("#level").html(window.char_level);
+  $('#rep').html(window.rep_list[window.char_rep]);
+  draw_rep();
+  revert_reset_button(); // If you're still going you probably don't want to reset!
+}
+
+function get_level(fame){
+  if(fame > window.max_fame) return 10;
+  return window.level_lookup[window.char_fame][0];
+}
+
+function get_action(fame){
+  if(fame > window.max_fame) return "No action to be taken";
+  return window.level_lookup[window.char_fame][1];
+}
+
+function adjust_rep(amount){
+  window.char_rep += amount;
+  if(window.char_rep < 0) window.char_rep = 0; // Can't go lower than 0
+  if(window.char_rep > window.max_rep) window.char_rep = window.max_rep; // Can't go higher than max
+  update();
+}
+
+function add_fame(amount){
+  orig_fame = window.char_fame;
+  orig_level = window.char_level;
+  window.char_fame += amount;
+  // Check level updates
+  new_level = get_level(window.char_fame);
+  if(new_level > orig_level){
+    do{
+      $('#actions').append('Moved up a level! '+get_action(window.char_fame)+"<br />");
+      orig_level++;
+    }while(orig_level < new_level);
+    $('#done_button').html('<button class="button" onclick="reset_actions()">Done!</button>');
+  }
+  window.char_level = new_level;
+  update();
+}
+
+function revert_reset_button(){
+  $('#reset').html('Reset everything');
+  $('#reset').off('click');
+  $('#reset').on('click', prompt_reset);
+}
+
+function prompt_reset(){
+  $('#reset').html('Really reset?');
+  $('#reset').off('click');
+  $('#reset').on('click', really_prompt);
+}
+
+function really_prompt(){
+  $('#reset').html('Really really reset?');
+  $('#reset').off('click');
+  $('#reset').on('click', reset);
+}
+
+function initialise_lookup(){
+  current_level = 1;
+  current_action = tok;
+  for(i = 0; i <= window.max_fame; i++){
+    if (i in window.level_ups){
+      current_level = window.level_ups[i][0];
+      current_action = window.level_ups[i][1];
+    }
+    window.level_lookup[i] = [current_level, current_action];
+  }
+}
+
+$(document).ready(function(){
+  window.noSleep = new NoSleep();
+  initialise_lookup();
+  reset();
+  update();
+});
+</script>
+</head>
+<body>
+  <h2>Fame</h2>
+  <div class="fame_chart"></div>
+  Current fame: <span class="current" id="fame">0</span>
+  <br />
+  Current level: <span class="current" id="level">1</span>
+
+  <br />
+  Add fame: <button class="fb" onclick="add_fame(5)">+5</button>
+  <button class="fb" onclick="add_fame(1)">+1</button>
+  <button class="negb" onclick="add_fame(-1)">-1</button>
+  <div id="actions"></div>
+  <div id="done_button"></div>
+  <h2>Reputation</h2>
+  <div class="rep_chart"></div>
+  <button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-2)">-2</button>
+  <button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-1)">-1</button>
+  <button class="fb" style="font-size: 14pt;" onclick="adjust_rep(1)">+1</button>
+  <button class="fb" style="font-size: 14pt;" onclick="adjust_rep(2)">+2</button>
+  <br />
+  Current modifier: <span class="current" id="rep">0</span>
+  <br/><br />
+  <button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
+  <br />
+  <button id="reset" class="negb">Reset everything</button>
+</body>

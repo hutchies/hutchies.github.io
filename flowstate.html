@@ -15,6 +15,7 @@
             font-family: sans-serif;
             background-color: #222;
 	        color: #aaa;
+            margin: 0;
         }
         textarea {
             font-family: sans-serif;
@@ -23,20 +24,25 @@
 	        color: #aaa;
         }
         .full{
-            height: 90vh;
-            width: 100vw;
-            position: absolute;
+            height: 90%;
+            width: 100%;
+            position: fixed;
             top: 0;
             left: 0;
-            opacity: 0.8;
-            z-index: 10;
+            z-index: 5;
+            box-sizing: border-box;
+        }
+        .alter_sizing{
+            box-sizing: border-box;
         }
         .status{
             background-color: black;
             color: white;
-            position: absolute;
+            position: fixed;
             padding: 10px;
-            height: 10vh;
+            box-sizing: border-box;
+            width: 100%;
+            height: 10%;
             text-align: center;
             bottom: 0px;
             left: 0px;
@@ -49,12 +55,15 @@
             visibility: hidden;
         }
         .progress{
-            height: 90vh;
-            width: 100vw;
-            position: absolute;
+            height: 90%;
+            width: 100%;
+            position: fixed;
             top: 0;
             left: 0;
-            z-index: 5;
+            opacity: 0.2;
+            z-index: 10;
+            pointer-events: none;
+            box-sizing: border-box;
         }
         
         .boxed{
@@ -136,6 +145,14 @@
     }
         
     function start(){
+        
+        if($("#full").is(":checked")){
+            if (screenfull.enabled) {
+                screenfull.on('change', reset_countdown);
+                screenfull.request($('#container')[0]);    
+            }
+        }   
+        
         $("#toggle_button").val("Stop timer!");
         $("#toggle_button").off("click");
         $("#toggle_button").click(stop);
@@ -172,11 +189,6 @@
         $("#main_area").keydown(check_key);
         window.current_text = $("#main_area").val();
         
-        // Set up countdown timer
-        milliseconds = $("#safe_time").val() * 1000;
-        window.current_interval = milliseconds;
-        reset_countdown();
-        
         // Set up session timer
         session_millis = $("#session_length").val() * 60 * 1000;
         window.session_interval = session_millis;
@@ -195,19 +207,12 @@
         // Enable textarea
         $("#main_area").removeAttr('disabled');
         $("#main_area").focus();
-        if($("#full").is(":checked")){
-            screenfull.request($('#container')[0]);
-        }   
-    }
         
-    function exitFullscreen() {
-      if(document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if(document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
-      } else if(document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      }
+        // Set up countdown timer
+        milliseconds = $("#safe_time").val() * 1000;
+        window.current_interval = milliseconds;
+        reset_countdown();
+        
     }
         
     function delete_local(){
@@ -250,7 +255,10 @@
         
     function stop(){
         if($("#full").is(":checked")){
-            screenfull.exit();
+            if (screenfull.enabled) {
+                screenfull.exit();
+	            screenfull.off('change', reset_countdown);
+            }
         }
         cancel_countdown();
         cancel_session();
@@ -307,7 +315,7 @@
             window.countdown_timer = 0;
         }
         $("#progress").stop();
-        $("#progress").css("height", "90vh");
+        $("#progress").css("height", "90%");
         start_colour = $("#start_colour").spectrum("get");
         $("#progress").css("background-color", start_colour.toHexString());
     }
@@ -449,7 +457,7 @@ min="1" max="60" value="5" />
 <input id="toggle_button" type="button" value="Start timer!" />
 <p/>
 </div>
-<div id="#container">
+<div id="#container" class="alter_sizing">
 <textarea disabled id="main_area" rows="20" cols="100" class="mousetrap"></textarea>
 <div class="menu" id="load_previous">
 </div>
