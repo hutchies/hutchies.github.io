@@ -2,18 +2,44 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, minimal-ui">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 
 body {
   background-color: black;
   color: white;
 }
+
+.keypad {
+  display: none;
+  background-color: grey;
+  position: fixed;
+  top: 100px;
+  left: 150px;
+}
+
+.rep_block {
+  float: right;
+}
+
+.manicule {
+  font-weight: bold;
+  font-size: 14pt;
+}
+
+.fame_block {
+  float: left;
+}
+
 .fame_chart {
   font-family: monospace;
+  font-size: 14pt;
 }
 .rep_chart {
   font-family: monospace;
+  font-size: 14pt;
+  text-align: right;
 }
 .current {
   font-size: 14pt;
@@ -130,6 +156,10 @@ function draw_fame(){
 }
 
 function draw_rep(){
+  draw_rep_vert();
+}
+
+function draw_rep_horiz(){
   marker = "<b>&#9757;</b>";
   r_text = "";
   u_text = "";
@@ -143,6 +173,26 @@ function draw_rep(){
   }
   whole_text = r_text + "<br />" + u_text;
   $(".rep_chart").html(whole_text);
+}
+
+function show_keypad(){
+  $('.keypad').show();
+}
+
+function hide_keypad(){
+  $('.keypad').hide();
+}
+
+function draw_rep_vert(){
+  marker = '<span class="manicule">&#9758;</span> ';
+  r_text = "";
+  for(var i = 0; i <= window.max_rep; i++){
+    if(window.char_rep == i){ // Mark it!
+      r_text += marker;
+    }
+    r_text += window.rep_list[i]+"<br />";
+  }
+  $(".rep_chart").html(r_text);
 }
 
 function update(){
@@ -169,6 +219,11 @@ function adjust_rep(amount){
   if(window.char_rep < 0) window.char_rep = 0; // Can't go lower than 0
   if(window.char_rep > window.max_rep) window.char_rep = window.max_rep; // Can't go higher than max
   update();
+}
+
+function keypad(amount){
+  add_fame(amount);
+  hide_keypad();
 }
 
 function add_fame(amount){
@@ -227,7 +282,7 @@ $(document).ready(function(){
 </script>
 </head>
 <body>
-  <h2>Fame</h2>
+    <div class="fame_block">
   <div class="fame_chart"></div>
   Current fame: <span class="current" id="fame">0</span>
   <br />
@@ -237,9 +292,23 @@ $(document).ready(function(){
   Add fame: <button class="fb" onclick="add_fame(5)">+5</button>
   <button class="fb" onclick="add_fame(1)">+1</button>
   <button class="negb" onclick="add_fame(-1)">-1</button>
+  <button class="button" onclick="show_keypad()">+</button>
+  <div class="keypad">
+    <table>
+      <tr><td><button class="fb" onclick="keypad(1)">1</button></td><td><button class="fb" onclick="keypad(2)">2</button></td><td><button class="fb" onclick="keypad(3)">3</button></td></tr>
+      <tr><td><button class="fb" onclick="keypad(4)">4</button></td><td><button class="fb" onclick="keypad(5)">5</button></td><td><button class="fb" onclick="keypad(6)">6</button></td></tr>
+      <tr><td><button class="fb" onclick="keypad(7)">7</button></td><td><button class="fb" onclick="keypad(8)">8</button></td><td><button class="fb" onclick="keypad(9)">9</button></td></tr>
+      <tr><td><button class="negb" onclick="hide_keypad()">X</button></td></tr>
+    </table>
+  </div>
   <div id="actions"></div>
   <div id="done_button"></div>
-  <h2>Reputation</h2>
+  <br/><br />
+  <button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
+  <br />
+  <button id="reset" class="negb">Reset everything</button>
+</div>
+  <div class="rep_block">
   <div class="rep_chart"></div>
   <button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-2)">-2</button>
   <button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-1)">-1</button>
@@ -247,8 +316,5 @@ $(document).ready(function(){
   <button class="fb" style="font-size: 14pt;" onclick="adjust_rep(2)">+2</button>
   <br />
   Current modifier: <span class="current" id="rep">0</span>
-  <br/><br />
-  <button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
-  <br />
-  <button id="reset" class="negb">Reset everything</button>
+</div>
 </body>
