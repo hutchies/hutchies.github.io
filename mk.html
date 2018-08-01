@@ -2,13 +2,19 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 
 body {
   background-color: black;
   color: white;
+}
+
+.settings {
+  position: relative;
+  top: 500px;
+  left: 350px;
 }
 
 .status {
@@ -34,7 +40,9 @@ body {
 }
 
 .rep_block {
-  float: right;
+  position: fixed;
+  top: 10px;
+  right: 10px;
 }
 
 .manicule {
@@ -42,7 +50,9 @@ body {
 }
 
 .fame_block {
-  float: left;
+  position: fixed;
+  top: 10px;
+  left: 10px;
 }
 
 .fame_chart {
@@ -310,10 +320,11 @@ $(document).ready(function(){
   </div>
   <div id="actions"></div>
   <div id="done_button"></div>
-  <br/><br /><br/><br /><br/><br />
-  <button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
-  <br />
-  <button id="reset" class="negb">Reset everything</button>
+</div>
+<div class="settings">
+<button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
+<br />
+<button id="reset" class="negb">Reset everything</button>
 </div>
 <div class="rep_buttons">
 <button class="negb" onclick="adjust_rep(-2)">-2</button> <br />
