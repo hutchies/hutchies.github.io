@@ -16,6 +16,7 @@ body {
   position: fixed;
   top: 10px;
   left: 350px;
+  color: orange;
 }
 
 .keypad {
@@ -28,7 +29,7 @@ body {
 
 .rep_buttons {
   position: fixed;
-  top: 100px;
+  top: 80px;
   right: 100px;
 }
 
@@ -58,7 +59,7 @@ body {
 }
 .fb {
     background-color: green;
-    font-size: 16pt;
+    font-size: 18pt;
     border: none;
     color: white;
     padding: 5px 5px;
@@ -67,7 +68,7 @@ body {
 }
 .negb {
     background-color: red;
-    font-size: 16pt;
+    font-size: 18pt;
     border: none;
     color: white;
     padding: 5px 5px;
@@ -77,7 +78,7 @@ body {
 
 .button {
       background-color: grey;
-      font-size: 16pt;
+      font-size: 18pt;
       border: none;
       color: white;
       padding: 5px 5px;
@@ -295,7 +296,7 @@ $(document).ready(function(){
 <body>
     <div class="fame_block">
   <div class="fame_chart"></div>
-  Add fame: <button class="fb" onclick="add_fame(5)">+5</button>
+  <button class="fb" onclick="add_fame(5)">+5</button>
   <button class="fb" onclick="add_fame(1)">+1</button>
   <button class="negb" onclick="add_fame(-1)">-1</button>
   <button class="button" onclick="show_keypad()">+</button>
@@ -309,16 +310,16 @@ $(document).ready(function(){
   </div>
   <div id="actions"></div>
   <div id="done_button"></div>
-  <br/><br />
+  <br/><br /><br/><br /><br/><br />
   <button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
   <br />
   <button id="reset" class="negb">Reset everything</button>
 </div>
 <div class="rep_buttons">
-<button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-2)">-2</button> <br />
-<button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-1)">-1</button> <br />
-<button class="fb" style="font-size: 14pt;" onclick="adjust_rep(1)">+1</button> <br />
-<button class="fb" style="font-size: 14pt;" onclick="adjust_rep(2)">+2</button> <br />
+<button class="negb" onclick="adjust_rep(-2)">-2</button> <br />
+<button class="negb" onclick="adjust_rep(-1)">-1</button> <br />
+<button class="fb" onclick="adjust_rep(1)">+1</button> <br />
+<button class="fb" onclick="adjust_rep(2)">+2</button> <br />
 
 </div>
   <div class="rep_block">
