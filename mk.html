@@ -11,12 +11,25 @@ body {
   color: white;
 }
 
+.status {
+  font-size: 20pt;
+  position: fixed;
+  top: 10px;
+  left: 300px;
+}
+
 .keypad {
   display: none;
   background-color: grey;
   position: fixed;
   top: 100px;
   left: 150px;
+}
+
+.rep_buttons {
+  position: fixed;
+  top: 100px;
+  right: 100px;
 }
 
 .rep_block {
@@ -41,12 +54,11 @@ body {
   text-align: right;
 }
 .current {
-  font-size: 14pt;
   font-weight: bold;
 }
 .fb {
     background-color: green;
-    font-size: 14pt;
+    font-size: 16pt;
     border: none;
     color: white;
     padding: 5px 5px;
@@ -55,7 +67,7 @@ body {
 }
 .negb {
     background-color: red;
-    font-size: 14pt;
+    font-size: 16pt;
     border: none;
     color: white;
     padding: 5px 5px;
@@ -65,7 +77,7 @@ body {
 
 .button {
       background-color: grey;
-      font-size: 14pt;
+      font-size: 16pt;
       border: none;
       color: white;
       padding: 5px 5px;
@@ -283,11 +295,6 @@ $(document).ready(function(){
 <body>
     <div class="fame_block">
   <div class="fame_chart"></div>
-  Current fame: <span class="current" id="fame">0</span>
-  <br />
-  Current level: <span class="current" id="level">1</span>
-
-  <br />
   Add fame: <button class="fb" onclick="add_fame(5)">+5</button>
   <button class="fb" onclick="add_fame(1)">+1</button>
   <button class="negb" onclick="add_fame(-1)">-1</button>
@@ -307,13 +314,21 @@ $(document).ready(function(){
   <br />
   <button id="reset" class="negb">Reset everything</button>
 </div>
+<div class="rep_buttons">
+<button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-2)">-2</button> <br />
+<button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-1)">-1</button> <br />
+<button class="fb" style="font-size: 14pt;" onclick="adjust_rep(1)">+1</button> <br />
+<button class="fb" style="font-size: 14pt;" onclick="adjust_rep(2)">+2</button> <br />
+
+</div>
   <div class="rep_block">
-  <div class="rep_chart"></div>
-  <button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-2)">-2</button>
-  <button class="negb" style="font-size: 14pt;" onclick="adjust_rep(-1)">-1</button>
-  <button class="fb" style="font-size: 14pt;" onclick="adjust_rep(1)">+1</button>
-  <button class="fb" style="font-size: 14pt;" onclick="adjust_rep(2)">+2</button>
+    <div class="rep_chart"></div>
+  </td></tr></table>
   <br />
-  Current modifier: <span class="current" id="rep">0</span>
+</div>
+<div class="status">
+  Level: <span class="current" id="level">1</span>
+  Fame: <span class="current" id="fame">0</span>
+  Rep modifier: <span class="current" id="rep">0</span>
 </div>
 </body>
