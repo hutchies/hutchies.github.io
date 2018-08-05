@@ -413,7 +413,7 @@ function load(){
   window.time = parseInt(s.getItem('time'));
   window.dummy = JSON.parse(s.getItem('dummy'));
   window.dummy_draw = JSON.parse(s.getItem('dummy_draw'));
-  window.dummy_drawn = parsetInt(s.getItem('dummy_drawn'));
+  window.dummy_drawn = parseInt(s.getItem('dummy_drawn'));
   window.dummy_discard = JSON.parse(s.getItem('dummy_discard'));
   $('#dummy_select').css('display', s.getItem('dummy_select'));
   $('#end_round').css('display', s.getItem('end_round'));
