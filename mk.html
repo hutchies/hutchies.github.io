@@ -196,6 +196,7 @@ function draw_rep_horiz(){
   }
   whole_text = r_text + "<br />" + u_text;
   $(".rep_chart").html(whole_text);
+  $("#raw_rep").html(window.char_rep);
 }
 
 function show_keypad(){
@@ -216,6 +217,7 @@ function draw_rep_vert(){
     r_text += window.rep_list[i]+"<br />";
   }
   $(".rep_chart").html(r_text);
+  $("#raw_rep").html(window.char_rep);
 }
 
 function update(){
@@ -327,6 +329,8 @@ $(document).ready(function(){
 <button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
 <br />
 <button id="reset" class="negb">Reset everything</button>
+<br />
+Raw rep: <span class="current" id="raw_rep">7</span>
 </div>
 <div class="rep_buttons">
 <button class="negb" onclick="adjust_rep(-2)">-2</button> <br />
