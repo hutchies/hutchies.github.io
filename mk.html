@@ -18,6 +18,24 @@ body {
   left: 350px;
 }
 
+.time {
+  position: fixed;
+  left: 200px;
+  top: 10px;
+}
+
+#dummy_info {
+  display: none;
+}
+
+#end_round {
+  display: none;
+}
+
+#reset_dummy {
+  display: none;
+}
+
 .level_up {
   color: white;
   font-size: 12pt;
@@ -26,10 +44,13 @@ body {
 
 .status {
   font-size: 20pt;
+  color: orange;
+}
+
+.centre_block {
   position: fixed;
   top: 10px;
   left: 350px;
-  color: orange;
 }
 
 .keypad {
@@ -43,7 +64,7 @@ body {
 .rep_buttons {
   position: fixed;
   top: 80px;
-  right: 100px;
+  right: 80px;
 }
 
 .rep_block {
@@ -115,8 +136,8 @@ body {
 window.max_fame = 119;
 window.start_fame = 0;
 window.start_level = 1;
-sk = "Add skill and advanced action";
-tok = "Add command token";
+sk = "skill/action";
+tok = "command";
 window.level_ups = {
   3: [2, sk],
   8: [3, tok],
@@ -129,13 +150,209 @@ window.level_ups = {
   99: [10, sk]
 }
 
+window.dummy = [];
+
+window.NAME = 4;
+window.RED = 0;
+window.GREEN = 1;
+window.WHITE = 2;
+window.BLUE = 3;
+window.ACTION = "Action:"
+window.CRYSTAL = "Crystal:"
+window.time = 1;
+window.dummy_names = ["Arythea", "Goldyx", "Tovak", "Norowas"];
+window.ARYTHEA = 0;
+window.GOLDYX = 1;
+window.TOVAK = 2;
+window.NOROWAS = 3;
+
+window.dummies = [ //[0] = red, [1] = green, [2] = blue, [3] = white, [4] = name,
+ [2, 0, 1, 0, window.ARYTHEA],
+ [0, 2, 0, 1, window.GOLDYX],
+ [1, 0, 1, 2, window.TOVAK],
+ [0, 1, 2, 0, window.NOROWAS]
+];
+
+window.dummy_draw = [4, 4, 4, 4];
+window.dummy_discard = [0, 0, 0, 0];
+
 window.max_rep = 14;
 window.start_rep = 7;
+window.max_time = 11;
 
 window.rep_list = ['&nbsp;X', '-5', '-3', '-2', '-1', '-1', '&nbsp;0', '&nbsp;0', '&nbsp;0', '+1', '+1', '+2', '+2', '+3', '+5']
 
 window.level_lookup = [];
 window.screen_lock_disabled = false;
+
+function dummy_reset(){
+  window.dummy_draw = [4, 4, 4, 4];
+  window.dummy_discard = [0, 0, 0, 0];
+  window.dummy = [];
+  $('#end_round').hide();
+  $('#dummy_info').hide();
+  $('#dummy_select').show();
+}
+
+function move_time(){
+  window.time++;
+  if(window.time > window.max_time) window.time = 0; // Can't possibly go past 5 nights!! This allows you to loop back if you make a mistake.
+  draw_time();
+}
+
+function draw_time(){
+  if(window.time % 2 != 0){
+    $('#time_counter').html("Day "+Math.ceil(window.time/2));
+    $('#time_counter').css('background-color', "orange");
+  }else{
+    $('#time_counter').html("Night "+window.time/2);
+    $('#time_counter').css('background-color', "grey");
+  }
+}
+
+/*function save_dummy(){
+  var dummy_info = 0;
+  var final_string = "";
+  for(var i = 0; i < window.dummy.length; i++){
+    dummy_info += window.dummy[i] * Math.pow(8, i+1);
+    alert(Math.pow(window.dummy[i], i+1));
+  }
+  final_string += dummy_info;
+
+  return final_string;
+}
+
+function load_dummy(){
+  var load = $('#dummy_load').val();
+  var dummy_info = load.substring(0, 3);
+
+}*/
+
+function colour_span(c, t){
+  return '<span style="color: ' + get_colour(c) + '">' + t + "</span>";
+}
+
+function dummy_update(){
+  var left_string = "";
+  var crystal_string = "";
+  for(var i = 0; i < 4; i++){
+    left_string += ', ' + colour_span(i, window.dummy_draw[i]);
+    crystal_string += colour_span(i, "&bull;").repeat(window.dummy[i]);
+  }
+  left_string = left_string.substring(2);
+  $('#dummy_left').html(left_string);
+  $('#dummy_crystals').html(crystal_string);
+  //$('#dummy_left').html(window.dummy_draw.reduce((a,b) => a+b, 0));
+  //$('#dummy_gone').html(window.dummy_discard.reduce((a,b) => a+b, 0));
+}
+
+function dummy_card(){
+  var count = window.dummy_draw.reduce((a,b) => a+b, 0);
+  var rand = Math.floor(Math.random() * count);
+  var found = false;
+  if(count <= 0){
+    $('#dummy_info').hide();
+    $('#dummy_addtype').html(window.ACTION);
+    $('#end_round').show();
+  }
+  for(var i = 0; i < window.dummy_draw.length; i++){
+    //alert("Random number is now "+rand+", checking in section "+i+" which has "+window.dummy_draw[i]+" cards");
+    if(rand < window.dummy_draw[i]){
+      found = true;
+      break;
+    }else{
+      rand -= window.dummy_draw[i];
+    }
+  }
+    if(found){
+      window.dummy_discard[i]++;
+      window.dummy_draw[i]--;
+      //alert(window.dummy_draw);
+      //alert(window.dummy_discard);
+      dummy_update();
+      return i; //colour
+    }
+    return -1;
+}
+
+function get_colour(col){
+  var c;
+  switch(col){
+    case window.RED:
+      c = 'red';
+      break;
+    case window.GREEN:
+      c = 'green';
+      break;
+    case window.BLUE:
+      c = 'blue';
+      break;
+    case window.WHITE:
+      c = 'white';
+      break;
+  }
+  return c;
+}
+
+function draw_dummy(){
+  var total_drawn = 0;
+  var last_col = -1;
+  for(var i = 0; i < 3; i++){
+    var col = dummy_card();
+    if(col != -1){
+      last_col = col;
+      total_drawn++;
+    }
+  }
+  var c = "";
+  /*
+  $('#dummy_info').css('color',c);*/
+  if(window.dummy[col] > 0){
+    // draw extra
+    for(var i = 0; i < window.dummy[col]; i++){
+      total_drawn++;
+      col = dummy_card();
+    }
+  }
+  $('#dummy_drawn').html(total_drawn);
+}
+
+function shuffle_dummy(){
+  for(var i = 0; i < window.dummy_discard.length; i++){
+    window.dummy_draw[i] += window.dummy_discard[i];
+    window.dummy_discard[i] = 0;
+  }
+}
+
+function select_dummy(type){
+  // Swap out two displays
+  $('#dummy_select').hide();
+  $('#dummy_info').show();
+  window.dummy = window.dummies[type];
+  $('#dummy_name').html(window.dummy_names[window.dummy[window.NAME]]);
+  dummy_update();
+}
+
+function dummy_add(colour){
+  shuffle_dummy();
+  if($('#dummy_addtype').html() === window.ACTION){
+    // Add card of colour action
+    window.dummy_draw[colour]++;
+    // Move on to next bit
+    $('#dummy_addtype').html(window.CRYSTAL);
+  }else if($('#dummy_addtype').html() === window.CRYSTAL){
+    // Add crystal to character
+    window.dummy[colour]++;
+    // Move on to next turn
+    $('#dummy_addtype').html(window.ACTION);
+    $('#end_round').hide();
+    $('#dummy_info').show();
+    move_time();
+  }else{
+    alert("I shouldn't be here!");
+  }
+  dummy_update();
+}
 
 function toggle_lock(){
   if(window.screen_lock_disabled){
@@ -155,6 +372,46 @@ function reset(){
   window.char_level = window.start_level;
   window.char_rep = window.start_rep;
   reset_actions();
+  update();
+}
+
+function save(){
+  var s = window.localStorage;
+  if(parseInt(s.getItem('fame')) > window.char_fame){
+    // Check we want to overwrite
+    if(!confirm("Overwrite higher-fame save?")) return;
+  }
+  // Presume it's okay!
+  s.setItem('fame', window.char_fame.toString());
+  s.setItem('level', window.char_level.toString());
+  s.setItem('rep', window.char_rep.toString());
+  s.setItem('time', window.time.toString());
+  s.setItem('dummy', JSON.stringify(window.dummy));
+  s.setItem('dummy_draw', JSON.stringify(window.dummy_draw));
+  s.setItem('dummy_discard', JSON.stringify(window.dummy_discard));
+  s.setItem('dummy_select', $('#dummy_select').css('display'));
+  s.setItem('end_round', $('#end_round').css('display'));
+  s.setItem('dummy_info', $('#dummy_info').css('display'));
+}
+
+function load(){
+  var s = window.localStorage;
+  if(s.getItem('fame') === null) return; // Nothing saved yet
+  if(parseInt(s.getItem('fame')) < window.char_fame){
+    // Check we want to overwrite
+    if(!confirm("Overwrite higher-fame current game?")) return;
+  }
+  // Presume it's okay!
+  window.char_fame = parseInt(s.getItem('fame'));
+  window.char_level = parseInt(s.getItem('level'));
+  window.char_rep = parseInt(s.getItem('rep'));
+  window.time = parseInt(s.getItem('time'));
+  window.dummy = JSON.parse(s.getItem('dummy'));
+  window.dummy_draw = JSON.parse(s.getItem('dummy_draw'));
+  window.dummy_discard = JSON.parse(s.getItem('dummy_discard'));
+  $('#dummy_select').css('display', s.getItem('dummy_select'));
+  $('#end_round').css('display', s.getItem('end_round'));
+  $('#dummy_info').css('display', s.getItem('dummy_info'));
   update();
 }
 
@@ -202,7 +459,6 @@ function draw_rep_horiz(){
   }
   whole_text = r_text + "<br />" + u_text;
   $(".rep_chart").html(whole_text);
-  $("#raw_rep").html(window.char_rep);
 }
 
 function show_keypad(){
@@ -223,7 +479,6 @@ function draw_rep_vert(){
     r_text += window.rep_list[i]+"<br />";
   }
   $(".rep_chart").html(r_text);
-  $("#raw_rep").html(window.char_rep);
 }
 
 function update(){
@@ -232,7 +487,10 @@ function update(){
   $("#level").html(window.char_level);
   $('#rep').html(window.rep_list[window.char_rep]);
   draw_rep();
-  revert_reset_button(); // If you're still going you probably don't want to reset!
+  revert_reset_button();
+  dummy_update();
+  draw_time();
+  // If you're still going you probably don't want to reset!
 }
 
 function get_level(fame){
@@ -265,7 +523,7 @@ function add_fame(amount){
   new_level = get_level(window.char_fame);
   if(new_level > orig_level){
     do{
-      $('#actions').append('Moved up a level! '+get_action(window.char_fame)+"<br />");
+      $('#actions').append('Level up '+get_action(window.char_fame)+"!<br />");
       orig_level++;
     }while(orig_level < new_level);
     $('#done_button').html('<button class="button" onclick="reset_actions()">Done!</button>');
@@ -329,13 +587,6 @@ $(document).ready(function(){
     </table>
   </div>
 </div>
-<div class="settings">
-<button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
-<br />
-<button id="reset" class="negb">Reset everything</button>
-<br />
-Raw rep: <span class="current" id="raw_rep">7</span>
-</div>
 <div class="rep_buttons">
 <button class="negb" onclick="adjust_rep(-2)">-2</button> <br />
 <button class="negb" onclick="adjust_rep(-1)">-1</button> <br />
@@ -347,15 +598,55 @@ Raw rep: <span class="current" id="raw_rep">7</span>
   </td></tr></table>
   <br />
 </div>
-<div class="status">
+<div class="centre_block">
+  <div class="status">
   Level: <span class="current" id="level">1</span></br />
   Fame: <span class="current" id="fame">0</span><br />
   Rep: <span class="current" id="rep">0</span><br />
+</div>
+  <div id="dummy">
+    <span id="dummy_select">
+    <button class="button" style="background-color: red" onclick="select_dummy(0)">A</button>
+    <button class="button" style="background-color: green" onclick="select_dummy(1)">G</button>
+    <button class="button" onclick="select_dummy(2)">N</button>
+    <button class="button" style="background-color: blue" onclick="select_dummy(3)">T</button>
+  </span>
+  <span id="dummy_info">
+    <span id="dummy_name"></span>: <span id="dummy_crystals"></span>
+    <br />
+    Left: <span id="dummy_left"></span>
+    <br />(drew <span id="dummy_drawn">0</span> last go)
+    <br />
+    <button class="button" onclick="draw_dummy()">Draw</button><span id="dummy_report">
+  </span>
+</span>
+  <span id="end_round">
+    <div class="current status">Round end!</div>
+    <br />
+    <div id="dummy_add"><span id="dummy_addtype"></div>
+    <button class="button" style="background-color: red" onclick="dummy_add(0)">R</button>
+    <button class="button" style="background-color: green" onclick="dummy_add(1)">G</button>
+    <button class="button" onclick="dummy_add(2)">W</button>
+    <button class="button" style="background-color: blue" onclick="dummy_add(3)">B</button></span>
+    <span id="reset_dummy"><button class="button" onclick="prepare_dummy()">Reset dummy</button></span>
+  </span>
+</div>
   <div class="level_up">
-    <div id="done_button"></div>
     <div id="actions"></div>
+    <div id="done_button"></div>
   </div>
 </div>
 <div id="actions"></div>
 <div id="done_button"></div>
+<div class="time">
+  <button id="time_counter" class="button" style="background-color: orange" onclick="move_time()">Day 1</button>
+</div>
+<div class="settings">
+<button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
+<br />
+<button id="reset" class="negb">Reset everything</button>
+<br />
+<button class="fb" onclick="save()">Save!</button>
+<button class="negb" onclick="load()">Load!</button>
+</div>
 </body>
