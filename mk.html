@@ -392,6 +392,7 @@ function save(){
   s.setItem('dummy_select', $('#dummy_select').css('display'));
   s.setItem('end_round', $('#end_round').css('display'));
   s.setItem('dummy_info', $('#dummy_info').css('display'));
+  $('#save_status').html('Saved!');
 }
 
 function load(){
@@ -412,6 +413,7 @@ function load(){
   $('#dummy_select').css('display', s.getItem('dummy_select'));
   $('#end_round').css('display', s.getItem('end_round'));
   $('#dummy_info').css('display', s.getItem('dummy_info'));
+  $('#save_status').html('Loaded!');
   update();
 }
 
@@ -649,5 +651,6 @@ $(document).ready(function(){
 <br />
 <button class="fb" onclick="save()">Save!</button>
 <button class="negb" onclick="load()">Load!</button>
+<div id="save_status"></div>
 </div>
 </body>
