@@ -18,6 +18,11 @@ body {
   left: 350px;
 }
 
+.level_up {
+  color: white;
+  font-size: 12pt;
+}
+
 .status {
   font-size: 20pt;
   position: fixed;
@@ -322,8 +327,6 @@ $(document).ready(function(){
       <tr><td><button class="negb" onclick="hide_keypad()">X</button></td></tr>
     </table>
   </div>
-  <div id="actions"></div>
-  <div id="done_button"></div>
 </div>
 <div class="settings">
 <button id="lock" class="button" onclick="toggle_lock();">Disable screen lock</button>
@@ -337,7 +340,6 @@ Raw rep: <span class="current" id="raw_rep">7</span>
 <button class="negb" onclick="adjust_rep(-1)">-1</button> <br />
 <button class="fb" onclick="adjust_rep(1)">+1</button> <br />
 <button class="fb" onclick="adjust_rep(2)">+2</button> <br />
-
 </div>
   <div class="rep_block">
     <div class="rep_chart"></div>
@@ -348,5 +350,11 @@ Raw rep: <span class="current" id="raw_rep">7</span>
   Level: <span class="current" id="level">1</span></br />
   Fame: <span class="current" id="fame">0</span><br />
   Rep: <span class="current" id="rep">0</span><br />
+  <div class="level_up">
+    <div id="actions"></div>
+    <div id="done_button"></div>
+  </div>
 </div>
+<div id="actions"></div>
+<div id="done_button"></div>
 </body>
