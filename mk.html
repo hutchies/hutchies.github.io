@@ -175,6 +175,7 @@ window.dummies = [ //[0] = red, [1] = green, [2] = blue, [3] = white, [4] = name
 
 window.dummy_draw = [4, 4, 4, 4];
 window.dummy_discard = [0, 0, 0, 0];
+window.dummy_drawn = 0;
 
 window.max_rep = 14;
 window.start_rep = 7;
@@ -189,6 +190,7 @@ function dummy_reset(){
   window.dummy_draw = [4, 4, 4, 4];
   window.dummy_discard = [0, 0, 0, 0];
   window.dummy = [];
+  window.dummy_drawn = 0;
   $('#end_round').hide();
   $('#dummy_info').hide();
   $('#dummy_select').show();
@@ -315,6 +317,7 @@ function draw_dummy(){
     }
   }
   $('#dummy_drawn').html(total_drawn);
+  window.dummy_drawn = total_drawn;
 }
 
 function shuffle_dummy(){
@@ -386,6 +389,7 @@ function save(){
   s.setItem('level', window.char_level.toString());
   s.setItem('rep', window.char_rep.toString());
   s.setItem('time', window.time.toString());
+  s.setItem('dummy_drawn', window.dummy_drawn.toString());
   s.setItem('dummy', JSON.stringify(window.dummy));
   s.setItem('dummy_draw', JSON.stringify(window.dummy_draw));
   s.setItem('dummy_discard', JSON.stringify(window.dummy_discard));
@@ -409,12 +413,14 @@ function load(){
   window.time = parseInt(s.getItem('time'));
   window.dummy = JSON.parse(s.getItem('dummy'));
   window.dummy_draw = JSON.parse(s.getItem('dummy_draw'));
+  window.dummy_drawn = parsetInt(s.getItem('dummy_drawn'));
   window.dummy_discard = JSON.parse(s.getItem('dummy_discard'));
   $('#dummy_select').css('display', s.getItem('dummy_select'));
   $('#end_round').css('display', s.getItem('end_round'));
   $('#dummy_info').css('display', s.getItem('dummy_info'));
   $('#save_status').html('Loaded!');
   $('#dummy_name').html(window.dummy_names[window.dummy[window.NAME]]);
+  $('#dummy_drawn').html(dummy_drawn);
   update();
 }
 
