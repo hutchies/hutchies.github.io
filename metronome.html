@@ -1,0 +1,444 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css" />
+<script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+<script src="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+<!--<meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">-->
+<style>
+.current-bar {
+  color: black;
+  font-weight: bold;
+}
+
+.current-beat {
+  color: red;
+}
+
+.not-current {
+  color: grey;
+}
+</style>
+<script src="fraction/fraction.js"></script>
+<!--<script src="metronome/metronome.js"></script>-->
+<script src="metronome/worker.js"></script>
+<script src="metronome/monkeypatch.js"></script>
+<script src="pako.js"></script>
+<script src="mespeak.js"></script>
+<script>
+
+var audioContext = null;
+var isPlaying = false;      // Are we currently playing?
+var startTime;              // The start time of the entire sequence.
+var lookahead = 25.0;       // How frequently to call scheduling function
+                            //(in milliseconds)
+var scheduleAheadTime = 0.1;    // How far ahead to schedule audio (sec)
+                            // This is calculated from lookahead, and overlaps
+                            // with next interval (in case the timer is late)
+var nextNoteTime = 0.0;     // when the next note is due.
+var noteLength = 0.05;      // length of "beep" (in seconds)
+var timerWorker = null;     // The Web Worker used to fire timer messages
+var masterVolume = 0.5;
+var real_bar_number = 1;
+var current_bar = 0; // Will need to tweak for count-ins and to respect written bar numbers
+var current_beat = 0;
+var working_bars = [];
+var loop = true;
+var reset_bn_on_loop = false;
+var tempo_percent = 100;
+var speech = false;
+
+var rhythm = {
+  crotchet: Fraction(4,1),
+  quaver: Fraction(8,1),
+  minim: Fraction(2,1),
+  semibreve: Fraction(1,1),
+  semiquaver: Fraction(16,1),
+  demisemiquaver: Fraction (32,1),
+  tuplet: function(how_many, in_time_of, unit){
+    //return ito_unit.mul(how_many).div(hm_unit.mul(in_time_of));
+    return Fraction(how_many, in_time_of).mul(unit);
+  },
+  triplet: function(unit){
+    return this.tuplet(3, 2, unit);
+  },
+  dot: function(unit){
+    return this.tuplet(2, 3, unit);
+  }
+}
+
+function Tempo(unit, bpm){
+  this.unit = unit;
+  this.bpm = bpm;
+}
+
+function str_metre(str){
+  var [n, d] = str.split("/");
+  return new Metre(n, d);
+}
+
+function Metre(num, denom){
+  this.num = num;
+  this.denom = Fraction(denom); // will this work with alternatives?
+  this.click_bpm = function(tempo){
+    return Fraction(tempo.bpm).div(tempo.unit).mul(this.denom);
+  }
+  this.bar_bpm = function(tempo){
+    return Fraction(this.click_bpm(tempo), this.num);
+  }
+}
+
+var default_tempo = new Tempo(rhythm.crotchet, 120);
+var default_metre = new Metre(4, 4);
+
+var current_params = {
+  tempo: default_tempo,
+  metre: default_metre
+}
+
+var m = [
+  {
+    metre: "3/4",
+    tempo: new Tempo(rhythm.crotchet, 120),
+    bars: 4
+  },
+  {
+    metre: "2/4",
+    bars: 1
+  },
+  {
+    metre: "3/4",
+    bars: 3
+  },
+  {
+    metre: "4/4",
+    bars: 1
+  },
+  {
+    metre: "3/4",
+    bars: 4
+  },
+  {
+    metre: "4/4",
+    bars: 1
+  },
+  {
+    metre: "3/4",
+    bars: 3
+  },
+  {
+    metre: "5/8",
+    bars: 1
+  },
+  {
+    metre: "4/4",
+    bars: 2
+  },
+  {
+    metre: "7/8",
+    bars: 10
+  },
+];
+
+function unroll(rolled){
+  var unrolled = [];
+  var working_tempo = default_tempo;
+  var working_metre = default_metre;
+  for (block of rolled){
+    //console.log("Block info: "+JSON.stringify(block));
+    var b = {};
+    if(block.tempo !== undefined){
+      console.log("Has tempo");
+      working_temppo = block.tempo;
+    }
+    b.tempo = working_tempo;
+    if(block.metre !== undefined){
+      console.log("Has metre");
+      working_metre = str_metre(block.metre);
+    }
+    b.metre = working_metre
+    if(block.bars > 1){
+      for(let i = 0; i < block.bars; i++){
+        unrolled.push(b);
+      }
+    }else{
+      unrolled.push(b);
+    }
+  }
+  return unrolled;
+}
+
+function metronome_init(){
+  audioContext = new AudioContext();
+  timerWorker = new Worker("metronome/worker.js");
+
+  timerWorker.onmessage = function(e) {
+    if (e.data == "tick") {
+      //console.log('tick');
+      scheduler();
+    } else {
+      console.log("message: " + e.data);
+    }
+  };
+
+  timerWorker.postMessage({"interval":lookahead});
+}
+
+function reset_metronome(){
+}
+
+function scheduler() {
+  //console.log("Scheduler called: nnt="+nextNoteTime+", cT="+audioContext.currentTime+", saT="+scheduleAheadTime);
+  while (nextNoteTime < audioContext.currentTime + scheduleAheadTime ) {
+    //console.log("Scheduling next note");
+    scheduleNote(current_beat, nextNoteTime);
+    next_beat();
+  }
+}
+
+function max_beats(){
+  var beats = working_bars[current_bar].metre.num; // what about subdivisions?
+  return beats;
+}
+
+/*function set_params(){ // !! Should be unnecessary!
+  var b = working_bars[current_bar];
+  //console.log("Bar "+current_bar+", tempo "+b.tempo+", metre "+b.metre);
+  if(b.tempo !== undefined){
+    //console.log("New tempo info");
+    current_params.tempo = b.tempo;
+  }
+  if(b.metre !== undefined){
+    //console.log("New metre info");
+    current_params.metre = str_metre(b.metre);
+  }
+}*/
+
+function next_bar(){
+  current_beat = 0;
+  current_bar++;
+  real_bar_number++;
+  if(current_bar >= working_bars.length){ // running out of track
+    if(loop){
+      current_bar = 0;
+      if(reset_bn_on_loop){
+        real_bar_number = 1;
+      }
+    }else{
+      play(); //i.e. stop – change!!
+      return; //avoid any crashes on basis of current_bar being too big
+    }
+  }
+  //set_params(); //Update with current bar
+}
+
+function next_beat(){
+  var percent = Fraction(100).div(tempo_percent);
+  //console.log(JSON.stringify(working_bars[current_bar].metre));
+
+  // We are actually scheduling the next beat here, so highlight the last one (bit of a cheat I know)
+  highlight_beat();
+
+  var secondsPerBeat = Fraction(60).div(working_bars[current_bar].metre.click_bpm(working_bars[current_bar].tempo)).mul(percent);
+    nextNoteTime += secondsPerBeat.valueOf();    // Add beat length to last beat time
+    current_beat++;    // Advance the beat number, wrap to zero
+
+    if (current_beat == max_beats()) {
+      next_bar();
+    }
+
+}
+
+function calc_sound(beat){
+  if(beat == 0){
+    return {vol: masterVolume, pitch: 2};
+  }
+  return {vol: masterVolume * 0.75, pitch: 1};
+}
+
+function scheduleNote(beatNumber, time){
+  // create oscillator & gainNode & connect them to the context destination
+  var sound = calc_sound(beatNumber);
+
+  if(!speech){ // Do as click not speech
+
+    var osc = audioContext.createOscillator();
+    var gainNode = audioContext.createGain();
+
+    osc.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    osc.frequency.value = sound.pitch*440;
+    gainNode.gain.value = sound.vol;
+
+    osc.start(time);
+    osc.stop(time + noteLength);
+  }else{ // Speak
+    //var speech_wav = meSpeak.speak(beatNumber+1, {pitch: sound.pitch * 50, volume: sound.vol, rawdata: true});
+    //var gainNode = audioContext.createGain();
+    //gainNode.gain.value = sound.vol;
+    //gainNode.connect(audioContext.destination);
+    var source = audioContext.createBufferSource();
+    //var buff = audioContext.createBuffer(1, )
+    beat_speech = meSpeak.speak(beatNumber+1, {pitch: sound.pitch * 50, volume: sound.vol, speed: 200, rawdata: 'wav'});
+    //meSpeak.speak(beatNumber+1, {pitch: sound.pitch * 50, volume: sound.vol});
+    audioContext.decodeAudioData(beat_speech, function(buffer){
+      source.buffer = buffer;
+      source.connect(audioContext.destination);
+      source.start(time);
+    });
+
+    //source.start(time);
+  }
+}
+
+function create_table(b){
+  var bars = unroll(b);
+  //var html = $('table');
+  var html = '<table class="bars">';
+  var bn = 0;
+  for(bar of bars){
+    //var row = $('tr');
+    var real_bn = bn+1;
+    var row = '<tr><td id="bar-'+bn+'" class="bar_num">'+real_bn+": </td>";
+    for(let i = 0; i < bar.metre.num; i++){
+      //console.log("beat-"+bn+'-'+i);
+      var col = '<td id="beat-'+bn+'-'+i+'"> &bull; </td>';
+      //var col = $('td').append(i);
+      //row.append(col);
+      row += col;
+    }
+    html += row+"</tr>";
+    //html.append(row);
+    bn++;
+  }
+  html += "</table>";
+  //console.log(html);
+  $('#beat_table').html(html);
+}
+
+function highlight_beat(){
+  $('.current-beat').removeClass('current-beat');
+  $('#beat-'+current_bar+"-"+current_beat).addClass('current-beat');
+
+  $('.current-bar').removeClass('current-bar');
+  $('#bar-'+current_bar).addClass('current-bar');
+
+  //console.log($('#beat-'+current_bar+"-"+current_beat));
+}
+
+function play() {
+  isPlaying = !isPlaying;
+
+  if (isPlaying) {
+
+    working_bars = unroll(m);
+
+    current_beat = 0;
+    current_bar = 0;
+    real_bar_number = 1;
+    //set_params();
+
+    $('#beat_table').addClass('not-current');
+    highlight_beat();
+
+    if(speech){
+      // prime speech to save rhythm
+      var scrap = meSpeak.speak("test", {rawdata: 'wav'});
+    }
+
+    nextNoteTime = audioContext.currentTime;
+    timerWorker.postMessage("start");
+    document.getElementById("play").innerHTML = "Pause";
+    $('#reset').removeClass('ui-disabled');
+  } else {
+
+    $('#beat_table').removeClass('not-current');
+
+
+    timerWorker.postMessage("stop");
+    document.getElementById("play").innerHTML = "Play";
+    $('#reset').addClass('ui-disabled');
+  }
+}
+
+function speech_init(){
+  meSpeak.loadConfig("mespeak_config.json");
+  meSpeak.loadVoice('en.json');
+}
+
+function copy_url(){
+  $('#gz_url').select();
+  document.execCommand("copy");
+}
+
+$(document).ready(function(){
+  $('#play').on('click', play);
+  $('#reset').on('click', reset_metronome);
+  $('#copy').on('click', copy_url);
+  //$('#process').on('click', process_tempi);
+  metronome_init();
+  speech_init();
+
+  var urlParams = new URLSearchParams(window.location.search);
+
+  //alert(urlParams);
+
+  if(urlParams.has('sequence')){
+    var sequence = decodeURIComponent(urlParams.get('sequence'));
+    var infl = pako.inflateRaw(sequence, {to: 'string'});
+    m = JSON.parse(infl);
+    $('#play_link').click();
+  }
+
+  //$('#reset').button('disable');
+  //$('#reset').button('refresh');
+  //$('#reset').disabled = true;
+
+  var compressed = pako.deflateRaw(JSON.stringify(m), {to: 'string'});
+  $('#gz_url').val("http://hutchies.github.io/metronome.html?sequence="+encodeURIComponent(compressed));
+
+
+  create_table(m);
+});
+</script>
+</head>
+<body>
+  <div data-role="tabs" id="tabs">
+    <div data-role="navbar">
+      <ul>
+        <li><a href="#editing" class="ui-btn-active ui-state-persist" data-ajax="false">Edit</a></li>
+        <li><a id="play_link" href="#playback" data-ajax="false">Play</a></li>
+        <li><a href="#export" data-ajax="false">Export</a></li>
+      </ul>
+    </div>
+  <div id="editing" class="ui-content">
+
+  </div>
+  <div id="playback" class="ui-content">
+    <div class="ui-body ui-body-a ui-corner-all">
+    <h3>Playback options</h3>
+    <button data-inline="true" id="play">Play</button>
+    <button data-inline="true" class="ui-disabled" id="reset">Reset</button>
+<div data-role="fieldcontain">
+    <label for="percent">Play at % of final tempo:</label>
+    <input type="range" name="percent" id="percent" value="100" min="1" max="200" />
+  </div>
+  <div data-role="collapsible">
+    <h4>Advanced options</h4>
+  </div>
+</div>
+<div class="ui-body ui-body-a ui-corner-all">
+<h3>Piece structure</h3>
+<div id="beat_table"></div>
+  </div>
+</div>
+<div id="export" class="ui-content">
+  <div>Encoded in URL format: <input id="gz_url" type="text"><button data-inline="true" id="copy">Copy</button></div>
+</div>
+</div>
+</body>
+</html>
