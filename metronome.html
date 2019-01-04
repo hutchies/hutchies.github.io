@@ -21,6 +21,15 @@
 .not-current {
   color: grey;
 }
+
+.bar:hover {
+  color: blue;
+  cursor: pointer;
+
+.bars {
+  border: 0px;
+}
+}
 </style>
 <script src="fraction/fraction.js"></script>
 <!--<script src="metronome/metronome.js"></script>-->
@@ -67,17 +76,93 @@ var rhythm = {
   },
   dot: function(unit){
     return this.tuplet(2, 3, unit);
+  },
+  fromText: function(text){
+    //var text = t.trim(); // Just in case
+    if(/[0-9]+/.test(text)){
+      // Simple American style
+      return Fraction(text, 1);
+    }else{
+      text = text.trim(); // Just in case
+      switch(text){
+        case 'sb':
+          return rhythm.semibreve;
+          break;
+        case 'm':
+          return rhythm.minim;
+          break;
+        case 'c':
+          return rhythm.crotchet;
+          break;
+        case 'q':
+          return rhythm.quaver;
+          break;
+        case 'sq':
+          return rhythm.semiquaver;
+          break;
+        case 'ds':
+          return rhythm.demisemiquaver;
+          break;
+        case 'hd':
+          return rhythm.hemidemisemiquaver;
+          break;
+        alert('Incompatible rhythmic type; reverting to crotchet');
+        return rhythm.crotchet;
+      }
+    }
   }
 }
 
 function Tempo(unit, bpm){
   this.unit = unit;
   this.bpm = bpm;
+
+  this.makeString = function(british = true){
+    console.log("making string of "+this.unit+" and "+this.bpm);
+
+    if(!british){
+      return this.unit.toString() + "=" + this.bpm;
+    }else{
+      var unit_s;
+      switch(this.unit){
+        case rhythm.semibreve:
+          unit_s = 'sb';
+          break;
+        case rhythm.minim:
+          unit_s = 'm';
+          break;
+        case rhythm.crotchet:
+          unit_s = 'c';
+          break;
+        case rhythm.quaver:
+          unit_s = 'q';
+          break;
+        case rhythm.semiquaver:
+          unit_s = 'sq';
+          break;
+        case rhythm.demisemiquaver:
+          unit_s = 'ds';
+          break;
+        case rhythm.hemidemisemiquaver:
+          unit_s = 'hd';
+          break;
+        default:
+          unit_s = this.unit.toString();
+          break;
+      }
+      return unit_s + "=" + this.bpm;
+    }
+  }
 }
 
 function str_metre(str){
   var [n, d] = str.split("/");
   return new Metre(n, d);
+}
+
+function metre_str(metre){
+  if(typeof metre == "string") return metre; // No conversion needed!
+  return metre.num + "/" + metre.denom;
 }
 
 function Metre(num, denom){
@@ -110,6 +195,7 @@ var m = [
     bars: 1
   },
   {
+    rehearsal: 'A',
     metre: "3/4",
     bars: 3
   },
@@ -157,11 +243,25 @@ function unroll(rolled){
     b.tempo = working_tempo;
     if(block.metre !== undefined){
       console.log("Has metre");
-      working_metre = str_metre(block.metre);
+      if(typeof block.metre == "string"){
+        working_metre = str_metre(block.metre);
+      }else{
+        working_metre = block.metre;
+      }
     }
-    b.metre = working_metre
+    if(block.rehearsal !== undefined){
+      b.rehearsal = block.rehearsal;
+    }
+    b.metre = working_metre;
     if(block.bars > 1){
       for(let i = 0; i < block.bars; i++){
+        if(i > 0){
+          if(b.rehearsal !== undefined){
+            // Only mark rehearsal mark on first bar
+            b = Object.assign({}, b); // Clone
+            delete b.rehearsal;
+          }
+        }
         unrolled.push(b);
       }
     }else{
@@ -303,7 +403,13 @@ function create_table(b){
   for(bar of bars){
     //var row = $('tr');
     var real_bn = bn+1;
-    var row = '<tr><td id="bar-'+bn+'" class="bar_num">'+real_bn+": </td>";
+    var reh = "<td></td>"; // Default for no rehearsal mark
+    if(bar.rehearsal !== undefined){
+      console.log('found mark '+bar.rehearsal);
+      reh = '<td id="reh-'+bar.rehearsal+'"><b>('+bar.rehearsal+')</b></td>';
+    }
+    var row = '<tr class="bar" id="bar-'+bn+'">'+reh+'<td class="bar_num">'+real_bn+": </td>";
+
     for(let i = 0; i < bar.metre.num; i++){
       //console.log("beat-"+bn+'-'+i);
       var col = '<td id="beat-'+bn+'-'+i+'"> &bull; </td>';
@@ -318,6 +424,16 @@ function create_table(b){
   html += "</table>";
   //console.log(html);
   $('#beat_table').html(html);
+  $('.bar').on('click', function(){
+    console.log(this);
+    var id = $(this).attr('id');
+    var [scrap, num] = id.match(/bar-([0-9]+)/);
+    if(num != undefined){
+      current_bar = num;
+      current_beat = 0;
+      highlight_beat();
+    }
+  });
 }
 
 function highlight_beat(){
@@ -338,8 +454,8 @@ function play() {
     working_bars = unroll(m);
 
     current_beat = 0;
-    current_bar = 0;
-    real_bar_number = 1;
+    //current_bar = 0;
+    real_bar_number = current_bar + 1;
     //set_params();
 
     $('#beat_table').addClass('not-current');
@@ -375,10 +491,119 @@ function copy_url(){
   document.execCommand("copy");
 }
 
+function mirror_structure(){
+  // Display structure of m in edit_structure field
+
+  var display_string = '';
+
+  for(i in m){
+    var metre = m[i].metre;
+    var tempo = m[i].tempo;
+    var rehearsal = m[i].rehearsal;
+    var bars = m[i].bars;
+
+    var metre_s = '';
+    var tempo_s = '';
+    var bars_s = '';
+    var rehearsal_s = '';
+
+    // Make sure all have meaningful values, carrying if needed
+    if(metre != undefined){
+      metre_s = metre_str(metre)+' ';
+    }else if(i == 0){
+      // Just use default on first time
+      metre_s = metre_str(default_metre)+' ';
+    }
+
+    if(tempo != undefined){
+      tempo_s = tempo.makeString(true)+' ';
+    }else if(i == 0){
+      tempo_s = default_tempo.makeString(true)+' ';
+    }
+
+    if(rehearsal != undefined){
+      rehearsal_s = rehearsal + ": ";
+    }
+
+    if(bars > 1){
+      bars_s = 'x' + bars + ' ';
+    }
+
+    // Now load up for display in canonical order
+    if(i > 0){
+      display_string += "\n";
+    }
+    display_string += rehearsal_s + tempo_s + metre_s + bars_s;
+  }
+  $('#edit_structure').val(display_string);
+}
+
+function revert_old(){
+  mirror_structure();
+
+}
+
+function load_new(){
+  // Parse edit_structure field and load to m
+  // Need to check that all rehearsal marks are unique (and offer to number them?)
+  // Also need to load up rehearsal mark jump div if there are any
+
+  var text = $('#edit_structure').val();
+  var lines = text.split(/[,\n]/);
+  m = [];
+  for(i in lines){
+    var units = lines[i].trim().split(/\s+/);
+    var metre = undefined, tempo = undefined, rehearsal = undefined, bars = undefined;
+    var b = {};
+
+    for(j in units){
+      //console.log("''"+units[j]+"''");
+      if(/^[^:]+:$/.test(units[j])){
+        rehearsal = units[j].slice(0,-1);
+        continue;
+      }
+      if(/^x[0-9]+$/.test(units[j])){
+        bars = units[j].slice(1);
+        continue;
+      }
+      if(/^[0-9]+\/[0-9+]$/.test(units[j])){
+        metre = units[j];
+        continue;
+      }
+      if(/^[0-9sbmcqdh]+=[0-9]+$/.test(units[j])){
+        var [scrap, r, bpm] = units[j].match(/^([0-9sbmcqdh]+)\=([0-9]+)$/);
+        console.log('found rhythm '+r+' and bpm '+bpm);
+        tempo = new Tempo(rhythm.fromText(r), bpm);
+      }
+    }
+
+    if(metre != undefined){
+      b.metre = metre;
+    }
+    if(rehearsal != undefined){
+      b.rehearsal = rehearsal;
+    }
+    if(tempo != undefined){
+      b.tempo = tempo;
+    }
+    if(bars != undefined){
+      console.log('not undefined: '+bars);
+      b.bars = bars;
+    }
+    m.push(b);
+  }
+
+  mirror_structure(); // to make sure it is displayed canonically (good idea or not?)
+  create_table(m);
+}
+
 $(document).ready(function(){
+
   $('#play').on('click', play);
   $('#reset').on('click', reset_metronome);
   $('#copy').on('click', copy_url);
+  $('#edit_done').on('click', load_new);
+  $('#edit_revert').on('click', revert_old);
   //$('#process').on('click', process_tempi);
   metronome_init();
   speech_init();
@@ -404,6 +629,10 @@ $(document).ready(function(){
 
   create_table(m);
 });
+
+$(document).on('pageinit', function(){
+  mirror_structure(); // So that it autogrows to size
+});
 </script>
 </head>
 <body>
@@ -416,15 +645,39 @@ $(document).ready(function(){
       </ul>
     </div>
   <div id="editing" class="ui-content">
+      <label for="edit_structre">Edit structure here:</label>
+      <textarea id="edit_structure" cols="50" rows="20" style = "overflow: auto;"></textarea>
 
+      <button id="edit_revert">Revert to previous version</button>
+      <button id="edit_done">Load edited version</button>
+
+    <h3>Guide</h3>
+    Enter metronome events either on separate lines or separated by commas. Each metronome event consists of any combination of the following separated by spaces:
+    <ul>
+      <li><b>A:</b> (i.e. letter plus colon) &ndash; a rehearsal mark</li>
+      <li><b>3/4</b> (i.e. two numbers with a / between) &ndash; a metre indication (defaults to previous metre)</li>
+      <li><b>x3</b> (i.e. an x and a number) &ndash; how many bars this lasts for (default 1)</li>
+      <li><b>c=120</b> (i.e. a rhythm unit &ndash; see below, = and a number) &ndash; a tempo marking. Rhythm units are as follows:
+        <ul>
+          <li>sb or 1: semibreve or whole note</li>
+          <li>m or 2: minim or half note</li>
+          <li>c or 4: crotchet or quarter note</li>
+          <li>q or 8: quaver or eighth note</li>
+          <li>sq or 16: semiquaver or 16th note</li>
+          <li>ds or 32: demisemiquaver or 32nd note</li>
+          <li>hd or 64: hemidemisemiquaver or 64th note (numbers continue after this indefinitely)</li>
+        </ul>
+      </li>
+    </ul>
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
     <h3>Playback options</h3>
     <button data-inline="true" id="play">Play</button>
     <button data-inline="true" class="ui-disabled" id="reset">Reset</button>
+    <div id="play_reh"></div>
 <div data-role="fieldcontain">
-    <label for="percent">Play at % of final tempo:</label>
+    <label for="percent">Play at % of final tempo (still needs wiring in):</label>
     <input type="range" name="percent" id="percent" value="100" min="1" max="200" />
   </div>
   <div data-role="collapsible">
@@ -432,7 +685,8 @@ $(document).ready(function(){
   </div>
 </div>
 <div class="ui-body ui-body-a ui-corner-all">
-<h3>Piece structure</h3>
+<h3>Piece structure:</h3>
+Click a line to start metronome from there.
 <div id="beat_table"></div>
   </div>
 </div>
