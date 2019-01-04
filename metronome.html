@@ -116,7 +116,7 @@ var rhythm = {
 function tempo_to_string(tempo, british = true){
   var unit = tempo.unit;
   var bpm = tempo.bpm;
-  console.log("making string of "+this.unit+" and "+this.bpm);
+  console.log("making string of "+tempo.unit+" and "+tempo.bpm);
 
   if(!british){
     return unit.toString() + "=" + bpm;
@@ -692,7 +692,7 @@ $(document).on('pageinit', function(){
         </ul>
       </li>
     </ul>
-    v 1.01 (4 Jan 2019 3:02pm)
+    v 1.02 (4 Jan 2019 3:05pm)
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
