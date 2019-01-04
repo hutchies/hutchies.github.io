@@ -336,7 +336,7 @@ function next_bar(){
       return; //avoid any crashes on basis of current_bar being too big
     }
   }
-  scroll_to_bar();
+  //scroll_to_bar();
   //set_params(); //Update with current bar
 }
 
@@ -360,6 +360,9 @@ function next_beat(){
   //console.log(JSON.stringify(working_bars[current_bar].metre));
 
   // We are actually scheduling the next beat here, so highlight the last one (bit of a cheat I know)
+  if(current_beat == 0){
+    scroll_to_bar();
+  }
   highlight_beat();
   flash();
 
@@ -489,7 +492,7 @@ function highlight_beat(){
 }
 
 function scroll_to_bar(){
-  $('#bar-'+current_bar)[0].scrollIntoView(true);
+  $('#bar-'+(current_bar))[0].scrollIntoView(true);
 }
 
 function play() {
