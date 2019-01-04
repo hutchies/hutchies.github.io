@@ -598,8 +598,20 @@ function load_new(){
     m.push(b);
   }
 
+  m_changed();
+}
+
+function m_changed(){
+  // Things to do every time m changes
+
   mirror_structure(); // to make sure it is displayed canonically (good idea or not?)
+  set_gzipped();
   create_table(m);
+}
+
+function set_gzipped(){
+  var compressed = pako.deflateRaw(JSON.stringify(m), {to: 'string'});
+  $('#gz_url').val("http://hutchies.github.io/metronome.html?sequence="+encodeURIComponent(compressed));
 }
 
 $(document).ready(function(){
@@ -630,11 +642,7 @@ $(document).ready(function(){
   //$('#reset').button('refresh');
   //$('#reset').disabled = true;
 
-  var compressed = pako.deflateRaw(JSON.stringify(m), {to: 'string'});
-  $('#gz_url').val("http://hutchies.github.io/metronome.html?sequence="+encodeURIComponent(compressed));
-
-
-  create_table(m);
+  m_changed();
 });
 
 $(document).on('pageinit', function(){
