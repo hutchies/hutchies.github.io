@@ -537,7 +537,11 @@ function mirror_structure(){
 
     // Now load up for display in canonical order
     if(i > 0){
-      display_string += "\n";
+      if(rehearsal_s != undefined){
+        display_string += "\n";
+      }else{
+        display_string += ", "; // avoid too many newlines
+      }
     }
     display_string += rehearsal_s + tempo_s + metre_s + bars_s;
   }
