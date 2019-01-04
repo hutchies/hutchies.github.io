@@ -642,7 +642,7 @@ $(document).ready(function(){
     m = JSON.parse(infl);
     $('#play_link').click();
 
-    m_changed();
+    //m_changed();
     //mirror_structure();
   }
 
@@ -650,11 +650,11 @@ $(document).ready(function(){
   //$('#reset').button('refresh');
   //$('#reset').disabled = true;
 
-  m_changed();
+  //m_changed();
 });
 
 $(document).on('pageinit', function(){
-  mirror_structure(); // So that it autogrows to size
+  m_changed(); // So that it autogrows to size
 });
 </script>
 </head>
