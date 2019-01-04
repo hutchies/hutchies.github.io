@@ -635,6 +635,8 @@ $(document).ready(function(){
     var infl = pako.inflateRaw(sequence, {to: 'string'});
     m = JSON.parse(infl);
     $('#play_link').click();
+
+    m_changed();
     //mirror_structure();
   }
 
