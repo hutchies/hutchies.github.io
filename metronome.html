@@ -640,6 +640,7 @@ $(document).ready(function(){
     console.log('launched from existing sequence');
     var sequence = decodeURIComponent(urlParams.get('sequence'));
     var infl = pako.inflateRaw(sequence, {to: 'string'});
+    console.log(infl);
     m = JSON.parse(infl);
     $('#play_link').click();
 
@@ -694,7 +695,7 @@ $(document).on('pageinit', function(){
         </ul>
       </li>
     </ul>
-    v 1.05 (4 Jan 2019 3:13pm)
+    v 1.06 (4 Jan 2019 3:17pm)
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
