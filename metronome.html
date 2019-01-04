@@ -315,6 +315,7 @@ function next_bar(){
   current_beat = 0;
   current_bar++;
   real_bar_number++;
+  scroll_to_bar();
   if(current_bar >= working_bars.length){ // running out of track
     if(loop){
       current_bar = 0;
@@ -420,6 +421,9 @@ function create_table(b){
   $('#beat_table').html(html);
   $('.bar').on('click', function(){
     //console.log(this);
+    if(isPlaying){
+      play();
+    }
     var id = $(this).attr('id');
     var [scrap, num] = id.match(/bar-([0-9]+)/);
     if(num != undefined){
@@ -427,6 +431,17 @@ function create_table(b){
       current_beat = 0;
       highlight_beat();
     }
+  });
+
+  $('.bar').on('dblclick', function(){
+    var id = $(this).attr('id');
+    var [scrap, num] = id.match(/bar-([0-9]+)/);
+    if(num != undefined){
+      current_bar = num;
+      current_beat = 0;
+      highlight_beat();
+    }
+    play();
   });
 }
 
@@ -438,6 +453,10 @@ function highlight_beat(){
   $('#bar-'+current_bar).addClass('current-bar');
 
   //console.log($('#beat-'+current_bar+"-"+current_beat));
+}
+
+function scroll_to_bar(){
+  $('#bar-'+current_bar)[0].scrollIntoView(true);
 }
 
 function play() {
@@ -459,6 +478,7 @@ function play() {
 
     $('#beat_table').addClass('not-current');
     highlight_beat();
+    scroll_to_bar();
 
     if(speech){
       // prime speech to save rhythm
@@ -708,7 +728,7 @@ $(document).on('pageinit', function(){
 </div>
 <div class="ui-body ui-body-a ui-corner-all">
 <h3>Piece structure:</h3>
-Click a line to start metronome from there.
+Click a line to move start bar to there. Double-click to start playback from there. Click line whilst playing to pause.
 <div id="beat_table"></div>
   </div>
 </div>
