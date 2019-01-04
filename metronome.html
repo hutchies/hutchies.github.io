@@ -543,7 +543,8 @@ function mirror_structure(){
         display_string += ", "; // avoid too many newlines
       }
     }
-    display_string += rehearsal_s + tempo_s + metre_s + bars_s;
+    var temp_string = rehearsal_s + tempo_s + metre_s + bars_s
+    display_string += temp_string.trim();
   }
   $('#edit_structure').val(display_string);
 }
@@ -691,7 +692,7 @@ $(document).on('pageinit', function(){
         </ul>
       </li>
     </ul>
-    v 1.0 (4 Jan 2019 3pm)
+    v 1.01 (4 Jan 2019 3:02pm)
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
