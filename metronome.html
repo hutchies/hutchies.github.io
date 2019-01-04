@@ -449,7 +449,8 @@ function highlight_beat(){
 function play() {
   isPlaying = !isPlaying;
 
-  audioContext = new AudioContext(); // Here so it is from a tap for Safari
+  //audioContext = new AudioContext(); // Here so it is from a tap for Safari
+  audioContext = window.AudioContext || window.webkitAudioContext; // Here so it is from a tap for Safari
 
   if (isPlaying) {
 
@@ -674,7 +675,7 @@ $(document).on('pageinit', function(){
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
-    Safari for iOS
+    Safari for iOS 2
     <h3>Playback options</h3>
     <button data-inline="true" id="play">Play</button>
     <button data-inline="true" class="ui-disabled" id="reset">Reset</button>
