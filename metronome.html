@@ -346,10 +346,10 @@ function flash(){
     c = 'flash-first-beat';
   }
   if(blink){
-      $('.play_table').addClass(c);
+      $('.main').addClass(c);
 
       setTimeout(function(){
-        $('.play_table').removeClass(c);
+        $('.main').removeClass(c);
       }, 50)
       /*$('.play_table').stop(.animate({backgroundColor: 'black'}, {duration: 100});*/
   }
@@ -764,9 +764,8 @@ $(document).on('pageinit', function(){
     </ul>
     v 1.07 (4 Jan 2019 3:28pm)
   </div>
-  <div id="playback" class="ui-content">
+  <div id="playback" class="ui-content main">
     <div class="ui-body ui-body-a ui-corner-all">
-    <h3>Playback options</h3>
     <button data-inline="true" id="play">Play</button>
     <button data-inline="true" class="ui-disabled" id="reset">Reset</button>
     <div id="play_reh"></div>
@@ -775,7 +774,7 @@ $(document).on('pageinit', function(){
     <input type="range" name="percent" id="percent" value="100" min="1" max="200" />
   </div>
   <div data-role="collapsible">
-    <h4>Advanced options</h4>
+    <h4>Playback options</h4>
     <label for="loop">Loop at end of piece?</label><input id="loop" type="checkbox" checked>
     <label for="blink">Flash screen in time?</label><input id="blink" type="checkbox" checked>
   </div>
