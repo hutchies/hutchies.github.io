@@ -616,6 +616,7 @@ function m_changed(){
 }
 
 function set_gzipped(){
+  console.log(JSON.stringify(m));
   var compressed = pako.deflateRaw(JSON.stringify(m), {to: 'string'});
   $('#gz_url').val("http://hutchies.github.io/metronome.html?sequence="+encodeURIComponent(compressed));
 }
@@ -693,7 +694,7 @@ $(document).on('pageinit', function(){
         </ul>
       </li>
     </ul>
-    v 1.04 (4 Jan 2019 3:10pm)
+    v 1.05 (4 Jan 2019 3:13pm)
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
