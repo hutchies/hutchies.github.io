@@ -272,7 +272,7 @@ function unroll(rolled){
 }
 
 function metronome_init(){
-  //audioContext = new AudioContext();
+  audioContext = new AudioContext();
   timerWorker = new Worker("metronome/worker.js");
 
   timerWorker.onmessage = function(e) {
@@ -450,8 +450,10 @@ function highlight_beat(){
 function play() {
   isPlaying = !isPlaying;
 
-  audioContext = new AudioContext(); // Here so it is from a tap for Safari
+  //audioContext = new AudioContext(); // Here so it is from a tap for Safari
   //audioContext = window.AudioContext || window.webkitAudioContext; // Here so it is from a tap for Safari
+
+  audioContext.resume();
 
   if (isPlaying) {
 
@@ -676,7 +678,7 @@ $(document).on('pageinit', function(){
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
-    Safari for iOS 3
+    Safari for iOS 4
     <span id="is_susp"></span>
     <h3>Playback options</h3>
     <button data-inline="true" id="play">Play</button>
