@@ -113,11 +113,50 @@ var rhythm = {
   }
 }
 
+function tempo_to_string(tempo, british = true){
+  var unit = tempo.unit;
+  var bpm = tempo.bpm;
+  console.log("making string of "+this.unit+" and "+this.bpm);
+
+  if(!british){
+    return unit.toString() + "=" + bpm;
+  }else{
+    var unit_s;
+    switch(unit){
+      case rhythm.semibreve:
+        unit_s = 'sb';
+        break;
+      case rhythm.minim:
+        unit_s = 'm';
+        break;
+      case rhythm.crotchet:
+        unit_s = 'c';
+        break;
+      case rhythm.quaver:
+        unit_s = 'q';
+        break;
+      case rhythm.semiquaver:
+        unit_s = 'sq';
+        break;
+      case rhythm.demisemiquaver:
+        unit_s = 'ds';
+        break;
+      case rhythm.hemidemisemiquaver:
+        unit_s = 'hd';
+        break;
+      default:
+        unit_s = unit.toString();
+        break;
+    }
+    return unit_s + "=" + bpm;
+  }
+}
+
 function Tempo(unit, bpm){
   this.unit = unit;
   this.bpm = bpm;
 
-  this.makeString = function(british = true){
+  /*this.makeString = function(british = true){
     console.log("making string of "+this.unit+" and "+this.bpm);
 
     if(!british){
@@ -152,7 +191,7 @@ function Tempo(unit, bpm){
       }
       return unit_s + "=" + this.bpm;
     }
-  }
+  }*/
 }
 
 function str_metre(str){
@@ -483,9 +522,9 @@ function mirror_structure(){
     }
 
     if(tempo != undefined){
-      tempo_s = tempo.makeString(true)+' ';
+      tempo_s = tempo_to_string(tempo, true)+' ';
     }else if(i == 0){
-      tempo_s = default_tempo.makeString(true)+' ';
+      tempo_s = tempo_to_string(default_tempo, true)+' ';
     }
 
     if(rehearsal != undefined){
