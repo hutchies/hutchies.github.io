@@ -114,39 +114,32 @@ var rhythm = {
 }
 
 function tempo_to_string(tempo, british = true){
-  var unit = tempo.unit;
+  var unit = Fraction(tempo.unit.n, tempo.unit.d);
   var bpm = tempo.bpm;
   console.log("making string of "+tempo.unit+" and "+tempo.bpm);
+  //console.log(JSON.stringify(tempo.unit));
 
   if(!british){
     return unit.toString() + "=" + bpm;
   }else{
-    var unit_s;
-    switch(unit){
-      case rhythm.semibreve:
-        unit_s = 'sb';
-        break;
-      case rhythm.minim:
-        unit_s = 'm';
-        break;
-      case rhythm.crotchet:
-        unit_s = 'c';
-        break;
-      case rhythm.quaver:
-        unit_s = 'q';
-        break;
-      case rhythm.semiquaver:
-        unit_s = 'sq';
-        break;
-      case rhythm.demisemiquaver:
-        unit_s = 'ds';
-        break;
-      case rhythm.hemidemisemiquaver:
-        unit_s = 'hd';
-        break;
-      default:
-        unit_s = unit.toString();
-        break;
+    var unit_s
+    if(unit.equals(rhythm.semibreve)){
+      unit_s = 'sb';
+    }else if(unit.equals(rhythm.minim)){
+      unit_s = 'm';
+    }else if(unit.equals(rhythm.crotchet)){
+      unit_s = 'c';
+    }else if(unit.equals(rhythm.quaver)){
+      unit_s = 'q';
+    }else if(unit.equals(rhythm.semiquaver)){
+      unit_s = 'sq';
+    }else if(unit.equals(rhythm.demisemiquaver)){
+      unit_s = 'ds';
+    }else if(unit.equals(rhythm.hemidemisemiquaver)){
+      unit_s = 'hd';
+    }else{
+      console.log("unable to break down");
+      unit_s = unit.toString();
     }
     return unit_s + "=" + bpm;
   }
@@ -639,11 +632,13 @@ $(document).ready(function(){
   if(urlParams.has('sequence')){
     console.log('launched from existing sequence');
     var sequence = decodeURIComponent(urlParams.get('sequence'));
+    //console.log(sequence);
     var infl = pako.inflateRaw(sequence, {to: 'string'});
-    console.log(infl);
+    //console.log(infl);
     m = JSON.parse(infl);
     $('#play_link').click();
 
+    m_changed();
     //m_changed();
     //mirror_structure();
   }
