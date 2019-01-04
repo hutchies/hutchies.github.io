@@ -238,12 +238,12 @@ function unroll(rolled){
     //console.log("Block info: "+JSON.stringify(block));
     var b = {};
     if(block.tempo !== undefined){
-      console.log("Has tempo");
+      //console.log("Has tempo");
       working_temppo = block.tempo;
     }
     b.tempo = working_tempo;
     if(block.metre !== undefined){
-      console.log("Has metre");
+      //console.log("Has metre");
       if(typeof block.metre == "string"){
         working_metre = str_metre(block.metre);
       }else{
@@ -406,7 +406,7 @@ function create_table(b){
     var real_bn = bn+1;
     var reh = "<td></td>"; // Default for no rehearsal mark
     if(bar.rehearsal !== undefined){
-      console.log('found mark '+bar.rehearsal);
+      //console.log('found mark '+bar.rehearsal);
       reh = '<td id="reh-'+bar.rehearsal+'"><b>('+bar.rehearsal+')</b></td>';
     }
     var row = '<tr class="bar" id="bar-'+bn+'">'+reh+'<td class="bar_num">'+real_bn+": </td>";
@@ -426,7 +426,7 @@ function create_table(b){
   //console.log(html);
   $('#beat_table').html(html);
   $('.bar').on('click', function(){
-    console.log(this);
+    //console.log(this);
     var id = $(this).attr('id');
     var [scrap, num] = id.match(/bar-([0-9]+)/);
     if(num != undefined){
@@ -583,7 +583,7 @@ function load_new(){
       }
       if(/^[0-9sbmcqdh]+=[0-9]+$/.test(units[j])){
         var [scrap, r, bpm] = units[j].match(/^([0-9sbmcqdh]+)\=([0-9]+)$/);
-        console.log('found rhythm '+r+' and bpm '+bpm);
+        //console.log('found rhythm '+r+' and bpm '+bpm);
         tempo = new Tempo(rhythm.fromText(r), bpm);
       }
     }
@@ -598,7 +598,7 @@ function load_new(){
       b.tempo = tempo;
     }
     if(bars != undefined){
-      console.log('not undefined: '+bars);
+      //console.log('not undefined: '+bars);
       b.bars = bars;
     }
     m.push(b);
@@ -692,7 +692,7 @@ $(document).on('pageinit', function(){
         </ul>
       </li>
     </ul>
-    v 1.02 (4 Jan 2019 3:05pm)
+    v 1.03 (4 Jan 2019 3:07pm)
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
