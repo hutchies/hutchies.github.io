@@ -272,7 +272,7 @@ function unroll(rolled){
 }
 
 function metronome_init(){
-  audioContext = new AudioContext();
+  //audioContext = new AudioContext();
   timerWorker = new Worker("metronome/worker.js");
 
   timerWorker.onmessage = function(e) {
@@ -448,6 +448,8 @@ function highlight_beat(){
 
 function play() {
   isPlaying = !isPlaying;
+
+  audioContext = new AudioContext(); // Here so it is from a tap for Safari
 
   if (isPlaying) {
 
