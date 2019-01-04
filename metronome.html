@@ -9,6 +9,14 @@
 <!--<meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">-->
 <style>
+.flash {
+  background-color: black;
+}
+
+.flash-first-beat {
+  background-color: green;
+}
+
 .current-bar {
   color: black;
   font-weight: bold;
@@ -59,6 +67,7 @@ var loop = true;
 var reset_bn_on_loop = false;
 var tempo_percent = 100;
 var speech = false;
+var blink = true;
 
 var rhythm = {
   crotchet: Fraction(4,1),
@@ -232,7 +241,7 @@ function unroll(rolled){
     var b = {};
     if(block.tempo !== undefined){
       //console.log("Has tempo");
-      working_temppo = block.tempo;
+      working_tempo = block.tempo;
     }
     b.tempo = working_tempo;
     if(block.metre !== undefined){
@@ -315,10 +324,10 @@ function next_bar(){
   current_beat = 0;
   current_bar++;
   real_bar_number++;
-  scroll_to_bar();
   if(current_bar >= working_bars.length){ // running out of track
     if(loop){
       current_bar = 0;
+      current_beat = 0;
       if(reset_bn_on_loop){
         real_bar_number = 1;
       }
@@ -327,7 +336,23 @@ function next_bar(){
       return; //avoid any crashes on basis of current_bar being too big
     }
   }
+  scroll_to_bar();
   //set_params(); //Update with current bar
+}
+
+function flash(){
+  var c = 'flash';
+  if(current_beat == 0){
+    c = 'flash-first-beat';
+  }
+  if(blink){
+      $('.play_table').addClass(c);
+
+      setTimeout(function(){
+        $('.play_table').removeClass(c);
+      }, 50)
+      /*$('.play_table').stop(.animate({backgroundColor: 'black'}, {duration: 100});*/
+  }
 }
 
 function next_beat(){
@@ -336,6 +361,14 @@ function next_beat(){
 
   // We are actually scheduling the next beat here, so highlight the last one (bit of a cheat I know)
   highlight_beat();
+  flash();
+
+  if(working_bars[current_bar] == undefined){
+    play();
+    return;
+  }
+
+  console.log("tempo is "+tempo_to_string(working_bars[current_bar].tempo));
 
   var secondsPerBeat = Fraction(60).div(working_bars[current_bar].metre.click_bpm(working_bars[current_bar].tempo)).mul(percent);
     nextNoteTime += secondsPerBeat.valueOf();    // Add beat length to last beat time
@@ -479,6 +512,7 @@ function play() {
     $('#beat_table').addClass('not-current');
     highlight_beat();
     scroll_to_bar();
+    flash();
 
     if(speech){
       // prime speech to save rhythm
@@ -634,6 +668,10 @@ function set_gzipped(){
   $('#gz_url').val("http://hutchies.github.io/metronome.html?sequence="+encodeURIComponent(compressed));
 }
 
+function percent_change(){
+  tempo_percent = $('#percent').val();
+}
+
 $(document).ready(function(){
 
   $('#play').on('click', play);
@@ -641,6 +679,17 @@ $(document).ready(function(){
   $('#copy').on('click', copy_url);
   $('#edit_done').on('click', load_new);
   $('#edit_revert').on('click', revert_old);
+  $('#loop').on('change', function(){
+    loop = $('#loop')[0].checked;
+    //console.log(loop);
+  });
+  $('#blink').on('change', function(){
+    blink = $('#blink')[0].checked;
+    //console.log(loop);
+  });
+  $('#percent').on('input', percent_change);
+  $('#percent').on('change', percent_change);
+
   //$('#process').on('click', process_tempi);
   metronome_init();
   speech_init();
@@ -719,17 +768,19 @@ $(document).on('pageinit', function(){
     <button data-inline="true" class="ui-disabled" id="reset">Reset</button>
     <div id="play_reh"></div>
 <div data-role="fieldcontain">
-    <label for="percent">Play at % of final tempo (still needs wiring in):</label>
+    <label for="percent">Play at % of final tempo:</label>
     <input type="range" name="percent" id="percent" value="100" min="1" max="200" />
   </div>
   <div data-role="collapsible">
     <h4>Advanced options</h4>
+    <label for="loop">Loop at end of piece?</label><input id="loop" type="checkbox" checked>
+    <label for="blink">Flash screen in time?</label><input id="blink" type="checkbox" checked>
   </div>
 </div>
 <div class="ui-body ui-body-a ui-corner-all">
 <h3>Piece structure:</h3>
 Click a line to move start bar to there. Double-click to start playback from there. Click line whilst playing to pause.
-<div id="beat_table"></div>
+<div class="play_table" id="beat_table"></div>
   </div>
 </div>
 <div id="export" class="ui-content">
