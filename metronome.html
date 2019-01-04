@@ -360,7 +360,6 @@ function calc_sound(beat){
 }
 
 function scheduleNote(beatNumber, time){
-  $('#is_susp').html(audioContext.state);
   // create oscillator & gainNode & connect them to the context destination
   var sound = calc_sound(beatNumber);
 
@@ -619,10 +618,12 @@ $(document).ready(function(){
   //alert(urlParams);
 
   if(urlParams.has('sequence')){
+    console.log('launched from existing sequence');
     var sequence = decodeURIComponent(urlParams.get('sequence'));
     var infl = pako.inflateRaw(sequence, {to: 'string'});
     m = JSON.parse(infl);
     $('#play_link').click();
+    //mirror_structure();
   }
 
   //$('#reset').button('disable');
@@ -678,8 +679,6 @@ $(document).on('pageinit', function(){
   </div>
   <div id="playback" class="ui-content">
     <div class="ui-body ui-body-a ui-corner-all">
-    Safari for iOS 4
-    <span id="is_susp"></span>
     <h3>Playback options</h3>
     <button data-inline="true" id="play">Play</button>
     <button data-inline="true" class="ui-disabled" id="reset">Reset</button>
