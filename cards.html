@@ -1,24 +1,1967 @@
 <!doctype html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <title>Card game player</title>
-    <style>
-    </style>
-    <script src="mousetrap.min.js"></script>
-    <script src="jquery.min.js"></script>
-    <script>
-    $(document).ready(function(){
 
+<head>
+  <meta charset="UTF-8">
+  <title>Card game player</title>
+  <style>
+    .game_space {
+      height: 500px;
+      border-style: solid;
+      border-width: 1px;
+      border-color: black;
+      user-select: none;
+    }
+
+    .deck_drag {
+      display: inline-block;
+    }
+
+    h4 {
+      text-align: center;
+    }
+
+    .preview {
+      position: fixed;
+      top: 0;
+      right: 0;
+      opacity: 0.8;
+      pointer-events: none;
+      z-order: -1;
+    }
+
+    .current_card {
+      box-shadow: 0px 0px 40px 10px orange;
+    }
+
+    .current_deck {
+      box-shadow: 0px 0px 40px 10px blue;
+    }
+
+    .card_container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .card_image {
+      display: inline-block;
+      pointer-events: none;
+    }
+
+    .card_props {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      margin: auto;
+      background: rgb(0, 0, 0);
+      background: rgba(0, 0, 0, 0.2);
+      opacity: 1;
+      color: white;
+      padding: 10px;
+      font-size: 20px;
+      font-style: monospace;
+      text-align: center;
+      vertical-align: middle;
+      pointer-events: none;
+    }
+
+    .counter_image {
+      position: absolute;
+      left: 0;
+      right: 0;
+      object-fit: contain;
+      height: 100%;
+      width: 100%;
+      z-index: 2;
+    }
+
+    .resources {
+    }
+
+    .progress {
+    }
+
+    .quest_willpower {
+      color: white;
+      text-shadow:
+  -1px -1px 0 #000,
+   1px -1px 0 #000,
+   -1px 1px 0 #000,
+    1px 1px 0 #000;
+    }
+
+    .threatness {
+      color: white;
+      text-shadow:
+  -1px -1px 0 #000,
+   1px -1px 0 #000,
+   -1px 1px 0 #000,
+    1px 1px 0 #000;
+    }
+
+    .player_threat {
+      color: white;
+      text-shadow:
+  -1px -1px 0 #000,
+   1px -1px 0 #000,
+   -1px 1px 0 #000,
+    1px 1px 0 #000;
+    }
+
+    .wounds {
+      }
+
+    .attack {
+      color: white;
+      text-shadow:
+  -1px -1px 0 #000,
+   1px -1px 0 #000,
+   -1px 1px 0 #000,
+    1px 1px 0 #000;
+    }
+
+    .defence {
+      color: white;
+      text-shadow:
+  -1px -1px 0 #000,
+   1px -1px 0 #000,
+   -1px 1px 0 #000,
+    1px 1px 0 #000;
+    }
+
+    .hit_points {
+      color: white;
+      text-shadow:
+  -1px -1px 0 #000,
+   1px -1px 0 #000,
+   -1px 1px 0 #000,
+    1px 1px 0 #000;
+    }
+
+    .drop-activated {
+
+    }
+
+    div {
+      -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+    }
+
+  </style>
+  <script src="mousetrap.min.js"></script>
+  <script src="jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/interactjs@1.3.4/dist/interact.min.js"></script>
+  <script>
+    $(document).ready(function() {
+
+      window.encounter_URL = "https://raw.githubusercontent.com/Tragic-zz/lackeyCCG-LoTRLCG/master/Cards/";
+
+      window.default_player_card = "https://raw.githubusercontent.com/Tragic-zz/lackeyCCG-LoTRLCG/master/Cards/cardback.jpg"
+
+      window.default_encounter_card = "https://raw.githubusercontent.com/Tragic-zz/lackeyCCG-LoTRLCG/master/Cards/encounter.jpg"
+
+      window.cards_list = [];
+      // fetch the cards list
+      $.ajax({
+        url: "cards.json"
+      }).done(function(data) {
+        //console.log(typeof data);
+        window.cards_list = JSON.parse(data);
+        //alert(cards_list.toString());
+
+        window.player = {
+          draw: [],
+          discard: []
+        };
+        window.encounter = {
+          draw: [],
+          discard: []
+        };
+        window.quest = [];
+        window.aside = [];
+        window.victory = [];
+        window.extra = [];
+        window.current_top = 2;
+        window.deck_on_display = false;
+        window.phases = ['Planning', 'Quest', 'Encounter', 'Combat', 'Reset'];
+        window.current_phase = 0;
+        window.current_round = 1;
+        window.closer_id = '';
+        window.closer_name = '';
+        window.tap_selecting = false;
+
+        window.all_decks = [
+          window.player.draw,
+          window.player.discard,
+          window.encounter.draw,
+          window.encounter.discard,
+          window.quest,
+          window.aside,
+          window.victory
+        ];
+
+        window.default_blank_card = "blank_card.jpg";
+        window.card_props = ['threatness', 'quest_willpower', 'resources', 'attack', 'progress', 'defence', 'wounds', 'hit_points'];
+
+        setup_events();
+
+        make_deck_interface("quest_deck", window.default_blank_card, window.quest, 'game_space');
+        make_deck_interface("encounter_deck", window.default_encounter_card, window.encounter.draw, "game_space");
+        make_deck_interface("encounter_discard", window.default_blank_card, window.encounter.discard, "game_space");
+        make_deck_interface("player_deck", window.default_player_card, window.player.draw, "player_hand");
+        make_deck_interface("player_discard", window.default_blank_card, window.player.discard, "player_hand");
+        make_deck_interface("aside_deck", window.default_blank_card, window.aside, 'game_space');
+        make_deck_interface("victory_deck", window.default_blank_card, window.victory, 'game_space');
+
+        var threat_card = new Card(window.default_blank_card, window.default_blank_card, 'Threat', 'threat');
+        //$(threat_card).removeClass('previewable');
+        $('#threat_holder').append(threat_card);
+
+        for(i in window.card_props){
+          Mousetrap.bind(window.card_props[i].substr(0, 1), make_increment(window.card_props[i]));
+          Mousetrap.bind('shift+'+window.card_props[i].substr(0, 1), make_decrement(window.card_props[i]));
+          Mousetrap.bind('alt+'+window.card_props[i].substr(0, 1), make_reset(window.card_props[i]));
+        }
+
+        /*Mousetrap.bind("r", make_increment('resources'));
+        Mousetrap.bind("p", make_increment('progress'));
+        Mousetrap.bind("w", make_increment('wounds'));
+        Mousetrap.bind("a", make_increment('attack'));
+        Mousetrap.bind("d", make_increment('defence'));
+        Mousetrap.bind("h", make_increment('hit_points'));
+        Mousetrap.bind("shift+r", make_decrement('resources'));
+        Mousetrap.bind("shift+p", make_decrement('progress'));
+        Mousetrap.bind("shift+w", make_decrement('wounds'));
+        Mousetrap.bind("shift+a", make_decrement('attack'));
+        Mousetrap.bind("shift+d", make_decrement('defence'));
+        Mousetrap.bind("shift+h", make_decrement('hit_points'));*/
+        Mousetrap.bind("shift+backspace", reset_current);
+        Mousetrap.bind("e", rotate_selected);
+        Mousetrap.bind("backspace", discard_selected);
+        Mousetrap.bind('right', increment_phase);
+        Mousetrap.bind('left', decrement_phase);
+        Mousetrap.bind('shift+right', increment_round);
+        Mousetrap.bind('shift+left', decrement_round);
+        Mousetrap.bind('n', next_round);
+        Mousetrap.bind('shift+f', flip_deck);
+        Mousetrap.bind('shift+d', flip_deals);
+        Mousetrap.bind('shift+s', save);
+
+        refresh_saves();
+        load_octgn_encounters();
+      });
+
+      interact('.previewable').on('mouseover', function (event){
+        if(!window.tap_selecting) select_card(event.target);
+      }).on('mouseout', function (event){
+        if(!window.tap_selecting) deselect_card();
+      });
+
+      interact('.deck_drag').draggable({
+        onmove: dragMoveListener,
+        onend: dragEndListener
+      });
+
+      interact('.deck_drag').on('tap', function (event){
+        tap_deck(event);
+      });
+
+      interact('.deck_drag').on('doubletap', function (event){
+        doubletap_deck(event);
+      });
+
+      interact('.deck_drag').on('mouseover', function (event){
+        select_deck(event.target);
+      }).on('mouseout', function (event){
+        deselect_deck();
+      });
+
+      //interact('.deck_drag').on('tap', tap_deck);
+      //interact('.deck_drag').on('hold', show_deck);
+
+      interact('.draggable').draggable({
+          onmove: dragMoveListener,
+          onend: dragEndListener,
+          onstart: function(event){
+            //console.log('start drag');
+          }
+        }).resizable({
+          // resize from all edges and corners
+          edges: {
+            left: true,
+            right: true,
+            bottom: true,
+            top: true
+          },
+
+          squareResize: true,
+
+          /*// keep the edges inside the parent
+          restrictEdges: {
+            outer: 'parent',
+            endOnly: true,
+          },*/
+
+          // minimum size
+          restrictSize: {
+            min: {
+              width: 50,
+              height: 70
+            },
+          }
+
+        })
+        .on('resizemove', resizeListener);
+      interact('.draggable').on('tap', tap_card);
+      interact('.draggable').on('doubletap', doubletap_card);
+      interact('.draggable').on('hold', hold_card);
+
+      interact('.dropzone').dropzone({
+  // only accept elements matching this CSS selector
+  // Require a 75% element overlap for a drop to be possible
+  overlap: 0.75,
+
+  // listen for drop related events:
+
+  ondrop: dropListener
+}).on('dragenter', function(event){
+  event.target.classList.add('drop-activated');
+}).on('dragleave', function(event){
+  event.target.classList.remove('drop-activated');
+});
+
+
+      interact('#game_space').resizable({
+        edges: {
+          right: true,
+          bottom: true,
+        },
+
+        restrictSize: {
+          min: {
+            width: 200,
+            height: 200
+          },
+        }
+      }).on('resizemove', resizeListener);
     });
 
+    function setup_events(){
+      $('#clear_status').on('click', function(){ $('#status').html(''); $('#clear_status').hide();});
+      if($('#status').html() == ''){
+              $('#clear_status').hide();
+      }
+      $('#create_card').on('click', search_card);
+      $('#load_deck').on('click', function() {load_deck(window.player.draw, 'player_deck', true);});
+      $('#load_encounter_deck').on('click', load_encounter_deck);
+      $('#draw_player').on('click', function() {
+        draw_cards(window.player.draw, "player_hand", 1, 'up', 'player_deck');
+      });
+      $('#shuffle_hand').on('click', shuffle_hand);
+      $('#save').on('click', save);
+      $('#load').on('click', load);
+      $('#delete_save').on('click', delete_save);
 
-    function Card(front, back, )
-    </script>
+    }
+
+    function select_card(card){
+      var id = $(card).attr('card_id');
+      if(id == 'blank') return;
+      deselect_card();
+      $(card).addClass('current_card');
+      if(id != 'threat'){
+        var i = new Image();
+        i.src = card_image(card);
+        i.width = 400;
+        $('#card_preview').html(i);
+        $('#card_preview').show();
+        console.log('Hovering over '+$(card).attr('card_name'));
+      }
+    }
+
+    function deselect_card(){
+      $('#card_preview').hide();
+      $('.current_card').removeClass('current_card');
+    }
+
+    function select_deck(d){
+      var deck_div = $(d).parent();
+      var deck = eval($(deck_div).attr('deck'));
+      if(deck && deck.length > 0){
+        deselect_deck();
+        $(d).addClass('current_deck');
+      }
+    }
+
+    function deselect_deck(){
+      $('.current_deck').removeClass('current_deck');
+    }
+
+    function serialise_deck(deck){
+      //console.log(deck);
+      var out = [];
+      for(i in deck){
+        //console.log(deck[i]);
+        var h = $(deck[i])[0].outerHTML;
+        //console.log(h);
+        out.push(h);
+      }
+      //console.log(JSON.stringify(out));
+      return JSON.stringify(out);
+    }
+
+    function unserialise_deck(deck_json){
+      var out = [];
+      //console.log(deck);
+      var deck = JSON.parse(deck_json);
+      //console.log(deck);
+      for(i in deck){
+        var array = $.parseHTML(deck[i]);
+        var h = array[0];
+        array.shift();
+        while(array.length > 0){
+          $(h).after(array.shift());
+        }
+        console.log(h);
+        out.push(h);
+      }
+      return out;
+    }
+
+    function save(){
+      var name = $('#save_name').val();
+      if(name == ''){
+        return;
+      }
+      if (typeof(Storage) !== "undefined") {
+        // Code for localStorage/sessionStorage.
+
+        deselect_card();
+        deselect_deck(); // Just to avoid state issues
+
+
+        var save_obj = [
+          window.player.draw,
+          window.player.discard,
+          window.encounter.draw,
+          window.encounter.discard,
+          window.quest,
+          window.aside,
+          window.victory,
+        ];
+        var scalars =
+                  [
+                    window.current_top,
+                    window.deck_on_display,
+                    window.current_phase,
+                    window.current_round,
+                    window.closer_name,
+                    window.closer_id
+                  ];
+
+        var extras = [];
+        for(i in window.extra){
+          extras.push[i];
+          save_obj.push(window.extra[i]);
+        }
+
+        save_obj = save_obj.map(serialise_deck);
+        save_obj.push(extras);
+        save_obj.push($('#big_container').html());
+        save_obj.push(scalars);
+        //var js = JSON.stringify(save_obj);
+        //console.log(js);
+        //console.log(save_obj);
+        var saves = {};
+        if(localStorage.hutchies_lotr_saves){
+          saves = JSON.parse(localStorage.hutchies_lotr_saves);
+        }
+        saves[name] = save_obj; // !! Currently silently overwrites!
+        var out = JSON.stringify(saves);
+        //console.log(out);
+        localStorage.hutchies_lotr_saves = out;
+        refresh_saves();
+      } else {
+        // Sorry! No Web Storage support..
+      }
+    }
+
+    function delete_save(){
+      // Should check soon
+      var name = $('#load_names').val();
+      if(name == ''){
+        return;
+      }
+      if (typeof(Storage) !== "undefined") {
+        var saves = JSON.parse(localStorage.hutchies_lotr_saves);
+        if(saves[name]){
+          delete saves[name];
+        }
+        var out = JSON.stringify(saves);
+        localStorage.hutchies_lotr_saves = out;
+        refresh_saves();
+      }else{
+        // Local storage doesn't work
+      }
+    }
+
+    function load(){
+      var name = $('#load_names').val();
+      if(name == ''){
+        return;
+      }
+      if (typeof(Storage) !== "undefined") {
+      // Code for localStorage/sessionStorage.
+      var saves = JSON.parse(localStorage.hutchies_lotr_saves);
+      if(saves[name]){
+        //console.log(saves[name]);
+        var obj = saves[name];
+        console.log(obj);
+        var scalars = obj.pop();
+        var big_html = obj.pop();
+        var extras = obj.pop();
+        obj = obj.map(unserialise_deck);
+        for(var i in extras){
+          window.extra[i] = obj.pop();
+        }
+
+        [
+          window.player.draw,
+          window.player.discard,
+          window.encounter.draw,
+          window.encounter.discard,
+          window.quest,
+          window.aside,
+          window.victory
+        ] = obj;
+
+        [
+          window.current_top,
+          window.deck_on_display,
+          window.current_phase,
+          window.current_round,
+          window.closer_name,
+          window.closer_id
+        ] = scalars;
+
+        for(d in window.extra){
+          window.all_decks.push(window.extra[d]);
+        }
+        $('#big_container').html(big_html);
+        set_closers(window.closer_id, window.closer_name);
+        setup_events();
+
+        console.log(window.encounter.draw);
+
+        $('#save_name').val(name); // So you can save on shortcut
+        // Probably what we need here is some way to update discards for all decks, and then to add events (clicks, loads?) back to them.
+
+      }
+      } else {
+        // Sorry! No Web Storage support..
+      }
+    }
+
+    function refresh_saves(){
+      if (typeof(Storage) !== "undefined") {
+        if(localStorage.hutchies_lotr_saves){
+          //console.log(localStorage.hutchies_lotr_saves);
+          var saves = JSON.parse(localStorage.hutchies_lotr_saves);
+          $('#load_names').html('');
+          for(n in saves){
+            var opt = $('<option></option>');
+            opt.html(n);
+            opt.val(n);
+            $('#load_names').append(opt);
+          }
+        }
+      }else{
+        // No local storage support
+      }
+    }
+
+    function move_all(src, dest)  {
+      while (src.length > 0) {
+            var item = src[0];
+            src.splice(0,1);
+            dest.push(item);
+        }
+    }
+
+    function dropListener(event) {
+      var card = event.relatedTarget;
+
+      if(card.parentElement == event.target) return;
+
+      //console.log("Dropped "+card);
+
+      if($(card).attr('deck')){
+        if($(event.target).attr('deck')){
+          // Return cards and reshuffle
+          var from_name = $(card).attr('deck');
+          var to_name = $(event.target).attr('deck');
+          var from_deck = eval(from_name);
+          var to_deck = eval(to_name);
+
+          move_all(from_deck, to_deck);
+          shuffle_deck(to_deck);
+
+          update_discard_image($(card).attr('id'), from_deck);
+          update_discard_image($(event.target).attr('id'), to_deck);
+
+        }else{
+          // Initiate a draw
+          var deck = eval($(card).attr('deck'));
+          var face = 'up';
+          if($(card).attr('deals')){
+            face = $(card).attr('deals');
+          }else if($(card).attr('face')){
+            face = $(card).attr('face');
+          }
+          var cd;
+          if(face){
+            cd = draw_cards(deck, "game_space", 1, face, $(card).attr('id'));
+          }else{
+            cd = draw_cards(deck, "game_space", 1, $(card).attr('id'));
+          }
+          var px = event.dragEvent.pageX;
+          var py = event.dragEvent.pageY;
+          /*var os = $('#game_space').offset();
+          px -= os.left;
+          py -= os.top;*/
+
+          var cs = $(cd).offset();
+          px -= cs.left;
+          py -= cs.top;
+
+          //console.log(px+','+py);
+
+          $(cd).attr('data-x', px);
+          $(cd).attr('data-y', py);
+          apply_transforms($(cd)[0]);
+          $(cd).css('position', 'absolute');
+        }
+      }else{
+        /*if($(card).parent().attr('id') == 'deck_display'){
+          // Need to remove from parent deck!
+        }*/
+        card.remove(); // Remove from current place
+        //card.style.transform = "";
+        if($(event.target).attr('id') == 'game_space'){
+          // Preserve x and y of drop
+        }else{
+          // Reset drop
+          card.setAttribute("data-x", 0);
+          card.setAttribute("data-y", 0);
+          apply_transforms(card);
+        }
+        if($(event.target).attr('deck')){
+          // Dragged to a deck – so place on top of that deck
+          var d_name = $(event.target).attr('deck');
+          var deck = eval(d_name);
+          var top = true;
+          //console.log(event);
+          if(event.dragEvent.shiftKey){
+            // If shift key is pressed move to bottom
+            status('Card added to <b>bottom</b> of deck');
+            top = false;
+          }
+          card_to_deck(card, deck, $(event.target).attr('id'), top);
+        }else{
+          event.target.appendChild(card);
+        }
+      }
+    }
+
+    function card_to_deck(card, deck, div, top = true){
+      $(card).remove();
+      if(top){
+        deck.unshift(card);
+      }else{
+        deck.push(card);
+      }
+
+      update_discard_image(div, deck);
+      reset_props(card);
+
+      /*if(discard){
+        update_discard_image(div, deck);
+      }*/
+    }
+
+    function get_deck_closer(deck, id, deck_name, shuffle=true){
+      return function(){
+        //console.log(deck);
+        deck.length = 0;
+        //console.log('now');
+        //console.log(deck);
+        $('#deck_display').children().each(function(){
+          $(this).remove();
+          deck.push($(this)[0]);
+        });
+        $('#deck_display_container').hide();
+        $('#close_shuffle').off('click');
+        $('#close_noshuffle').off('click');
+        if(shuffle){
+          shuffle_deck(deck);
+        }
+        update_discard_image(id, deck);
+        window.deck_on_display = false;
+      };
+    }
+
+    function set_closers(id, deck_name){
+      var deck = eval(deck_name);
+      if(deck.length == 0) return;
+      $('#close_shuffle').on('click', get_deck_closer(deck, id, deck_name, true));
+      $('#close_noshuffle').on('click', get_deck_closer(deck, id, deck_name, false));
+      window.closer_id = id;
+      window.closer_name = deck_name;
+    }
+
+    function show_deck(event){
+      if(window.deck_on_display){
+        console.log('deck already on display');
+        return; // Don't display two at once
+      }
+
+      var deck_name = $(event.target).parent().attr('deck');
+      var deck = eval(deck_name);
+      var id = $(event.target).parent().attr('id');
+      deck.forEach(function(c){
+        if($(c).parent().attr('id') == 'game_space'){
+          console.log('trying to show '+$(c).attr('card_name')+' which is in game_space!')
+        }else{
+        //console.log($(c).attr('card_name'));
+          check_dimensions(c);
+          $('#deck_display').append(c);
+        }
+      });
+      set_closers(id, deck_name);
+      $('#deck_display_container').show();
+      window.deck_on_display = true;
+    }
+
+    function apply_transforms(element){
+      var x = element.getAttribute('data-x');
+      var y = element.getAttribute('data-y');
+      var r = element.getAttribute('rotation');
+      var string = "";
+      var set = false;
+      if(x != 0 || y != 0){
+        //console.log(x+','+y);
+        string += 'translate('+x+'px,'+y+'px)';
+        set = true;
+      }
+      if(r){
+        string += 'rotate('+r+'deg)';
+        set = true;
+      }
+      if(set){
+        element.style.webkitTransform = element.style.transform = string;
+      }else{
+        element.style.webkitTransform = element.style.transform = '';
+      }
+
+    }
+
+    function resizeListener(event) {
+      var target = event.target,
+        x = (parseFloat(target.getAttribute('data-x')) || 0),
+        y = (parseFloat(target.getAttribute('data-y')) || 0);
+
+      // update the element's style
+      target.style.width = event.rect.width + 'px';
+      target.style.height = event.rect.height + 'px';
+
+      // translate when resizing from top or left edges
+      x += event.deltaRect.left;
+      y += event.deltaRect.top;
+
+      /*target.style.webkitTransform = target.style.transform =
+        'translate(' + x + 'px,' + y + 'px)';*/
+
+      target.setAttribute('data-x', x);
+      target.setAttribute('data-y', y);
+
+      apply_transforms(target);
+    }
+
+    function dragMoveListener(event) {
+      var target = event.target,
+        // keep the dragged position in the data-x/data-y attributes
+        x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx,
+        y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+
+      var id = target.getAttribute('card_id');
+      if(id == "threat" || id == "blank"){
+        // Can't drag threat card
+        return;
+      }
+
+      // translate the element if in the game space
+      /*target.style.webkitTransform =
+        target.style.transform =
+        'translate(' + x + 'px, ' + y + 'px)';*/
+
+      // update the posiion attributes
+      target.setAttribute('data-x', x);
+      target.setAttribute('data-y', y);
+
+      apply_transforms(target);
+    }
+
+    function dragEndListener(event) {
+      //console.log('drag end');
+      var target = event.target;
+
+      if(!target.parentElement.classList.contains('game_space')){
+        // reset position
+        //console.log("Not game space")
+
+        /*target.style.webkitTransform =
+          target.style.transform = ""; // !! Fix!*/
+        target.setAttribute('data-x', 0);
+        target.setAttribute('data-y', 0);
+        apply_transforms(target);
+      }
+    }
+
+    function flip_deals(){
+      var deck_div = $('.current_deck').parent();
+      if(!deck_div) return;
+      //console.log(deck_div);
+      var deals = $(deck_div).attr('deals');
+      var deck = eval($(deck_div).attr('deck'));
+      //console.log('Flipping deck\'s deal state from face '+face);
+      if(deals == 'up'){
+        $(deck_div).attr('deals', 'down');
+      }else{
+        $(deck_div).attr('deals', 'up');
+      }
+      status('Deck '+$(deck_div).attr('id')+' now deals face '+$(deck_div).attr('deals'));
+      //update_discard_image($(deck_div).attr('id'), deck);
+    }
+
+    function flip_deck(){
+      var deck_div = $('.current_deck').parent();
+      if(!deck_div) return;
+      //console.log(deck_div);
+      var face = $(deck_div).attr('face');
+      var deck = eval($(deck_div).attr('deck'));
+      //console.log('Flipping deck from face '+face);
+      if(face == 'up'){
+        $(deck_div).attr('face', 'down');
+      }else{
+        $(deck_div).attr('face', 'up');
+      }
+      update_discard_image($(deck_div).attr('id'), deck);
+    }
+
+    function get_deal_direction(c){
+      if($(c).attr('deals')){
+        return $(c).attr('deals');
+      }else if($(c).attr('face')){
+        return $(c).attr('face');
+      }
+      return 'up;'
+    }
+
+    function draw_cards(from, to, number, face = 'up', div) {
+      var cards = from.splice(0, number).reverse();
+      //console.log('adding ' + number + ' cards: ' + cards.toString())
+
+      for(i in cards){
+        //console.log('card is face '+$(cards[i]).attr('face'));
+        if($(cards[i]).attr('face') != face){
+          //console.log('flipping card');
+          flip_card(cards[i]);
+        }
+        check_dimensions(cards[i]);
+        if (typeof to === "object") {
+          // Going to another deck
+          to.unshift(cards[i]);
+        }else{
+          // Going to a div
+          $('#' + to).append(cards[i]);
+        }
+      }
+      update_discard_image(div, from);
+      return cards[cards.length - 1]; // Return final card
+    }
+
+    function split_transforms(style) {
+      var translate = style.match(/(translate\(.*\))/);
+      var rotate = style.match(/(rotate\(.*\))/);
+    }
+
+    function reset_props(card){
+      window.card_props.forEach(function(p){
+        $(card).attr(p, 0);
+      });
+      output_props(card);
+    }
+
+    function output_props(card){
+      var all_zero = true;
+      window.card_props.forEach(function(p){
+        if($(card).attr(p) != 0){
+          all_zero = false;
+        }
+      });
+      if(all_zero){
+        $(card).children().last().hide();
+        return;
+      }
+      var text = "<table>";
+      for(var i in window.card_props){
+        var number = $(card).attr(window.card_props[i]);
+        if(number == 0){
+          number = " ";
+        }
+        var sign = '&nbsp;&nbsp;';
+        if(number > 0 && i % 2 == 1){
+          sign = '&nbsp;&nbsp;+';
+        }
+        var img_bit = "";
+        var prop_name = window.card_props[i];
+        if(number != 0){
+          if(window.card_props[i] == 'threatness' && $(card).attr('card_id') == 'threat'){
+            // Special alteration on threat card
+            prop_name = 'player_threat';
+          }
+          img_bit = '<img class="counter_image" src="card_images/'+prop_name+'.png" />';
+        }
+        var to_add = '<td style="position:relative;" >'+img_bit+'<div class="'+prop_name+'" style="z-index:2;position:relative; text-align: center;">'+sign+number+'&nbsp;&nbsp;</div></td>';
+        if(i % 2 == 0){
+          // First of line
+          text += '<tr>'+to_add;
+        }else{
+
+          text += to_add+'</tr>'; // ONLY WORKS WITH EVEN NUMBER OF PROPS – NOT VERY SAFE!!
+        }
+      }
+      text += "</table>";
+      $(card).children().last().html(text);
+      $(card).children().last().show();
+    }
+
+    function make_reset(prop){
+      return function(){
+        var card = $('.current_card')[0];
+        $(card).attr(prop, 0);
+        output_props(card);
+      }
+    }
+
+    function change_prop(card, prop, change){
+      // Change is + or - (i.e. relative)
+      var changed = parseInt($(card).attr(prop)) + change;
+      $(card).attr(prop, changed);
+      output_props(card);
+    }
+
+    function make_increment(prop){
+      return function(){
+        var card = $('.current_card')[0];
+        change_prop(card, prop, 1);
+      };
+    }
+
+    function reset_current(){
+      var card = $('.current_card')[0];
+      reset_props(card);
+    }
+
+    function make_decrement(prop){
+      return function(){
+        var card = $('.current_card')[0];
+        change_prop(card, prop, -1);
+      };
+    }
+
+    function rotate_selected(){
+      var card = $('.current_card')[0];
+      //console.log("rotating "+card);
+      if(card){
+        rotate_card(card);
+      }
+    }
+
+    function discard_selected(){
+      var card = $('.current_card')[0];
+      //console.log("rotating "+card);
+      if(card){
+        //console.log($(':hover'));
+        discard_card(card);
+        $(card).removeClass('current_card');
+      }
+    }
+
+    function flip_card(card){
+      var rev = card_downface(card);
+      var img = card_upface(card);
+      if($(card).attr('face') == 'up'){
+        $(card).attr('face', 'down');
+      }else {
+        $(card).attr('face', 'up');
+      }
+      //console.log('flip_card: card is now face '+$(card).attr('face'));
+      card_setupface(card, rev);
+      card_setdownface(card, img);
+      if($('.preview').children('img').first().attr('src') === img){
+        //console.log('yes');
+        $('.preview').children('img').first().attr('src', rev);
+      }
+      return card;
+    }
+
+    function tap_card(event) {
+      console.log('tapped');
+      window.current_top++;
+      //console.log('setting Z to '+window.current_top);
+      $(event.currentTarget).css('z-index', window.current_top);
+      if($(event.currentTarget).hasClass('current_card')){
+        if(!window.tap_selecting){
+          window.tap_selecting = true;
+        }else{
+          window.tap_selecting = false;
+          deselect_card();
+        }
+      }else{
+        // Must be touch_screen anyway
+        window.tap_selecting = true;
+        select_card(event.currentTarget);
+      }
+    }
+
+    function hold_card(event) {
+      flip_card(event.currentTarget);
+
+    }
+
+    function doubletap_card(event){
+      var id = $(event.currentTarget).attr('card_id');
+      if(id == 'player'){
+        rotate_card(event.currentTarget);
+      }else{
+        flip_card(event.currentTarget);
+      }
+    }
+
+    function rotate_card(card) {
+      //alert('rotated '+event.currentTarget.style.transform);
+      var id = card.getAttribute('card_id');
+      if(id == "threat" || id == "blank"){
+        // Can't rotate threat or blank cards!
+        return;
+      }
+      if(card.getAttribute('rotation')){
+        card.removeAttribute('rotation');
+      }else{
+        card.setAttribute('rotation', '90');
+      }
+      apply_transforms(card);
+    }
+
+    function card_upface(card){
+      return $(card).children().first().attr('src');
+    }
+
+    function card_downface(card){
+      return $(card).attr('reverse');
+    }
+
+    function card_setupface(card, uf){
+      $(card).children().first().attr('src', uf);
+    }
+
+    function card_setdownface(card, df){
+      $(card).attr('reverse', df);
+    }
+
+    function card_image(card, face = 'default'){
+      var is_up;
+      if($(card).attr('face') == 'up'){
+        is_up = true;
+      }else{
+        is_up = false;
+      }
+      if(face != 'default'){
+        if(face == $(card).attr('face')){
+          //console.log('showing upside');
+          return $(card).children().first().attr('src');
+        }else{
+          //console.log('showing flipside');
+          return $(card).attr('reverse');
+        }
+      }
+      return $(card).children().first().attr('src');
+    }
+
+    function update_discard_image(div, deck){
+      //console.log('updating discard image for '+div+', deck length '+deck.length);
+      var face = 'up';
+
+      if($('#'+div).attr('face')){
+        face = $('#'+div).attr('face');
+      }
+      if(deck.length > 0){
+        //console.log('top image is now '+card_image(deck[0], face));
+        $('#'+div+'_image').attr('src', card_image(deck[0], face));
+        // Set ID!
+        $('#'+div).attr('card_id', $(deck[0]).attr('card_id'));
+      }else{
+        $('#'+div+'_image').attr('src', window.default_blank_card);
+        $('#'+div).attr('card_id', 'blank');
+      }
+    }
+
+    function check_dimensions(card){
+      var c = $(card).children().first();
+      var t = $(c)[0];
+      var st_w = 100;
+      var st_h = 140;
+      //console.log('checking dimensions');
+      //console.log(t.naturalWidth+' x '+t.naturalHeight);
+      if(t.naturalWidth > t.naturalHeight){
+        //console.log('landscape card: css is '+$(t).css('width')+' x '+$(t).css('height'));
+        if($(t).css('width') <= $(t).css('height')){
+          //console.log('resizing: ');
+          var intermediate = $(t).css('width');
+          if(intermediate > 0){
+            $(t).css('width', $(t).css('height'));
+            $(t).css('height', intermediate);
+          }else{
+            $(t).css('width', st_h);
+            $(t).css('height', st_w);
+          }
+        }
+      }
+    }
+
+    function make_deck_interface(div, image, deck, draw_to = "game_space"){
+      var st_w = 100;
+      var st_h = 140;
+      var deck_image = new Image(st_w, st_h);
+      deck_image.src = image;
+      deck_image.id = div + '_image';
+      $('#'+div).append($(deck_image));
+      $('#'+div).attr('draw_to', draw_to);
+      //$(deck_image).on('click', click_deck);
+      $(deck_image).on('load', function(){
+        //console.log('loaded card '+ $(this).attr('card_name') + ': '+ this.src + "("+this.naturalWidth+' vs '+this.naturalHeight+")");
+        if(this.naturalWidth > this.naturalHeight){
+          $("[src='"+this.src+"']").each(function (){
+            $(this).css('width', st_h);
+            $(this).css('height', st_w);
+          });
+        }
+      });
+      /*$('#'+div).on('click', function() {
+        console.log('deck clicked: drawing a card face '+face);
+        draw_cards(deck, draw_to, 1, face);
+        if(discard){
+          update_discard_image(div, deck);
+        }
+      });*/
+      update_discard_image(div, deck);
+    }
+
+    function doubletap_deck(event){
+      var deck_div = $(event.target).parent();
+      var deck = eval($(deck_div).attr('deck'));
+      var draw_to = $(deck_div).attr('draw_to');
+      var face = get_deal_direction(deck_div);
+      if(!face){
+        face = 'up';
+      }
+      draw_cards(deck, draw_to, 1, face, $(deck_div).attr('id'));
+    }
+
+    function tap_deck(event){
+      if(event.shiftKey){
+        //console.log('show deck');
+        show_deck(event);
+        return;
+      }
+      if($(event.target).parent().hasClass('current_deck')){
+        select_deck(event.target.parent);
+      }else{
+        deselect_deck();
+      }
+    }
+
+
+
+    function Card(front_url, back_url, name = "Player card", card_id = "player") {
+      var st_w = 100;
+      var st_h = 140;
+      var card_image = new Image(st_w, st_h);
+      card_image.src = front_url;
+      $(card_image).addClass('card_image');
+      $(card_image).on('load', function(){
+        //console.log('loaded card '+ $(this).attr('card_name') + ': '+ this.src + "("+this.naturalWidth+' vs '+this.naturalHeight+")");
+        if(this.naturalWidth > this.naturalHeight){
+          $("[src='"+this.src+"']").each(function (){
+            $(this).css('width', st_h);
+            $(this).css('height', st_w);
+          });
+        }
+      });
+
+      var card = document.createElement('div');
+      $(card).addClass('card_container');
+
+      var card_text = document.createElement('div');
+      $(card_text).addClass('card_props');
+      $(card).append($(card_image));
+      $(card).append($(card_text));
+
+      reset_props(card);
+
+      if(!back_url){
+        back_url = window.default_player_card;
+      }
+      $(card).attr('reverse', back_url);
+      $(card).attr('face', 'up');
+      $(card).addClass("draggable");
+      $(card).addClass("previewable");
+      $(card).attr('card_id', card_id);
+      $(card).attr('card_name', name);
+
+      return card;
+
+    }
+
+    function status(text) {
+      $('#status').html($('#status').html()+"<br/>"+text);
+      $('#clear_status').show();
+    }
+
+    function add_card(card, div_id) {
+      $('#' + div_id).append(card);
+    }
+
+    function search_card() {
+      var name = $('#card_name').val();
+      var cards = window.cards_list.filter(n => n.name.match(new RegExp(name, "i")));
+      for (c in cards) {
+        //alert('Adding card '+cards[c].imagesrc);
+        var cd = new Card("https://ringsdb.com/" + cards[c].imagesrc, "");
+        add_card(cd, "game_space");
+      }
+    }
+
+    function shuffle_deck(a) {
+      var j, x, i;
+      for (i = a.length - 1; i > 0; i--) {
+        j = Math.floor(Math.random() * (i + 1));
+        x = a[i];
+        a[i] = a[j];
+        a[j] = x;
+      }
+      console.log("shuffled")
+      return a;
+    }
+
+    function add_player_cards(cd, qty, deck = "game_space"){
+      if(typeof(deck) == 'string'){
+        for (var i = 0; i < qty; i++) {
+          var new_c = $(cd).clone(true)
+          $('#'+deck).append(new_c);
+          var bottom_pos = $('#'+deck).offset().top - $('#'+deck).height() + $(new_c).height();
+          //console.log('placing hero at '+$('#'+deck).height()+' + '+$('#'+deck).offset().top+' - '+$(new_c).height());
+          $(new_c).attr('data-x', 0);
+          $(new_c).attr('data-y', bottom_pos);
+          apply_transforms($(new_c)[0]);
+        }
+      }else{
+        // It's a deck not a string
+        for (var i = 0; i < qty; i++) {
+          deck.unshift($(cd).clone(true));
+        }
+      }
+    }
+
+    function load_deck_logic(to_deck, div, shuffle, xml){
+      var xmldoc = $.parseXML(xml);
+      $(xmldoc).find('section').each(function() {
+        var name = $(this).attr('name');
+        if(name == 'Hero'){
+          //console.log('heros')
+          $(this).children('card').each(function(){
+            var id = $(this).attr('id');
+            var qty = $(this).attr('qty');
+            //var type = $(this).attr('type');
+            //console.log('loading hero '+$(this).text());
+            var cd = octgn_card(id, $(this).text(), 'Hero');
+            add_player_cards(cd, qty, "game_space");
+            // Since it is a hero it starts with one resource
+            change_prop(cd, 'resources', 1);
+          });
+        }else{
+          $(this).children('card').each(function(){
+            var id = $(this).attr('id');
+            var qty = $(this).attr('qty');
+            //var type = $(this).attr('type');
+            var cd = octgn_card(id, $(this).text(), 'Player');
+            add_player_cards(cd, qty, to_deck);
+          });
+        }
+
+      });
+
+      if(shuffle){
+        shuffle_deck(to_deck);
+      }
+
+      update_discard_image(div, to_deck);
+
+      status("Deck successfully loaded");
+    }
+
+
+    function octgn_card(id, name = "", player_hero = "Player") {
+          var card = window.cards_list.find(n => n.octgnid == id);
+          var cd = new Card("https://ringsdb.com/" + card.imagesrc, window.default_player_card, name, player_hero);
+          /*for(var i=0; i < qty; i++){
+            add_card(cd.cloneNode(true), "game_space");
+          }*/
+          return cd;
+    }
+
+
+    function add_card_from_ringsdb(id, qty, to_deck, shuffle, div){
+      var jqxhr = $.ajax('https://ringsdb.com/api/public/card/'+id+'.json').done(function(){
+        var cardj = JSON.parse(jqxhr.responseText);
+        var o_id = cardj["octgnid"];
+        var cd = octgn_card(o_id, cardj["name"], cardj["type_name"]);
+
+        //console.log('adding '+qty+' of '+cardj["name"]+' to deck '+to_deck);
+        if(cardj["type_name"] == 'Hero'){
+          if(typeof(to_deck) == 'string'){
+            // Only add heroes to game_space (to handle weird duplication thing)
+            // Since it is a hero it starts with one resource
+            change_prop(cd, 'resources', 1);
+            add_player_cards(cd, qty, to_deck);
+          }
+        }else{
+          add_player_cards(cd, qty, to_deck);
+        }
+
+
+        if(typeof(to_deck) == 'object'){
+          if(shuffle){
+            shuffle_deck(to_deck);
+          }
+          update_discard_image(div, to_deck);
+          status("Player deck now contains "+to_deck.length+' cards');
+        }
+      });
+    }
+
+    function load_deck(to_deck, div, shuffle = true) {
+      // Add filter for type??
+
+      var deckx = $('#deck_paste').val();
+      if(deckx.match(/^http/)){
+        // It's a link!
+        var jqxhr = $.ajax(deckx).done(function(){
+          var match = jqxhr.responseText.match(/app\.deck\.init\(\{\"id\"\:([0-9]+),/);
+          if(match){
+            var jqxhr2 = $.ajax('https://ringsdb.com/api/public/decklist/'+match[1]+'.json').done(function(){
+              //console.log(jqxhr2.responseText);
+              var deckj = JSON.parse(jqxhr2.responseText);
+              var heroes = deckj["heroes"];
+              for(i in heroes){
+                var id = i;
+                var qty = heroes[i];
+                add_card_from_ringsdb(id, qty, 'game_space', false, div);
+              }
+              var slots = deckj["slots"];
+              for(i in slots){
+                var id = i;
+                var qty = slots[i];
+                add_card_from_ringsdb(id, qty, to_deck, shuffle, div);
+              }
+              // Set starting threat, since we can!
+              var threat = deckj["starting_threat"];
+              console.log('setting threat to '+threat);
+              set_threat(threat);
+            });
+          }
+          //load_deck_logic(to_deck, div, shuffle, jqxhr.responseText);
+        });
+      }else{
+        load_deck_logic(to_deck, div, shuffle, deckx);
+      }
+
+    }
+
+    function add_to_deck(card, deck){
+      var id = $(card).attr('id');
+      var qty = $(card).attr('qty');
+      var cd = octgn_card(id);
+      for (var i = 0; i < qty; i++) {
+        to_deck.unshift($(cd).clone(true));
+      }
+    }
+
+    function check_ext(file, ext){
+      var [f, e] = file.split('.');
+      if(e){
+        //console.log('fine:' + e);
+        return file;
+      }else{
+        //console.log('added:' + file);
+        return file+'.'+ext;
+      }
+    }
+
+    //const flatten = (arr) => arr.reduce((flat, next) => flat.concat(next), []);
+
+    function replace_image(id, top, bottom = window.default_encounter_card){
+      // First deal with all in DOM
+      $('[card_id="'+id+'"]').each(function(){
+        //console.log('replacing image with new one on card '+id);
+        //console.log('New image for '+$(this).attr('card_name')+': '+top);
+        if($(this).attr('face') == 'up'){
+          // Card is face down
+          $(this).children().first().attr('src', top);
+          $(this).attr('reverse', bottom);
+        }else{
+          $(this).children().first().attr('src', bottom);
+          $(this).attr('reverse', top);
+        }
+        //$(this).attr('reverse') is already set
+      });
+
+      // Then deal with all in other decks
+
+      window.all_decks.forEach(function(a){
+        /*a.forEach(function(b){
+          console.log(b);
+          console.log($(b).attr('card_id'));
+          if(b.getAttribute('card_id') == id){
+            b.src = top;
+            b.setAttribute('reverse', bottom);
+            console.log('New image in deck for '+b.getAttribute('card_name')+': '+b);
+          }
+        });*/
+        var filtered = a.filter(card => $(card).attr('card_id') == id);
+        filtered.forEach(function(c){
+          if($(c).attr('face') == 'up'){
+            //$(c).attr('card_name')
+            $(c).children().first().attr('src', top);
+            $(c).attr('reverse', bottom);
+            //console.log('New image in deck for '+$(c).attr('card_name')+': '+c);
+          }else{
+            $(c).children().first().attr('src', bottom);
+            $(c).attr('reverse', top);
+          }
+        });
+      });
+    }
+
+    function encounter_card(top, bottom){
+      if(!bottom){
+        //console.log(top.substr(-1));
+        if(top.substr(-1) == 'a'){
+          //console.log('trying');
+          bottom = top.slice(0, -1) + 'b';
+        }else{
+          bottom = "encounter.jpg";
+        }
+      }
+      var top = check_ext(top, 'jpg');
+      var bottom = check_ext(bottom, 'jpg');
+      var top_url = window.encounter_URL + top;
+      var bottom_url = window.encounter_URL + bottom;
+      var cd = new Card(top_url, bottom_url);
+      return cd;
+    }
+
+    function discard_card(card){
+      var type = $(card).attr('card_id');
+      if(type == "threat"){
+        // Can't discard threat card!
+        return;
+      }
+      if(type == 'Player' || type == 'Hero'){
+        // Discard to player discard pile
+        card_to_deck(card, window.player.discard, 'player_discard', true);
+      }else{
+        // Discard to encounter discard pile
+        card_to_deck(card, window.encounter.discard, 'encounter_discard', true);
+      }
+    }
+
+    function load_encounter_deck_logic(xml){
+      var xmldoc = $.parseXML(xml);
+      $(xmldoc).find('section').each(function() {
+        var name = $(this).attr('name');
+
+        var cards = [];
+        $(this).children('card').each(function(){
+          //var id = $(this).children('name').first().attr('id');
+          var qty = $(this).attr('qty');
+          var id = $(this).attr('id');
+          var card_name = $(this).html();
+
+          //var [top, bottom] = id.split(',');
+          //var cd = encounter_card(images[0], images[1]);
+          //console.log('Making card: '+JSON.stringify(images));
+          var cd = new Card(window.default_blank_card, window.default_encounter_card, card_name, id);
+          for(var j = 0; j < qty; j++){
+            cards.push(cd);
+          }
+          search_beorn(card_name, id, name, card_name); // To add images later
+        });
+        if(name == "Quest"){
+            for(var i in cards){
+              window.quest.push($(cards[i]).clone(true));
+              //$('#quest_cards').append($(cards[i]).clone(true));
+            }
+            update_discard_image('quest_deck', window.quest);
+          }else if(name == "Encounter"){
+            for(var i in cards){
+              // !! REVERT SOON
+              var c = $(cards[i]).clone(true);
+              //c = flip_card(c); //upside-down
+              window.encounter.draw.push(c);
+              //$('#encounter_cards').append($(cards[i]).clone(true));
+            }
+          }else if(name == "Setup"){
+            for(var i in cards){
+                window.aside.push($(cards[i]).clone(true));
+                update_discard_image('aside_deck', window.aside);
+                //$('#encounter_cards').append($(cards[i]).clone(true));
+            }
+          }else if(cards.length > 0){
+            // Extra decks with more than 0 cards in
+            status('Additional deck found: '+name+'.');
+            window.extra[name] = [];
+            var title = $('<td><h4>'+name+'</h4></td>');
+            $('.deck_titles_marker').first().after(title);
+            $('.deck_titles_marker').first().removeClass('deck_titles_marker');
+            $(title).addClass('deck_titles_marker');
+            var place_td = $('<td></td>');
+            var place = $('<div></div>');
+            $(place_td).append(place);
+            var make_id = name.replace(/\s/g, "_") + "_extra_deck";
+            $(place).attr('id', make_id);
+            $(place).addClass('deck_drag');
+            $(place).addClass('dropzone');
+            $(place).attr('deck', "window.extra['"+name+"']");
+            $(place).attr('deals', 'up');
+            $(place).attr('face', 'up');
+            $('.deck_place_marker').first().after(place_td);
+            $('.deck_place_marker').first().removeClass('deck_place_marker');
+            $(place_td).addClass('deck_place_marker');
+            make_deck_interface(make_id, window.default_blank_card, window.extra[name], 'game_space');
+            for(var i in cards){
+                window.extra[name].push($(cards[i]).clone(true));
+                update_discard_image(make_id, window.extra[name]);
+                //$('#encounter_cards').append($(cards[i]).clone(true));
+            }
+            window.all_decks.push(window.extra[name]);
+          }
+
+      });
+
+      shuffle_deck(window.encounter.draw);
+      update_discard_image('encounter_deck', window.encounter.draw);
+
+    }
+
+    function load_encounter_deck(){
+      var deckx = $('#encounter_paste').val();
+      if(deckx == ''){
+        // Empty, so try select box
+        var selection = $('#encounter_select').val();
+        if(!selection) return;
+        var jqxhr = $.ajax(selection).done(function(){
+          deckx = jqxhr.responseText;
+          load_encounter_deck_logic(deckx);
+        });
+      }else{
+        load_encounter_deck_logic(deckx);
+      }
+    }
+
+    /*RegExp.escape = function(string) {
+      return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+    };*/
+
+    function display_phase(){
+      $('#phase_display').html('Round '+window.current_round+', '+window.phases[window.current_phase]+' phase');
+    }
+
+    function increment_phase(){
+      //console.log('+');
+      window.current_phase++;
+      if(window.current_phase > window.phases.length - 1){
+        next_round();
+      }
+      display_phase();
+    }
+
+    function decrement_phase(){
+      window.current_phase--;
+      if(window.current_phase < 0){
+        window.current_phase = window.phases.length - 1;
+        window.current_round--;
+      }
+      display_phase();
+    }
+
+    function increment_round(){
+      window.current_round++;
+      window.current_phase = 0;
+      display_phase();
+    }
+
+    function decrement_round(){
+      window.current_round--;
+      display_phase();
+    }
+
+    function decodeHtml(html) {
+    var txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
+    }
+
+    function strip_punct(str){
+      var d = str.replace(/-/g, ' ');
+      d = d.replace(/[!.?]+/g, '');
+      d = d.replace(/^The /, '');
+      return d;
+    }
+
+    function set_threat(num){
+      $('#threat_holder').children().first().attr('threatness', num);
+      output_props($('#threat_holder').children().first())
+    }
+
+    function next_round(){
+      $("[card_id='Hero']").each(function(){
+        change_prop(this, 'resources', 1);
+      });
+      change_prop($('#threat_holder').children().first(), 'threatness', 1);
+      $('.card_container').each(function(){
+        this.removeAttribute('rotation');
+        apply_transforms(this);
+      });
+      draw_cards(window.player.draw, "player_hand", 1, 'player_deck');
+      increment_round();
+    }
+
+    function choose_between(name, id, images, deck, full_name){
+      var div = $('<div></div>').text("Choose between images for "+full_name+" (in deck "+deck+"): ");
+      $(div).attr('id', id);
+      //console.log(div);
+      images.forEach(function (i){
+        var button = $('<button></button>').text(i);
+        var url = encodeURI(i);
+        $(button).attr('url', url);
+        $(button).attr('div_id', id);
+        $(button).on('mouseover', function(){
+          var i = new Image();
+          i.src = url;
+          i.width = 400;
+          $('#card_preview').html(i);
+          $('#card_preview').show();
+        });
+        $(button).on('mouseout', function(){
+          $('#card_preview').hide();
+        });
+        $(button).on('click', function(){
+          var url = $(this).attr('url');
+          var id = $(this).attr('div_id');
+
+          //Remember to handle double_sided!
+          url = decodeURI(url);
+          url = decodeHtml(url);
+          var start_URL = "https://s3.amazonaws.com/hallofbeorn-resources/Images/Cards/";
+          var matches = url.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+)(\.[^\'\"]+)/);
+          var name_bit = matches[1];
+          var ext = matches[2];
+          if(/(A|B)$/.test(name_bit)){
+            // Two-sided!
+            //console.log(name_bit+' is 2-sided!');
+            var name_stripped = name_bit.slice(0, -1);
+            var top_URL = encodeURI(start_URL+name_stripped+'A'+ext);
+            var bot_URL = encodeURI(start_URL+name_stripped+'B'+ext);
+            replace_image(id, top_URL, bot_URL);
+          }else if(/(C|D)$/.test(name_bit)){
+            // Two-sided!
+            //console.log(name_bit+' is 2-sided!');
+            var name_stripped = name_bit.slice(0, -1);
+            var top_URL = encodeURI(start_URL+name_stripped+'C'+ext);
+            var bot_URL = encodeURI(start_URL+name_stripped+'D'+ext);
+            replace_image(id, top_URL, bot_URL);
+          }else{
+            var match = url.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+\.[^\'\"]+)/);
+            replace_image(id, encodeURI(start_URL+match[1]));
+          }
+          $('#'+id).remove();
+        });
+        $(div).append(button);
+      });
+      $('#choices').append(div);
+    }
+
+    function shuffle_hand(){
+      var temp_hand = [];
+      $('#player_hand').children().each(function(){
+        $(this).remove();
+        temp_hand.push(this);
+      });
+
+      shuffle_deck(temp_hand);
+
+      temp_hand.forEach(function(c){
+        $('#player_hand').append(c);
+      });
+    }
+
+    function load_octgn_encounters(){
+      var github_url = 'https://github.com/GeckoTH/Lord-of-the-Rings/tree/master/o8g/Decks/Quests';
+      var jqxhr = $.ajax(github_url).done(function(){
+        var res = jqxhr.responseText;
+        var decks = res.match(/\/GeckoTH\/[^.]+\.o8d/g);
+        if(decks){
+          var quest_type = '';
+          for(d in decks){
+            var url = 'https://github.com'+decks[d].replace('/blob/','/raw/');
+            var name = decks[d].match(/([^\-\/]+)-[0-9]+-([^.]+).o8d/);
+            if(name){
+              if(name[1] != quest_type){
+                // Mark new quest category
+                quest_type = name[1];
+                var optgrp = $('<optgroup></optgroup>');
+                optgrp.attr('label', name[1]);
+                $('#encounter_select').append(optgrp);
+              }
+              name = name[2];
+              name = name.replace(/-/g,' ');
+              var opt = $('<option></option>');
+              opt.html(name);
+              opt.val(url);
+              $('#encounter_select').children().last().append(opt);
+            }
+          }
+        }
+      });
+    }
+
+    function search_beorn(name, id, deck, full_name){
+      var orig_name = name;
+      name = strip_punct(name); // Remove punctuation
+      name = name.replace(/[1234][ABCD]/g, ''); // Remove side markers
+      name = name.trim();
+      //console.log('searching for '+name);
+      var jqxhr = $.ajax('http://hallofbeorn.com/LotR?Query='+encodeURIComponent(name)).done(function(){
+        var res = jqxhr.responseText;
+        var num = res.match(/([0-9]+) results? found/i);
+        //var image_re = new RegExp(RegExp.escape('https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/')+'[^/]+\/[^.]')
+        var images = res.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/[^/]+\/[^.]+\.[^\'\"]+/g);
+
+        var start_URL = "https://s3.amazonaws.com/hallofbeorn-resources/Images/Cards/";
+
+        //console.log('searched Beorn for '+name);
+
+        //console.log('searching beorn');
+
+        //console.log(JSON.stringify(images));
+
+        //https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/Core-Set/Hill-Troll.jpg
+
+        if(images){
+          //console.log("searched for "+name+" and found "+images.length);
+
+          for(i in images){
+            images[i] = decodeURI(images[i]);
+            images[i] = decodeHtml(images[i]);
+          }
+
+
+          var images = images.filter(function(u){
+            var matches = u.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/[^/]+\/([^.]+)\.[^\'\"]+/);
+            var decoded = strip_punct(matches[1]);
+            var d_name = strip_punct(name);
+
+            if(decoded.includes(d_name)){
+              //console.log('Yes! '+decoded+' matches '+name);
+              return true;
+            }
+            //console.log("not a match for "+decoded+' against '+d_name);
+            return false;
+          });
+
+          //console.log(name+" filtered down to "+images.length);
+
+          if(images.length == 1){
+            // Great! only found one
+            //console.log('found single image '+images[0]);
+            //return [images[0], window.default_encounter_card];
+            var match = images[0].match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+\.[^\'\"]+)/);
+            var image_URL = encodeURI(start_URL+match[1]);
+            replace_image(id, image_URL, window.default_encounter_card);
+
+          }else if(images.length == 2){
+            //Probably a pair
+            //console.log('found 2 for '+name);
+            var matches = images[0].match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+)(\.[^\'\"]+)/);
+            var name_bit = matches[1];
+            var ext = matches[2];
+            if(/(A|B)$/.test(name_bit)){
+              // Two-sided!
+              var name_stripped = name_bit.slice(0, -1);
+              var top_URL = encodeURI(start_URL+name_stripped+'A'+ext);
+              var bot_URL = encodeURI(start_URL+name_stripped+'B'+ext);
+              replace_image(id, top_URL, bot_URL);
+            }else if(/(C|D)$/.test(name_bit)){
+              // Two-sided!
+              var name_stripped = name_bit.slice(0, -1);
+              var top_URL = encodeURI(start_URL+name_stripped+'C'+ext);
+              var bot_URL = encodeURI(start_URL+name_stripped+'D'+ext);
+              replace_image(id, top_URL, bot_URL);
+            }else{
+              // If not a pair, still carry on as normal!
+              choose_between(name, id, images, deck, full_name);
+            }
+          }else if(images.length > 1){
+            //console.log('found multiple for '+name);
+            choose_between(name, id, images, deck, full_name);
+
+          }else if(images.length == 0){
+            console.log('found nothing for '+name);
+            // Try with one word less if you can
+            var name_bits = orig_name.split(/-|\s/);
+            //console.log(name_bits);
+            if(name_bits.length > 1){
+              name_bits.pop();
+              //console.log(name_bits);
+              var new_name = name_bits.join(' ');
+              search_beorn(new_name, id, deck, full_name);
+            }
+          }
+        }else{
+          console.log('found less than nothing for '+name);
+          //console.log(res);
+          //console.log('found nothing for '+name);
+          // Try with one word less if you can
+          var name_bits = orig_name.split(/-|\s/);
+          //console.log(name_bits);
+          if(name_bits.length > 1){
+            name_bits.pop();
+            //console.log(name_bits);
+            var new_name = name_bits.join(' ');
+            search_beorn(new_name, id, deck, full_name);
+          }
+
+        }
+      });
+
+      //return [window.default_encounter_card, window.default_encounter_card];
+
+    }
+
+    /*function get_image(n, s){
+      // Get proper versions of names
+      var name = url_normalise(n);
+      var set = url_normalise(s);
+      var full_url=name+"/"
+    }
+    function url_normalise(str){
+      return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/ /g, "-");
+    }*/
+  </script>
 </head>
-<body>
-<h1>Card game player</h1>
 
-<div id="game_space"></div>
+<body>
+  <h1>Card game player</h1>
+  <input id="save_name" type="text"><button id="save">Save</button>
+  <select id="load_names"></select><button id="load">Load</button><button id="delete_save">Delete</button>
+  <div id="load_decks">
+    <h3>Load decks</h3>
+    Encounter deck:<select id="encounter_select"></select><input id="encounter_paste" type="text"><button id="load_encounter_deck">Go!</button>
+    Player deck:
+    <input id="deck_paste" type="text"> <button id="load_deck">Go!</button>
+  </div>
+  <div id="big_container">
+  <div id="status"></div>
+  <button id="clear_status">Clear status</button>
+  <div id="choices"></div>
+  <table>
+  <tr><td>
+  <h4>Encounter deck</h4>
+</td><td>
+<h4>Player deck</h4>
+</td>
+<td>
+<h4>Quest deck</h4>
+</td>
+<td>
+<h4>Cards set aside</h4>
+</td>
+<td class="deck_titles_marker">
+<h4>Victory display</h4>
+</td>
+<td>
+<h4>Threat etc.</h4>
+</td>
+</tr>
+<tr>
+<td>  <div id="encounter_deck" class="deck_drag dropzone" deck="window.encounter.draw" face="down" deals="down"></div><div id="encounter_discard" class="deck_drag dropzone" deck="window.encounter.discard" face="up" deals="up"></div>
+</td><td>
+   <div id="player_deck" class="deck_drag dropzone" deck="window.player.draw" face="down" deals="up"></div><div id="player_discard" class="deck_drag dropzone" deck="window.player.discard" face="up" deals="up"></div>
+</td><td>
+  <div id="quest_deck" class="deck_drag dropzone" deck="window.quest" face="up" deals="up"></div>
+</td>
+<td>
+  <div id="aside_deck" class="deck_drag dropzone" deck="window.aside" face="up" deals="up"></div>
+</td>
+<td class="deck_place_marker">
+  <div id="victory_deck" class="deck_drag dropzone" deck="window.victory" face="up" deals="up"></div>
+</td>
+<td id="threat_holder">
+</td>
+<td id="phase_display">
+Round 1, Planning phase
+</td>
+</tr>
+</table>
+<div id="player_space">
+  <h3>Player hand</h3>
+  <button id="draw_player">Draw player card</button>
+  <button id="shuffle_hand">Shuffle</button>
+  <button id="mulligan">Mulligan</button>
+  <div id="player_hand" class="dropzone">
+  </div>
+</td><td>
+<div id="deck_display_container" style="display: none;">
+  <button id="close_shuffle">Close and shuffle</button>
+  <button id="close_noshuffle">Close without shuffling</button>
+  <div id="deck_display"></div>
+</div>
+
+  <h3>Play space</h3>
+  <div id="game_space" class="game_space dropzone">
+  </div>
+
+  </div>
+  <div id="card_preview" class="preview" />
+</div>
 </body>
+
 </html>
