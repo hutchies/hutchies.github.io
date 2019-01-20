@@ -30,6 +30,14 @@
       z-order: -1;
     }
 
+    .toolbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      opacity: 0.8;
+    }
+
     .current_card {
       box-shadow: 0px 0px 40px 10px orange;
     }
@@ -171,8 +179,12 @@
       $.ajax({
         url: "cards.json"
       }).done(function(data) {
-        console.log(typeof data);
-        window.cards_list = JSON.parse(data);
+        //console.log(typeof data);
+        if(typeof data == 'string'){
+          window.cards_list = JSON.parse(data);
+        }else{
+          window.cards_list = data;
+        }
         //alert(cards_list.toString());
 
         window.player = {
@@ -227,6 +239,10 @@
           Mousetrap.bind(window.card_props[i].substr(0, 1), make_increment(window.card_props[i]));
           Mousetrap.bind('shift+'+window.card_props[i].substr(0, 1), make_decrement(window.card_props[i]));
           Mousetrap.bind('alt+'+window.card_props[i].substr(0, 1), make_reset(window.card_props[i]));
+
+          add_toolbar_button('+'+window.card_props[i].substr(0, 1).toUpperCase(), make_increment(window.card_props[i]));
+          add_toolbar_button('-'+window.card_props[i].substr(0, 1).toUpperCase(), make_decrement(window.card_props[i]));
+
         }
 
         /*Mousetrap.bind("r", make_increment('resources'));
@@ -252,6 +268,14 @@
         Mousetrap.bind('shift+f', flip_deck);
         Mousetrap.bind('shift+d', flip_deals);
         Mousetrap.bind('shift+s', save);
+
+        add_toolbar_button('Rotate', rotate_selected);
+        add_toolbar_button('Next', increment_phase);
+        add_toolbar_button('Prev', decrement_phase);
+        add_toolbar_button('Flip', flip_deck);
+        add_toolbar_button('Save', save);
+        add_toolbar_button('Show deck', show_current_deck);
+        hide_toolbar();
 
         refresh_saves();
         load_octgn_encounters();
@@ -725,6 +749,12 @@
       window.closer_name = deck_name;
     }
 
+    function show_current_deck(){
+      var current = $('.current_deck');
+      if(!current) return;
+      show_deck(current);
+    }
+
     function show_deck(event){
       if(window.deck_on_display){
         console.log('deck already on display');
@@ -1030,14 +1060,17 @@
       if($(event.currentTarget).hasClass('current_card')){
         if(!window.tap_selecting){
           window.tap_selecting = true;
+          show_toolbar();
         }else{
           window.tap_selecting = false;
           deselect_card();
+          hide_toolbar();
         }
       }else{
         // Must be touch_screen anyway
         window.tap_selecting = true;
         select_card(event.currentTarget);
+        show_toolbar();
       }
     }
 
@@ -1112,6 +1145,7 @@
       if($('#'+div).attr('face')){
         face = $('#'+div).attr('face');
       }
+      if(!deck) return;
       if(deck.length > 0){
         //console.log('top image is now '+card_image(deck[0], face));
         $('#'+div+'_image').attr('src', card_image(deck[0], face));
@@ -1193,8 +1227,10 @@
       }
       if($(event.target).parent().hasClass('current_deck')){
         select_deck(event.target.parent);
+        show_toolbar();
       }else{
         deselect_deck();
+        hide_toolbar();
       }
     }
 
@@ -1403,6 +1439,23 @@
         load_deck_logic(to_deck, div, shuffle, deckx);
       }
 
+    }
+
+    function show_toolbar(){
+      console.log('showing toolbar');
+      console.log($('#card_toolbar').html());
+      $('#card_toolbar').show();
+    }
+
+    function hide_toolbar(){
+      $('#card_toolbar').hide();
+    }
+
+    function add_toolbar_button(text, func){
+      var btn = $('<button></button>');
+      $(btn).html(text);
+      $(btn).on('click', func);
+      $('#card_toolbar').append(btn);
     }
 
     function add_to_deck(card, deck){
@@ -1960,7 +2013,8 @@ Round 1, Planning phase
   </div>
 
   </div>
-  <div id="card_preview" class="preview" />
+  <div id="card_preview" class="preview" ></div>
+  <div id="card_toolbar" class="toolbar" >
 </div>
 </body>
 
