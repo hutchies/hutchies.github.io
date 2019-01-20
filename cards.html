@@ -208,6 +208,8 @@
         window.closer_name = '';
         window.tap_selecting = false;
 
+        window.use_cors = true;
+
         window.all_decks = [
           window.player.draw,
           window.player.discard,
@@ -1399,7 +1401,7 @@
 
 
     function add_card_from_ringsdb(id, qty, to_deck, shuffle, div){
-      var jqxhr = $.ajax('https://ringsdb.com/api/public/card/'+id+'.json').done(function(){
+      var jqxhr = $.ajax('https://cors.io?https://ringsdb.com/api/public/card/'+id+'.json').done(function(){
         var cardj = JSON.parse(jqxhr.responseText);
         var o_id = cardj["octgnid"];
         var cd = octgn_card(o_id, cardj["name"], cardj["type_name"]);
@@ -1433,10 +1435,10 @@
       var deckx = $('#deck_paste').val();
       if(deckx.match(/^http/)){
         // It's a link!
-        var jqxhr = $.ajax(deckx).done(function(){
+        var jqxhr = $.ajax('https://cors.io?'+deckx).done(function(){
           var match = jqxhr.responseText.match(/app\.deck\.init\(\{\"id\"\:([0-9]+),/);
           if(match){
-            var jqxhr2 = $.ajax('https://ringsdb.com/api/public/decklist/'+match[1]+'.json').done(function(){
+            var jqxhr2 = $.ajax('https://cors.io?https://ringsdb.com/api/public/decklist/'+match[1]+'.json').done(function(){
               //console.log(jqxhr2.responseText);
               var deckj = JSON.parse(jqxhr2.responseText);
               var heroes = deckj["heroes"];
@@ -1664,7 +1666,7 @@
         // Empty, so try select box
         var selection = $('#encounter_select').val();
         if(!selection) return;
-        var jqxhr = $.ajax(selection).done(function(){
+        var jqxhr = $.ajax('https://cors.io?'+selection).done(function(){
           deckx = jqxhr.responseText;
           load_encounter_deck_logic(deckx);
         });
@@ -1811,15 +1813,10 @@
     }
 
     function load_octgn_encounters(){
-      var github_url = 'https://github.com/GeckoTH/Lord-of-the-Rings/tree/master/o8g/Decks/Quests';
+      var github_url = 'https://cors.io?https://github.com/GeckoTH/Lord-of-the-Rings/tree/master/o8g/Decks/Quests';
 
-      var xhr = createCORSRequest('GET', github_url);
-      if (!xhr) {
-        throw new Error('CORS not supported');
-      }
-
-      xhr.onload = function(){
-        var res = xhr.responseText;
+      var jqxhr = $.ajax(github_url).done(function(){
+        var res = jqxhr.responseText;
         var decks = res.match(/\/GeckoTH\/[^.]+\.o8d/g);
         if(decks){
           var quest_type = '';
@@ -1843,11 +1840,7 @@
             }
           }
         }
-      };
-      xhr.onerror = function(){
-        alert('Error in CORS!');
-      }
-      xhr.send();
+      });
     }
 
     function search_beorn(name, id, deck, full_name){
@@ -1856,7 +1849,7 @@
       name = name.replace(/[1234][ABCD]/g, ''); // Remove side markers
       name = name.trim();
       //console.log('searching for '+name);
-      var jqxhr = $.ajax('http://hallofbeorn.com/LotR?Query='+encodeURIComponent(name)).done(function(){
+      var jqxhr = $.ajax('https://cors.io?http://hallofbeorn.com/LotR?Query='+encodeURIComponent(name)).done(function(){
         var res = jqxhr.responseText;
         var num = res.match(/([0-9]+) results? found/i);
         //var image_re = new RegExp(RegExp.escape('https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/')+'[^/]+\/[^.]')
