@@ -206,7 +206,8 @@
         window.current_round = 1;
         window.closer_id = '';
         window.closer_name = '';
-        window.tap_selecting = false;
+        window.tap_selecting_card = false;
+        window.tap_selecting_deck = false;
 
         window.use_cors = true;
 
@@ -242,8 +243,8 @@
           Mousetrap.bind('shift+'+window.card_props[i].substr(0, 1), make_decrement(window.card_props[i]));
           Mousetrap.bind('alt+'+window.card_props[i].substr(0, 1), make_reset(window.card_props[i]));
 
-          add_toolbar_button('+'+window.card_props[i].substr(0, 1).toUpperCase(), make_increment(window.card_props[i]));
-          add_toolbar_button('-'+window.card_props[i].substr(0, 1).toUpperCase(), make_decrement(window.card_props[i]));
+          add_toolbar_button('card', '+'+window.card_props[i].substr(0, 1).toUpperCase(), make_increment(window.card_props[i]));
+          add_toolbar_button('card', '-'+window.card_props[i].substr(0, 1).toUpperCase(), make_decrement(window.card_props[i]));
 
         }
 
@@ -271,22 +272,24 @@
         Mousetrap.bind('shift+d', flip_deals);
         Mousetrap.bind('shift+s', save);
 
-        add_toolbar_button('Rotate', rotate_selected);
-        add_toolbar_button('Next', increment_phase);
-        add_toolbar_button('Prev', decrement_phase);
-        add_toolbar_button('Flip', flip_deck);
-        add_toolbar_button('Save', save);
-        add_toolbar_button('Show deck', show_current_deck);
-        hide_toolbar();
+        add_toolbar_button('card', 'Rotate', rotate_selected);
+        add_toolbar_button('phase', 'Prev', decrement_phase);
+        add_toolbar_button('phase', 'Next', increment_phase);
+        add_toolbar_button('deck', 'Flip', flip_deck);
+        add_toolbar_button('phase', 'Save', save);
+        add_toolbar_button('deck', 'Show deck', show_current_deck);
+        hide_toolbar('card');
+        hide_toolbar('deck');
+        hide_toolbar('player');
 
         refresh_saves();
         load_octgn_encounters();
       });
 
       interact('.previewable').on('mouseover', function (event){
-        if(!window.tap_selecting) select_card(event.target);
+        if(!window.tap_selecting_card) select_card(event.target);
       }).on('mouseout', function (event){
-        if(!window.tap_selecting) deselect_card();
+        if(!window.tap_selecting_card) deselect_card();
       });
 
       interact('.deck_drag').draggable({
@@ -303,9 +306,9 @@
       });
 
       interact('.deck_drag').on('mouseover', function (event){
-        select_deck(event.target);
+        if(!window.tap_selecting_deck) select_deck(event.target);
       }).on('mouseout', function (event){
-        deselect_deck();
+        if(!window.tap_selecting_deck) deselect_deck();
       });
 
       //interact('.deck_drag').on('tap', tap_deck);
@@ -442,6 +445,7 @@
 
     function select_deck(d){
       var deck_div = $(d).parent();
+      console.log(deck_div);
       var deck = eval($(deck_div).attr('deck'));
       if(deck && deck.length > 0){
         deselect_deck();
@@ -745,6 +749,14 @@
       }*/
     }
 
+    function move_deck_display(div){
+      $('#deck_display_container').appendTo(div);
+    }
+
+    function move_toolbar(div){
+      $('#deck_toolbar').appendTo(div);
+    }
+
     function get_deck_closer(deck, id, deck_name, shuffle=true){
       return function(){
         //console.log(deck);
@@ -755,6 +767,7 @@
           $(this).remove();
           deck.push($(this)[0]);
         });
+        move_deck_display('#encounter_display_container');
         $('#deck_display_container').hide();
         $('#close_shuffle').off('click');
         $('#close_noshuffle').off('click');
@@ -781,15 +794,19 @@
       show_deck(current);
     }
 
-    function show_deck(event){
+    function show_deck(d){
       if(window.deck_on_display){
         console.log('deck already on display');
-        return; // Don't display two at once
+        return; // Don't display tw
       }
 
-      var deck_name = $(event.target).parent().attr('deck');
+      if(d.parent().attr('deck').match('player')){
+          move_deck_display('#player_display_container');
+      }
+
+      var deck_name = $(d).parent().attr('deck');
       var deck = eval(deck_name);
-      var id = $(event.target).parent().attr('id');
+      var id = $(d).parent().attr('id');
       deck.forEach(function(c){
         if($(c).parent().attr('id') == 'game_space'){
           console.log('trying to show '+$(c).attr('card_name')+' which is in game_space!')
@@ -1078,28 +1095,6 @@
       return card;
     }
 
-    function tap_card(event) {
-      console.log('tapped');
-      window.current_top++;
-      //console.log('setting Z to '+window.current_top);
-      $(event.currentTarget).css('z-index', window.current_top);
-      if($(event.currentTarget).hasClass('current_card')){
-        if(!window.tap_selecting){
-          window.tap_selecting = true;
-          show_toolbar();
-        }else{
-          window.tap_selecting = false;
-          deselect_card();
-          hide_toolbar();
-        }
-      }else{
-        // Must be touch_screen anyway
-        window.tap_selecting = true;
-        select_card(event.currentTarget);
-        show_toolbar();
-      }
-    }
-
     function hold_card(event) {
       flip_card(event.currentTarget);
 
@@ -1248,19 +1243,60 @@
     function tap_deck(event){
       if(event.shiftKey){
         //console.log('show deck');
-        show_deck(event);
+        show_deck(event.target);
         return;
       }
-      if($(event.target).parent().hasClass('current_deck')){
-        select_deck(event.target.parent);
-        show_toolbar();
+
+      if($(event.target).hasClass('current_deck')){
+        console.log('tapped');
+        if(!window.tap_selecting_deck){
+          window.tap_selecting_deck = true;
+          if($(event.target).parent().attr('deck').match('player')){
+            move_toolbar('#player_toolbar_container');
+          }else{
+            move_toolbar('#encounter_toolbar_container');
+          }
+          show_toolbar('deck');
+        }else{
+          window.tap_selecting_deck = false;
+          deselect_deck();
+          hide_toolbar('deck');
+        }
       }else{
-        deselect_deck();
-        hide_toolbar();
+        window.tap_selecting_deck = true;
+        select_deck(event.target);
+        //console.log(event.target);
+        if($(event.target).parent().attr('deck').match('player')){
+          move_toolbar('#player_toolbar_container');
+        }else{
+          move_toolbar('#encounter_toolbar_container');
+        }
+        show_toolbar('deck');
+
       }
     }
 
-
+    function tap_card(event) {
+      //console.log('tapped');
+      window.current_top++;
+      //console.log('setting Z to '+window.current_top);
+      $(event.currentTarget).css('z-index', window.current_top);
+      if($(event.currentTarget).hasClass('current_card')){
+        if(!window.tap_selecting_card){
+          window.tap_selecting_card = true;
+          show_toolbar('card');
+        }else{
+          window.tap_selecting_card = false;
+          deselect_card();
+          hide_toolbar('card');
+        }
+      }else{
+        // Must be touch_screen anyway
+        window.tap_selecting_card = true;
+        select_card(event.currentTarget);
+        show_toolbar('card');
+      }
+    }
 
     function Card(front_url, back_url, name = "Player card", card_id = "player") {
       var st_w = 100;
@@ -1467,21 +1503,21 @@
 
     }
 
-    function show_toolbar(){
-      console.log('showing toolbar');
-      console.log($('#card_toolbar').html());
-      $('#card_toolbar').show();
+    function show_toolbar(t){
+      console.log('showing toolbar #'+t+'_toolbar');
+      console.log($('#'+t+'_toolbar').html());
+      $('#'+t+'_toolbar').show();
     }
 
-    function hide_toolbar(){
-      $('#card_toolbar').hide();
+    function hide_toolbar(t){
+      $('#'+t+'_toolbar').hide();
     }
 
-    function add_toolbar_button(text, func){
+    function add_toolbar_button(t, text, func){
       var btn = $('<button></button>');
       $(btn).html(text);
       $(btn).on('click', func);
-      $('#card_toolbar').append(btn);
+      $('#'+t+'_toolbar').append(btn);
     }
 
     function add_to_deck(card, deck){
@@ -1985,10 +2021,7 @@
   <table>
   <tr><td>
   <h4>Encounter deck</h4>
-</td><td>
-<h4>Player deck</h4>
-</td>
-<td>
+</td><td></td><td>
 <h4>Quest deck</h4>
 </td>
 <td>
@@ -2002,9 +2035,7 @@
 </td>
 </tr>
 <tr>
-<td>  <div id="encounter_deck" class="deck_drag dropzone" deck="window.encounter.draw" face="down" deals="down"></div><div id="encounter_discard" class="deck_drag dropzone" deck="window.encounter.discard" face="up" deals="up"></div>
-</td><td>
-   <div id="player_deck" class="deck_drag dropzone" deck="window.player.draw" face="down" deals="up"></div><div id="player_discard" class="deck_drag dropzone" deck="window.player.discard" face="up" deals="up"></div>
+<td>  <div id="encounter_deck" class="deck_drag dropzone" deck="window.encounter.draw" face="down" deals="down"></div></td><td><div id="encounter_discard" class="deck_drag dropzone" deck="window.encounter.discard" face="up" deals="up"></div>
 </td><td>
   <div id="quest_deck" class="deck_drag dropzone" deck="window.quest" face="up" deals="up"></div>
 </td>
@@ -2016,30 +2047,34 @@
 </td>
 <td id="threat_holder">
 </td>
-<td id="phase_display">
-Round 1, Planning phase
+<td>
+<div id="phase_display">Round 1, Planning phase</div>
+<div id="phase_toolbar"></div>
 </td>
 </tr>
 </table>
-<div id="player_space">
-  <h3>Player hand</h3>
-  <button id="draw_player">Draw player card</button>
-  <button id="shuffle_hand">Shuffle</button>
-  <button id="mulligan">Mulligan</button>
-  <div id="player_hand" class="dropzone">
-  </div>
-</td><td>
+
+<div id="encounter_toolbar_container"><div id="deck_toolbar"></div></div>
+<div id="encounter_display_container">
 <div id="deck_display_container" style="display: none;">
   <button id="close_shuffle">Close and shuffle</button>
   <button id="close_noshuffle">Close without shuffling</button>
   <div id="deck_display"></div>
 </div>
+</div>
 
   <h3>Play space</h3>
   <div id="game_space" class="game_space dropzone">
   </div>
-
+  <div id="player_display_container"></div>
+  <table>
+    <tr>
+<td><button id="mulligan">Mulligan</button</td><button id="shuffle_hand">Shuffle</button><td><button id="draw_player">Draw player card</button></td></tr><tr>
+<td><div id="player_discard" class="deck_drag dropzone" deck="window.player.discard" face="up" deals="up"></div><div id="player_deck" class="deck_drag dropzone" deck="window.player.draw" face="down" deals="up"></div></td><td>
+    <div id="player_hand" class="dropzone">
+</td></tr></table>
   </div>
+  <div id="player_toolbar_container"></div>
   <div id="card_preview" class="preview" ></div>
   <div id="card_toolbar" class="toolbar" >
 </div>
