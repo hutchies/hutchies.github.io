@@ -13,6 +13,17 @@
       user-select: none;
     }
 
+    .player_hand {
+      height: 160px;
+      min-width: 120px;
+      border-style: dotted;
+      border-width: 1px;
+      border-color: black;
+      padding: 10px;
+      padding-right: 110px;
+      display: inline-block;
+    }
+
     .deck_drag {
       display: inline-block;
     }
@@ -209,7 +220,7 @@
         window.tap_selecting_card = false;
         window.tap_selecting_deck = false;
 
-        window.use_cors = true;
+        window.cors = '';
 
         window.all_decks = [
           window.player.draw,
@@ -273,11 +284,19 @@
         Mousetrap.bind('shift+s', save);
 
         add_toolbar_button('card', 'Rotate', rotate_selected);
+        add_toolbar_button('card', '<-', card_left);
+        add_toolbar_button('card', '->', card_right);
         add_toolbar_button('phase', 'Prev', decrement_phase);
         add_toolbar_button('phase', 'Next', increment_phase);
-        add_toolbar_button('deck', 'Flip', flip_deck);
-        add_toolbar_button('phase', 'Save', save);
+        add_toolbar_button('deck', 'Draw card', draw_current);
+        add_toolbar_button('deck', 'Shadow card', shadow);
         add_toolbar_button('deck', 'Show deck', show_current_deck);
+        add_toolbar_button('deck', 'Peek 1', make_peek(1));
+        add_toolbar_button('deck', 'Peek 3', make_peek(3));
+        add_toolbar_button('deck', 'Peek 5', make_peek(5));
+        add_toolbar_button('deck', 'Flip', flip_deck);
+        add_toolbar_button('deck', 'Shuffle', shuffle_current);
+        add_toolbar_button('phase', 'Save', save);
         hide_toolbar('card');
         hide_toolbar('deck');
         hide_toolbar('player');
@@ -320,33 +339,7 @@
           onstart: function(event){
             //console.log('start drag');
           }
-        }).resizable({
-          // resize from all edges and corners
-          edges: {
-            left: true,
-            right: true,
-            bottom: true,
-            top: true
-          },
-
-          squareResize: true,
-
-          /*// keep the edges inside the parent
-          restrictEdges: {
-            outer: 'parent',
-            endOnly: true,
-          },*/
-
-          // minimum size
-          restrictSize: {
-            min: {
-              width: 50,
-              height: 70
-            },
-          }
-
-        })
-        .on('resizemove', resizeListener);
+        });
       interact('.draggable').on('tap', tap_card);
       interact('.draggable').on('doubletap', doubletap_card);
       interact('.draggable').on('hold', hold_card);
@@ -389,14 +382,12 @@
       $('#create_card').on('click', search_card);
       $('#load_deck').on('click', function() {load_deck(window.player.draw, 'player_deck', true);});
       $('#load_encounter_deck').on('click', load_encounter_deck);
-      $('#draw_player').on('click', function() {
-        draw_cards(window.player.draw, "player_hand", 1, 'up', 'player_deck');
-      });
-      $('#shuffle_hand').on('click', shuffle_hand);
+      $('#player_shuffle').on('click', shuffle_hand);
       $('#save').on('click', save);
       $('#load').on('click', load);
       $('#delete_save').on('click', delete_save);
-
+      $('#cors').on('click', function(){ window.cors = $('#cors_name').val(); });
+      $('#mulligan').on('click', mulligan);
     }
 
     function createCORSRequest(method, url) {
@@ -656,6 +647,7 @@
       //console.log("Dropped "+card);
 
       if($(card).attr('deck')){
+        // So we are dragging from a deck
         if($(event.target).attr('deck')){
           // Return cards and reshuffle
           var from_name = $(card).attr('deck');
@@ -695,11 +687,9 @@
           py -= cs.top;
 
           //console.log(px+','+py);
-
           $(cd).attr('data-x', px);
           $(cd).attr('data-y', py);
           apply_transforms($(cd)[0]);
-          $(cd).css('position', 'absolute');
         }
       }else{
         /*if($(card).parent().attr('id') == 'deck_display'){
@@ -709,11 +699,47 @@
         //card.style.transform = "";
         if($(event.target).attr('id') == 'game_space'){
           // Preserve x and y of drop
+          $('#game_space').append(card);
+          var px = event.dragEvent.pageX;
+          var py = event.dragEvent.pageY;
+          var cs = $(card).offset();
+          px -= cs.left;
+          py -= cs.top;
+          $(card).attr('data-x', px);
+          $(card).attr('data-y', py);
+          apply_transforms($(card)[0]);
+        }else if($(event.target).attr('id') == 'player_hand'){
+          card.setAttribute("data-x", 0);
+          card.setAttribute("data-y", 0);
+          card.setAttribute("rotation", 0);
+
+          reset_props(card);
+
+          $('#player_hand').append(card);
+          apply_transforms(card);
+          $(card).css('position', 'static');
+          $(card).removeAttr('orig_position');
+        }else if($.contains($('#deck_display')[0], event.target)){
+          //console.log('yes');
+          card.setAttribute("data-x", 0);
+          card.setAttribute("data-y", 0);
+          card.setAttribute("rotation", 0);
+
+          reset_props(card);
+
+          $('#deck_display').append(card);
+          apply_transforms(card);
+          $(card).css('position', 'static');
+          $(card).removeAttr('orig_position');
         }else{
-          // Reset drop
+          event.target.appendChild(card);
+          // Not dropped onto a thing, so reset drop
           card.setAttribute("data-x", 0);
           card.setAttribute("data-y", 0);
           apply_transforms(card);
+          reset_props(card);
+          $(card).css('position', 'static');
+          $(card).removeAttr('orig_position');
         }
         if($(event.target).attr('deck')){
           // Dragged to a deck – so place on top of that deck
@@ -727,9 +753,9 @@
             top = false;
           }
           card_to_deck(card, deck, $(event.target).attr('id'), top);
-        }else{
+        }/*else{
           event.target.appendChild(card);
-        }
+        }*/
       }
     }
 
@@ -757,17 +783,40 @@
       $('#deck_toolbar').appendTo(div);
     }
 
+    function shuffle_current(){
+      shuffle_deck(get_current_deck());
+    }
+
+    function get_current_deck(){
+      //console.log($('.current_deck').parent());
+      return deck_from_div($('.current_deck').parent());
+    }
+
+    function draw_current(){
+      draw_cards(get_current_deck(), 'game_space', 1);
+    }
+
+    function shadow(){
+      draw_cards(get_current_deck(), 'game_space', 1, 'down');
+    }
+
     function get_deck_closer(deck, id, deck_name, shuffle=true){
       return function(){
         //console.log(deck);
-        deck.length = 0;
+        //deck.length = 0;
         //console.log('now');
         //console.log(deck);
+        var temp_deck = [];
         $('#deck_display').children().each(function(){
           $(this).remove();
-          deck.push($(this)[0]);
+          temp_deck.push($(this)[0]);
         });
-        move_deck_display('#encounter_display_container');
+        temp_deck = temp_deck.reverse()
+        for(i in temp_deck){
+          deck.unshift(temp_deck[i]);
+        }
+        console.log(deck);
+        //move_deck_display('#encounter_display_container');
         $('#deck_display_container').hide();
         $('#close_shuffle').off('click');
         $('#close_noshuffle').off('click');
@@ -775,13 +824,15 @@
           shuffle_deck(deck);
         }
         update_discard_image(id, deck);
+        show_toolbar('deck');
+        select_deck($("#"+id));
         window.deck_on_display = false;
       };
     }
 
     function set_closers(id, deck_name){
       var deck = eval(deck_name);
-      if(deck.length == 0) return;
+      if(!deck) return;
       $('#close_shuffle').on('click', get_deck_closer(deck, id, deck_name, true));
       $('#close_noshuffle').on('click', get_deck_closer(deck, id, deck_name, false));
       window.closer_id = id;
@@ -794,28 +845,45 @@
       show_deck(current);
     }
 
-    function show_deck(d){
+    function make_peek(num){
+      return function(){
+        var current = $('.current_deck');
+        if(!current) return;
+        show_deck(current, num);
+      }
+    }
+
+    function show_deck(d, num = -1){
       if(window.deck_on_display){
         console.log('deck already on display');
         return; // Don't display tw
       }
+       // To stop silliness
+       hide_toolbar('deck');
 
-      if(d.parent().attr('deck').match('player')){
+      /*if(d.parent().attr('deck').match('player')){
           move_deck_display('#player_display_container');
-      }
+      }*/
 
       var deck_name = $(d).parent().attr('deck');
       var deck = eval(deck_name);
       var id = $(d).parent().attr('id');
-      deck.forEach(function(c){
+      var count = 0;
+
+      while(deck.length > 0){
+        var c = deck[0];
         if($(c).parent().attr('id') == 'game_space'){
           console.log('trying to show '+$(c).attr('card_name')+' which is in game_space!')
         }else{
         //console.log($(c).attr('card_name'));
+          deck.splice(0, 1);
           check_dimensions(c);
           $('#deck_display').append(c);
+          count++;
+          if(count == num) break;
         }
-      });
+      }
+      //console.log(deck);
       set_closers(id, deck_name);
       $('#deck_display_container').show();
       window.deck_on_display = true;
@@ -825,12 +893,21 @@
       var x = element.getAttribute('data-x');
       var y = element.getAttribute('data-y');
       var r = element.getAttribute('rotation');
+      var pos = $(element).css('position');
+      console.log(pos);
       var string = "";
       var set = false;
       if(x != 0 || y != 0){
         //console.log(x+','+y);
         string += 'translate('+x+'px,'+y+'px)';
+        if(pos !== 'absolute') $(element).attr('orig_position', pos);
+        $(element).css('position', 'absolute');
         set = true;
+      }else{
+        // Reset position attribute if it had one
+        if($(element).attr('orig_position')){
+          $(element).css('position', $(element).attr('orig_position'));
+        }
       }
       if(r){
         string += 'rotate('+r+'deg)';
@@ -1067,6 +1144,16 @@
       }
     }
 
+    function card_left(){
+      var card = $('.current_card')[0];
+      if($(card).prev()) $(card).insertBefore($(card).prev());
+    }
+
+    function card_right(){
+      var card = $('.current_card')[0];
+      if($(card).next()) $(card).insertAfter($(card).next());
+    }
+
     function discard_selected(){
       var card = $('.current_card')[0];
       //console.log("rotating "+card);
@@ -1102,7 +1189,8 @@
 
     function doubletap_card(event){
       var id = $(event.currentTarget).attr('card_id');
-      if(id == 'player'){
+      console.log(id);
+      if(id == 'player' || id == 'Hero'){
         rotate_card(event.currentTarget);
       }else{
         flip_card(event.currentTarget);
@@ -1240,6 +1328,11 @@
       draw_cards(deck, draw_to, 1, face, $(deck_div).attr('id'));
     }
 
+    function deck_from_div(div){
+      var deck = eval($(div).attr('deck'));
+      return deck;
+    }
+
     function tap_deck(event){
       if(event.shiftKey){
         //console.log('show deck');
@@ -1247,15 +1340,18 @@
         return;
       }
 
+      var deck = deck_from_div($(event.target).parent());
+      if(deck.length == 0) return;
+
       if($(event.target).hasClass('current_deck')){
         console.log('tapped');
         if(!window.tap_selecting_deck){
           window.tap_selecting_deck = true;
-          if($(event.target).parent().attr('deck').match('player')){
+          /*if($(event.target).parent().attr('deck').match('player')){
             move_toolbar('#player_toolbar_container');
           }else{
             move_toolbar('#encounter_toolbar_container');
-          }
+          }*/
           show_toolbar('deck');
         }else{
           window.tap_selecting_deck = false;
@@ -1266,11 +1362,11 @@
         window.tap_selecting_deck = true;
         select_deck(event.target);
         //console.log(event.target);
-        if($(event.target).parent().attr('deck').match('player')){
+        /*if($(event.target).parent().attr('deck').match('player')){
           move_toolbar('#player_toolbar_container');
         }else{
           move_toolbar('#encounter_toolbar_container');
-        }
+        }*/
         show_toolbar('deck');
 
       }
@@ -1375,10 +1471,12 @@
           var new_c = $(cd).clone(true)
           $('#'+deck).append(new_c);
           var bottom_pos = $('#'+deck).offset().top - $('#'+deck).height() + $(new_c).height();
+          var right_pos = ($('#'+deck).attr('offset') || 0);
           //console.log('placing hero at '+$('#'+deck).height()+' + '+$('#'+deck).offset().top+' - '+$(new_c).height());
-          $(new_c).attr('data-x', 0);
+          $(new_c).attr('data-x', right_pos);
           $(new_c).attr('data-y', bottom_pos);
           apply_transforms($(new_c)[0]);
+          $('#'+deck).attr('offset', parseInt(right_pos) + 120);
         }
       }else{
         // It's a deck not a string
@@ -1436,14 +1534,15 @@
     }
 
 
-    function add_card_from_ringsdb(id, qty, to_deck, shuffle, div){
-      var jqxhr = $.ajax('https://cors.io?https://ringsdb.com/api/public/card/'+id+'.json').done(function(){
+    function add_card_from_ringsdb(id, qty, to_deck, shuffle, div, last = false){
+      var jqxhr = $.ajax(cors+'https://ringsdb.com/api/public/card/'+id+'.json').done(function(){
         var cardj = JSON.parse(jqxhr.responseText);
         var o_id = cardj["octgnid"];
-        var cd = octgn_card(o_id, cardj["name"], cardj["type_name"]);
+        var cd; //cardj["type_name"]);
 
         //console.log('adding '+qty+' of '+cardj["name"]+' to deck '+to_deck);
         if(cardj["type_name"] == 'Hero'){
+          cd = octgn_card(o_id, cardj["name"], 'Hero');
           if(typeof(to_deck) == 'string'){
             // Only add heroes to game_space (to handle weird duplication thing)
             // Since it is a hero it starts with one resource
@@ -1451,6 +1550,7 @@
             add_player_cards(cd, qty, to_deck);
           }
         }else{
+          cd = octgn_card(o_id, cardj["name"], 'player');
           add_player_cards(cd, qty, to_deck);
         }
 
@@ -1460,9 +1560,26 @@
             shuffle_deck(to_deck);
           }
           update_discard_image(div, to_deck);
-          status("Player deck now contains "+to_deck.length+' cards');
+          if(last == true){
+            status("Player deck loaded");
+            // And at this point we can also draw 5 and enable mulligans and shuffling of player space
+            $('#mulligan').show();
+            $('#player_shuffle').show();
+            draw_cards(window.player.draw, "player_hand", 5, 'up', 'player_deck');
+          }
         }
       });
+    }
+
+    function mulligan(){
+      $('#player_hand').children().each(function(){
+        console.log(this);
+        $(this).remove();
+        window.player.draw.push(this);
+        console.log(window.player.draw.length);
+      });
+      shuffle_deck(window.player.draw);
+      draw_cards(window.player.draw, "player_hand", 5, 'up', 'player_deck');
     }
 
     function load_deck(to_deck, div, shuffle = true) {
@@ -1471,11 +1588,11 @@
       var deckx = $('#deck_paste').val();
       if(deckx.match(/^http/)){
         // It's a link!
-        var jqxhr = $.ajax('https://cors.io?'+deckx).done(function(){
+        var jqxhr = $.ajax(cors+deckx).done(function(){
           var match = jqxhr.responseText.match(/app\.deck\.init\(\{\"id\"\:([0-9]+),/);
           if(match){
-            var jqxhr2 = $.ajax('https://cors.io?https://ringsdb.com/api/public/decklist/'+match[1]+'.json').done(function(){
-              //console.log(jqxhr2.responseText);
+            var jqxhr2 = $.ajax(cors+'https://ringsdb.com/api/public/decklist/'+match[1]+'.json').done(function(){
+              console.log(jqxhr2.responseText);
               var deckj = JSON.parse(jqxhr2.responseText);
               var heroes = deckj["heroes"];
               for(i in heroes){
@@ -1484,9 +1601,15 @@
                 add_card_from_ringsdb(id, qty, 'game_space', false, div);
               }
               var slots = deckj["slots"];
+              var j = 0;
               for(i in slots){
+                j++;
                 var id = i;
                 var qty = slots[i];
+                //console.log(j+" of "+Object.keys(slots).length)
+                if(j == Object.keys(slots).length){
+                  add_card_from_ringsdb(id, qty, to_deck, shuffle, div, true);
+                }
                 add_card_from_ringsdb(id, qty, to_deck, shuffle, div);
               }
               // Set starting threat, since we can!
@@ -1513,7 +1636,7 @@
       $('#'+t+'_toolbar').hide();
     }
 
-    function add_toolbar_button(t, text, func){
+    function add_toolbar_button(t, text, func, ){
       var btn = $('<button></button>');
       $(btn).html(text);
       $(btn).on('click', func);
@@ -1609,7 +1732,7 @@
         // Can't discard threat card!
         return;
       }
-      if(type == 'Player' || type == 'Hero'){
+      if(type == 'player' || type == 'Hero'){
         // Discard to player discard pile
         card_to_deck(card, window.player.discard, 'player_discard', true);
       }else{
@@ -1702,7 +1825,7 @@
         // Empty, so try select box
         var selection = $('#encounter_select').val();
         if(!selection) return;
-        var jqxhr = $.ajax('https://cors.io?'+selection).done(function(){
+        var jqxhr = $.ajax(cors+selection).done(function(){
           deckx = jqxhr.responseText;
           load_encounter_deck_logic(deckx);
         });
@@ -1849,7 +1972,7 @@
     }
 
     function load_octgn_encounters(){
-      var github_url = 'https://cors.io?https://github.com/GeckoTH/Lord-of-the-Rings/tree/master/o8g/Decks/Quests';
+      var github_url = cors+'https://github.com/GeckoTH/Lord-of-the-Rings/tree/master/o8g/Decks/Quests';
 
       var jqxhr = $.ajax(github_url).done(function(){
         var res = jqxhr.responseText;
@@ -1885,7 +2008,7 @@
       name = name.replace(/[1234][ABCD]/g, ''); // Remove side markers
       name = name.trim();
       //console.log('searching for '+name);
-      var jqxhr = $.ajax('https://cors.io?http://hallofbeorn.com/LotR?Query='+encodeURIComponent(name)).done(function(){
+      var jqxhr = $.ajax(cors+'http://hallofbeorn.com/LotR?Query='+encodeURIComponent(name)).done(function(){
         var res = jqxhr.responseText;
         var num = res.match(/([0-9]+) results? found/i);
         //var image_re = new RegExp(RegExp.escape('https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/')+'[^/]+\/[^.]')
@@ -2006,6 +2129,7 @@
 
 <body>
   <h1>Card game player</h1>
+  <input id="cors_name" type="text"><button id="cors">Change cors</button>
   <input id="save_name" type="text"><button id="save">Save</button>
   <select id="load_names"></select><button id="load">Load</button><button id="delete_save">Delete</button>
   <div id="load_decks">
@@ -2013,6 +2137,7 @@
     Encounter deck:<select id="encounter_select"></select><input id="encounter_paste" type="text"><button id="load_encounter_deck">Go!</button>
     Player deck:
     <input id="deck_paste" type="text"> <button id="load_deck">Go!</button>
+
   </div>
   <div id="big_container">
   <div id="status"></div>
@@ -2031,6 +2156,11 @@
 <h4>Victory display</h4>
 </td>
 <td>
+<h4>Player deck</h4>
+</td>
+<td>
+</td>
+<td>
 <h4>Threat etc.</h4>
 </td>
 </tr>
@@ -2045,6 +2175,8 @@
 <td class="deck_place_marker">
   <div id="victory_deck" class="deck_drag dropzone" deck="window.victory" face="up" deals="up"></div>
 </td>
+<td><div id="player_deck" class="deck_drag dropzone" deck="window.player.draw" face="down" deals="up"></div></td>
+<td><div id="player_discard" class="deck_drag dropzone" deck="window.player.discard" face="up" deals="up"></div></td>
 <td id="threat_holder">
 </td>
 <td>
@@ -2059,22 +2191,20 @@
 <div id="deck_display_container" style="display: none;">
   <button id="close_shuffle">Close and shuffle</button>
   <button id="close_noshuffle">Close without shuffling</button>
-  <div id="deck_display"></div>
+  <div id="deck_display" class="dropzone"></div>
 </div>
+</div>
+
+<h3>Player hand <button style="display: none;" id="player_shuffle">Shuffle (for random cards)</button> <button style="display: none;" id="mulligan">Mulligan</button></h4>
+<div id="player_hand" class="player_hand dropzone">
 </div>
 
   <h3>Play space</h3>
   <div id="game_space" class="game_space dropzone">
   </div>
-  <div id="player_display_container"></div>
-  <table>
-    <tr>
-<td><button id="mulligan">Mulligan</button</td><button id="shuffle_hand">Shuffle</button><td><button id="draw_player">Draw player card</button></td></tr><tr>
-<td><div id="player_discard" class="deck_drag dropzone" deck="window.player.discard" face="up" deals="up"></div><div id="player_deck" class="deck_drag dropzone" deck="window.player.draw" face="down" deals="up"></div></td><td>
-    <div id="player_hand" class="dropzone">
-</td></tr></table>
-  </div>
-  <div id="player_toolbar_container"></div>
+</div>
+
+
   <div id="card_preview" class="preview" ></div>
   <div id="card_toolbar" class="toolbar" >
 </div>
