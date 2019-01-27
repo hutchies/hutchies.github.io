@@ -386,7 +386,10 @@
       $('#save').on('click', save);
       $('#load').on('click', load);
       $('#delete_save').on('click', delete_save);
-      $('#cors').on('click', function(){ window.cors = $('#cors_name').val(); });
+      $('#cors').on('click', function(){
+        window.cors = $('#cors_name').val();
+        load_octgn_encounters();
+      });
       $('#mulligan').on('click', mulligan);
     }
 
