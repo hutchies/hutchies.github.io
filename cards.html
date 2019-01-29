@@ -14,14 +14,31 @@
     }
 
     .player_hand {
-      height: 160px;
+      height: 150px;
+      min-width: 120px;
+      max-width: 500px;
+      border-style: dotted;
+      border-width: 1px;
+      border-color: black;
+      padding: 5px;
+      padding-right: 105px;
+      white-space: nowrap;
+      overflow-x: scroll;
+      overflow-y: hidden;
+    }
+
+    .player_hand div {
+      display: inline-block;
+    }
+
+    .deck_display {
+      min-height: 150px;
       min-width: 120px;
       border-style: dotted;
       border-width: 1px;
       border-color: black;
-      padding: 10px;
-      padding-right: 110px;
-      display: inline-block;
+      padding: 5px;
+      padding-right: 105px;
     }
 
     .deck_drag {
@@ -132,6 +149,7 @@
     .wounds {
       }
 
+
     .attack {
       color: white;
       text-shadow:
@@ -160,7 +178,6 @@
     }
 
     .drop-activated {
-
     }
 
     div {
@@ -219,6 +236,8 @@
         window.closer_name = '';
         window.tap_selecting_card = false;
         window.tap_selecting_deck = false;
+        window.st_w = 100;
+        window.st_h = 140;
 
         window.cors = '';
 
@@ -284,6 +303,7 @@
         Mousetrap.bind('shift+s', save);
 
         add_toolbar_button('card', 'Rotate', rotate_selected);
+        add_toolbar_button('card', 'Discard', discard_selected);
         add_toolbar_button('card', '<-', card_left);
         add_toolbar_button('card', '->', card_right);
         add_toolbar_button('phase', 'Prev', decrement_phase);
@@ -291,6 +311,7 @@
         add_toolbar_button('deck', 'Draw card', draw_current);
         add_toolbar_button('deck', 'Shadow card', shadow);
         add_toolbar_button('deck', 'Show deck', show_current_deck);
+        add_toolbar_button('deck', 'Back of deck', current_deck_back);
         add_toolbar_button('deck', 'Peek 1', make_peek(1));
         add_toolbar_button('deck', 'Peek 3', make_peek(3));
         add_toolbar_button('deck', 'Peek 5', make_peek(5));
@@ -347,7 +368,7 @@
       interact('.dropzone').dropzone({
   // only accept elements matching this CSS selector
   // Require a 75% element overlap for a drop to be possible
-  overlap: 0.75,
+  overlap: 0.50,
 
   // listen for drop related events:
 
@@ -428,7 +449,7 @@
         i.width = 400;
         $('#card_preview').html(i);
         $('#card_preview').show();
-        console.log('Hovering over '+$(card).attr('card_name'));
+        //console.log('Hovering over '+$(card).attr('card_name'));
       }
     }
 
@@ -803,7 +824,7 @@
       draw_cards(get_current_deck(), 'game_space', 1, 'down');
     }
 
-    function get_deck_closer(deck, id, deck_name, shuffle=true){
+    function get_deck_closer(deck, id, deck_name, shuffle=true, back=false){
       return function(){
         //console.log(deck);
         //deck.length = 0;
@@ -816,9 +837,14 @@
         });
         temp_deck = temp_deck.reverse()
         for(i in temp_deck){
-          deck.unshift(temp_deck[i]);
+          if(back){
+            // Put at back of deck!
+            deck.push(temp_deck[i]);
+          }else{
+            deck.unshift(temp_deck[i]);
+          }
         }
-        console.log(deck);
+        //console.log(deck);
         //move_deck_display('#encounter_display_container');
         $('#deck_display_container').hide();
         $('#close_shuffle').off('click');
@@ -835,9 +861,13 @@
 
     function set_closers(id, deck_name){
       var deck = eval(deck_name);
+      var back = false;
       if(!deck) return;
-      $('#close_shuffle').on('click', get_deck_closer(deck, id, deck_name, true));
-      $('#close_noshuffle').on('click', get_deck_closer(deck, id, deck_name, false));
+      if($('#deck_display_container').attr('back')){
+        back = true;
+      }
+      $('#close_shuffle').on('click', get_deck_closer(deck, id, deck_name, true, back));
+      $('#close_noshuffle').on('click', get_deck_closer(deck, id, deck_name, false, back));
       window.closer_id = id;
       window.closer_name = deck_name;
     }
@@ -848,6 +878,12 @@
       show_deck(current);
     }
 
+    function current_deck_back(){
+      var current = $('.current_deck');
+      if(!current) return;
+      show_deck(current, 0, true);
+    }
+
     function make_peek(num){
       return function(){
         var current = $('.current_deck');
@@ -856,7 +892,7 @@
       }
     }
 
-    function show_deck(d, num = -1){
+    function show_deck(d, num = -1, back = false){
       if(window.deck_on_display){
         console.log('deck already on display');
         return; // Don't display tw
@@ -872,18 +908,22 @@
       var deck = eval(deck_name);
       var id = $(d).parent().attr('id');
       var count = 0;
+      if(back){
+        $('#deck_display_container').attr('back', 'true');
+      }else{
+        if($('#deck_display_container').attr('back')) $('#deck_display_container').removeAttr('back');
+      }
 
       while(deck.length > 0){
         var c = deck[0];
         if($(c).parent().attr('id') == 'game_space'){
           console.log('trying to show '+$(c).attr('card_name')+' which is in game_space!')
         }else{
-        //console.log($(c).attr('card_name'));
+          if(count == num) break;
           deck.splice(0, 1);
           check_dimensions(c);
           $('#deck_display').append(c);
           count++;
-          if(count == num) break;
         }
       }
       //console.log(deck);
@@ -897,19 +937,22 @@
       var y = element.getAttribute('data-y');
       var r = element.getAttribute('rotation');
       var pos = $(element).css('position');
-      console.log(pos);
+      //console.log(pos);
       var string = "";
       var set = false;
-      if(x != 0 || y != 0){
-        //console.log(x+','+y);
+      if((x || y)&&(x != 0 || y != 0)){
+        //console.log(element)
+        //console.log(element.getAttribute('data-x')+','+y);
         string += 'translate('+x+'px,'+y+'px)';
         if(pos !== 'absolute') $(element).attr('orig_position', pos);
         $(element).css('position', 'absolute');
         set = true;
       }else{
         // Reset position attribute if it had one
+        //console.log('resetting');
         if($(element).attr('orig_position')){
           $(element).css('position', $(element).attr('orig_position'));
+          $(element).removeAttr('orig_position');
         }
       }
       if(r){
@@ -1164,6 +1207,14 @@
         //console.log($(':hover'));
         discard_card(card);
         $(card).removeClass('current_card');
+        $('#card_preview').hide();
+      }
+    }
+
+    function card_face(card, face){
+      var current_face = $(card).attr('face');
+      if(current_face != face){
+        flip_card(card);
       }
     }
 
@@ -1253,6 +1304,8 @@
     function update_discard_image(div, deck){
       //console.log('updating discard image for '+div+', deck length '+deck.length);
       var face = 'up';
+      var st_w = window.st_w+'px';
+      var st_h = window.st_h+'px'
 
       if($('#'+div).attr('face')){
         face = $('#'+div).attr('face');
@@ -1261,10 +1314,22 @@
       if(deck.length > 0){
         //console.log('top image is now '+card_image(deck[0], face));
         $('#'+div+'_image').attr('src', card_image(deck[0], face));
+        if($(deck[0]).children().first().css('width') != "0px"){
+          $('#'+div+'_image').css('width', $(deck[0]).children().first().css('width'));
+          //console.log($('#'+div+'_image'));
+        }
+        if($(deck[0]).children().first().css('height') != "0px"){
+          $('#'+div+'_image').css('height', $(deck[0]).children().first().css('height'));
+          //console.log($(deck[0]).children().first().css('height'));
+        }
+        //$('#'+div+'_image').css('width', $(deck[0]).css('width'));
+        //$('#'+div+'_image').css('height', $(deck[0]).css('height'));
         // Set ID!
         $('#'+div).attr('card_id', $(deck[0]).attr('card_id'));
       }else{
         $('#'+div+'_image').attr('src', window.default_blank_card);
+        $('#'+div+'_image').css('width', st_w);
+        $('#'+div+'_image').css('height', st_h);
         $('#'+div).attr('card_id', 'blank');
       }
     }
@@ -1272,8 +1337,8 @@
     function check_dimensions(card){
       var c = $(card).children().first();
       var t = $(c)[0];
-      var st_w = 100;
-      var st_h = 140;
+      var st_w = window.st_w;
+      var st_h = window.st_h;
       //console.log('checking dimensions');
       //console.log(t.naturalWidth+' x '+t.naturalHeight);
       if(t.naturalWidth > t.naturalHeight){
@@ -1289,12 +1354,15 @@
             $(t).css('height', st_w);
           }
         }
+      }else{
+        $(t).css('height', st_h);
+        $(t).css('width', st_w);
       }
     }
 
     function make_deck_interface(div, image, deck, draw_to = "game_space"){
-      var st_w = 100;
-      var st_h = 140;
+      var st_w = window.st_w;
+      var st_h = window.st_h;
       var deck_image = new Image(st_w, st_h);
       deck_image.src = image;
       deck_image.id = div + '_image';
@@ -1398,8 +1466,8 @@
     }
 
     function Card(front_url, back_url, name = "Player card", card_id = "player") {
-      var st_w = 100;
-      var st_h = 140;
+      var st_w = window.st_w;
+      var st_h = window.st_h;
       var card_image = new Image(st_w, st_h);
       card_image.src = front_url;
       $(card_image).addClass('card_image');
@@ -1735,6 +1803,11 @@
         // Can't discard threat card!
         return;
       }
+      card_face(card, 'up'); // Discarding cards should set them face up!
+      if(card.getAttribute('rotation')){
+        card.removeAttribute('rotation'); // Remove rotation!
+        apply_transforms(card);
+      }
       if(type == 'player' || type == 'Hero'){
         // Discard to player discard pile
         card_to_deck(card, window.player.discard, 'player_discard', true);
@@ -1901,7 +1974,7 @@
         this.removeAttribute('rotation');
         apply_transforms(this);
       });
-      draw_cards(window.player.draw, "player_hand", 1, 'player_deck');
+      draw_cards(window.player.draw, "player_hand", 1, 'up', 'player_deck');
       increment_round();
     }
 
@@ -2148,8 +2221,6 @@
   <div id="choices"></div>
   <table>
   <tr><td>
-  <h4>Encounter deck</h4>
-</td><td></td><td>
 <h4>Quest deck</h4>
 </td>
 <td>
@@ -2158,18 +2229,11 @@
 <td class="deck_titles_marker">
 <h4>Victory display</h4>
 </td>
-<td>
-<h4>Player deck</h4>
-</td>
-<td>
-</td>
-<td>
-<h4>Threat etc.</h4>
-</td>
+
+
 </tr>
 <tr>
-<td>  <div id="encounter_deck" class="deck_drag dropzone" deck="window.encounter.draw" face="down" deals="down"></div></td><td><div id="encounter_discard" class="deck_drag dropzone" deck="window.encounter.discard" face="up" deals="up"></div>
-</td><td>
+<td>
   <div id="quest_deck" class="deck_drag dropzone" deck="window.quest" face="up" deals="up"></div>
 </td>
 <td>
@@ -2178,15 +2242,38 @@
 <td class="deck_place_marker">
   <div id="victory_deck" class="deck_drag dropzone" deck="window.victory" face="up" deals="up"></div>
 </td>
+<td>
+</td>
+</tr></table><table>
+<tr>
+  <td><h4>Player hand <button style="display: none;" id="player_shuffle">Shuffle (for random cards)</button> <button style="display: none;" id="mulligan">Mulligan</button></h4></td>
+  <td>
+  <h4>Encounter deck</h4>
+</td><td></td>
+  <td>
+  <h4>Player deck</h4>
+  </td>
+  <td>
+  </td>
+  <td>
+  <h4>Threat etc.</h4>
+  </td>
+
+</tr>
+<tr>
+  <td>
+    <div id="player_hand" class="player_hand dropzone">
+    </div>
+  </td>
+<td>  <div id="encounter_deck" class="deck_drag dropzone" deck="window.encounter.draw" face="down" deals="down"></div></td><td><div id="encounter_discard" class="deck_drag dropzone" deck="window.encounter.discard" face="up" deals="up"></div>
+</td>
 <td><div id="player_deck" class="deck_drag dropzone" deck="window.player.draw" face="down" deals="up"></div></td>
 <td><div id="player_discard" class="deck_drag dropzone" deck="window.player.discard" face="up" deals="up"></div></td>
 <td id="threat_holder">
 </td>
-<td>
-<div id="phase_display">Round 1, Planning phase</div>
-<div id="phase_toolbar"></div>
-</td>
+
 </tr>
+
 </table>
 
 <div id="encounter_toolbar_container"><div id="deck_toolbar"></div></div>
@@ -2194,15 +2281,11 @@
 <div id="deck_display_container" style="display: none;">
   <button id="close_shuffle">Close and shuffle</button>
   <button id="close_noshuffle">Close without shuffling</button>
-  <div id="deck_display" class="dropzone"></div>
+  <div id="deck_display" class="dropzone deck_display"></div>
 </div>
 </div>
-
-<h3>Player hand <button style="display: none;" id="player_shuffle">Shuffle (for random cards)</button> <button style="display: none;" id="mulligan">Mulligan</button></h4>
-<div id="player_hand" class="player_hand dropzone">
-</div>
-
-  <h3>Play space</h3>
+  <div style="display: inline;" id="phase_display">Round 1, Planning phase</div>
+  <div style="display: inline;" id="phase_toolbar"></div>
   <div id="game_space" class="game_space dropzone">
   </div>
 </div>
