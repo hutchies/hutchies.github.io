@@ -309,6 +309,7 @@
         Mousetrap.bind('shift+d', flip_deals);
         Mousetrap.bind('shift+s', save);
 
+        add_toolbar_button('card', 'Flip', flip_selected);
         add_toolbar_button('card', 'Rotate', rotate_selected);
         add_toolbar_button('card', 'Discard', discard_selected);
         add_toolbar_button('card', '<-', card_left);
@@ -322,6 +323,7 @@
         add_toolbar_button('deck', 'Peek 1', make_peek(1));
         add_toolbar_button('deck', 'Peek 3', make_peek(3));
         add_toolbar_button('deck', 'Peek 5', make_peek(5));
+        add_toolbar_button('deck', 'Peek 10', make_peek(10));
         add_toolbar_button('deck', 'Flip', flip_deck);
         add_toolbar_button('deck', 'Shuffle', shuffle_current);
         add_toolbar_button('phase', 'Save', save);
@@ -776,6 +778,11 @@
         }
         if($(event.target).attr('deck')){
           // Dragged to a deck – so place on top of that deck
+          // Remove card preview if current card
+          if($(card).hasClass('current_card')){
+            $(card).removeClass('current_card');
+            $('#card_preview').hide();
+          }
           var d_name = $(event.target).attr('deck');
           var deck = eval(d_name);
           var top = true;
@@ -1220,6 +1227,15 @@
       }
     }
 
+    function flip_selected(){
+      var card = $('.current_card')[0];
+      //console.log("rotating "+card);
+      if(card){
+        //console.log($(':hover'));
+        flip_card(card);
+      }
+    }
+
     function card_face(card, face){
       var current_face = $(card).attr('face');
       if(current_face != face){
@@ -1458,7 +1474,7 @@
       //console.log('setting Z to '+window.current_top);
       $(event.currentTarget).css('z-index', window.current_top);
       $('.preview').css('z-index', window.current_top+1);
-      $('.card_button').css('z-index', window.current_top+2);
+      $('#card_toolbar').css('z-index', window.current_top+2);
       if($(event.currentTarget).hasClass('current_card')){
         if(!window.tap_selecting_card){
           window.tap_selecting_card = true;
@@ -2010,6 +2026,7 @@
           $('#card_preview').hide();
         });
         $(button).on('click', function(){
+          $('#card_preview').hide();
           var url = $(this).attr('url');
           var id = $(this).attr('div_id');
 
