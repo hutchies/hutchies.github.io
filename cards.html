@@ -11,19 +11,22 @@
       border-width: 1px;
       border-color: black;
       user-select: none;
+      background-image: url(card_images/tabletop.png);
+      background-size: contain;
+      background-repeat: no-repeat;
     }
 
     .player_hand {
-      height: 150px;
-      min-width: 120px;
-      max-width: 500px;
+      height: 110px;
+      min-width: 85px;
+      max-width: 400px;
       border-style: dotted;
       border-width: 1px;
       border-color: black;
       padding: 5px;
-      padding-right: 105px;
+      padding-right: 90px;
       white-space: nowrap;
-      overflow-x: scroll;
+      overflow-x: auto;
       overflow-y: hidden;
     }
 
@@ -55,7 +58,7 @@
       right: 0;
       opacity: 0.8;
       pointer-events: none;
-      z-order: -1;
+
     }
 
     .toolbar {
@@ -95,8 +98,8 @@
       background: rgba(0, 0, 0, 0.2);
       opacity: 1;
       color: white;
-      padding: 10px;
-      font-size: 20px;
+      padding: 5px;
+      font-size: 15px;
       font-style: monospace;
       text-align: center;
       vertical-align: middle;
@@ -180,6 +183,10 @@
     .drop-activated {
     }
 
+    .card_button {
+      font-size: 14pt;
+    }
+
     div {
       -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -236,10 +243,10 @@
         window.closer_name = '';
         window.tap_selecting_card = false;
         window.tap_selecting_deck = false;
-        window.st_w = 100;
-        window.st_h = 140;
+        window.st_w = 75;
+        window.st_h = 105;
 
-        window.cors = '';
+        window.cors = 'https://cors.io?';
 
         window.all_decks = [
           window.player.draw,
@@ -401,7 +408,7 @@
               $('#clear_status').hide();
       }
       $('#create_card').on('click', search_card);
-      $('#load_deck').on('click', function() {load_deck(window.player.draw, 'player_deck', true);});
+      $('#load_deck').on('click', function() {load_deck(window.player.draw, 'player_deck', true); $('#load_deck').hide();});
       $('#load_encounter_deck').on('click', load_encounter_deck);
       $('#player_shuffle').on('click', shuffle_hand);
       $('#save').on('click', save);
@@ -448,6 +455,7 @@
         i.src = card_image(card);
         i.width = 400;
         $('#card_preview').html(i);
+        $('.preview').css('z-index', window.current_top+1);
         $('#card_preview').show();
         //console.log('Hovering over '+$(card).attr('card_name'));
       }
@@ -623,6 +631,7 @@
           window.all_decks.push(window.extra[d]);
         }
         $('#big_container').html(big_html);
+        console.log('setting closers to '+window.closer_id+', '+window.closer_name);
         set_closers(window.closer_id, window.closer_name);
         setup_events();
 
@@ -1448,6 +1457,8 @@
       window.current_top++;
       //console.log('setting Z to '+window.current_top);
       $(event.currentTarget).css('z-index', window.current_top);
+      $('.preview').css('z-index', window.current_top+1);
+      $('.card_button').css('z-index', window.current_top+2);
       if($(event.currentTarget).hasClass('current_card')){
         if(!window.tap_selecting_card){
           window.tap_selecting_card = true;
@@ -1708,7 +1719,7 @@
     }
 
     function add_toolbar_button(t, text, func, ){
-      var btn = $('<button></button>');
+      var btn = $('<button class="'+t+'_button"></button>');
       $(btn).html(text);
       $(btn).on('click', func);
       $('#'+t+'_toolbar').append(btn);
@@ -1819,6 +1830,7 @@
 
     function load_encounter_deck_logic(xml){
       var xmldoc = $.parseXML(xml);
+      $('#load_encounter_deck').hide();
       $(xmldoc).find('section').each(function() {
         var name = $(this).attr('name');
 
@@ -2294,6 +2306,8 @@
   <div id="card_preview" class="preview" ></div>
   <div id="card_toolbar" class="toolbar" >
 </div>
+<p>
+  Placeholder
 </body>
 
 </html>
