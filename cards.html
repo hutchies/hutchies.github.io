@@ -470,7 +470,7 @@
 
     function select_deck(d){
       var deck_div = $(d).parent();
-      console.log(deck_div);
+      //console.log(deck_div);
       var deck = eval($(deck_div).attr('deck'));
       if(deck && deck.length > 0){
         deselect_deck();
@@ -507,7 +507,7 @@
         while(array.length > 0){
           $(h).after(array.shift());
         }
-        console.log(h);
+        //console.log(h);
         out.push(h);
       }
       return out;
@@ -601,7 +601,7 @@
       if(saves[name]){
         //console.log(saves[name]);
         var obj = saves[name];
-        console.log(obj);
+        //console.log(obj);
         var scalars = obj.pop();
         var big_html = obj.pop();
         var extras = obj.pop();
@@ -766,6 +766,10 @@
           apply_transforms(card);
           $(card).css('position', 'static');
           $(card).removeAttr('orig_position');
+          if($(card).hasClass('current_card')){
+            $(card).removeClass('current_card');
+            $('#card_preview').hide();
+          }
         }else{
           event.target.appendChild(card);
           // Not dropped onto a thing, so reset drop
@@ -1268,7 +1272,7 @@
 
     function doubletap_card(event){
       var id = $(event.currentTarget).attr('card_id');
-      console.log(id);
+      //console.log(id);
       if(id == 'player' || id == 'Hero'){
         rotate_card(event.currentTarget);
       }else{
@@ -2086,6 +2090,8 @@
           var quest_type = '';
           for(d in decks){
             var url = 'https://github.com'+decks[d].replace('/blob/','/raw/');
+            url = url.replace('&#39;', '\'');
+            //console.log(url);
             var name = decks[d].match(/([^\-\/]+)-[0-9]+-([^.]+).o8d/);
             if(name){
               if(name[1] != quest_type){
@@ -2096,7 +2102,8 @@
                 $('#encounter_select').append(optgrp);
               }
               name = name[2];
-              name = name.replace(/-/g,' ');
+              name = decodeURIComponent(name);
+              name = name.replace(/-/g, ' ');
               var opt = $('<option></option>');
               opt.html(name);
               opt.val(url);
