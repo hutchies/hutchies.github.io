@@ -209,6 +209,11 @@
 
       window.default_encounter_card = "https://raw.githubusercontent.com/Tragic-zz/lackeyCCG-LoTRLCG/master/Cards/encounter.jpg"
 
+      window.scenario_sets = new Set();
+
+      window.use_local_copies = false;
+      window.local_replacements = ["c59be48d-ccec-4409-92b3-9f2e74f01012", "29349448-e37d-4741-a7df-4bb57c195437", "a1bb437e-1cbc-4780-bbee-f9ad07cb8d7a", "ce1cf93c-68d9-4613-af3a-a08671152358"];
+
       window.cards_list = [];
       // fetch the cards list
       $.ajax({
@@ -245,8 +250,10 @@
         window.tap_selecting_deck = false;
         window.st_w = 75;
         window.st_h = 105;
+        window.set_rx = /https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^\/]+)\/[^.]+\.[^\'\"]+/g;
 
         window.cors = 'https://cors.io?';
+        window.remaining_to_load = 0;
 
         window.all_decks = [
           window.player.draw,
@@ -306,12 +313,14 @@
         Mousetrap.bind('shift+left', decrement_round);
         Mousetrap.bind('n', next_round);
         Mousetrap.bind('shift+f', flip_deck);
-        Mousetrap.bind('shift+d', flip_deals);
+        Mousetrap.bind('ctrl+d', flip_deals);
         Mousetrap.bind('shift+s', save);
+        Mousetrap.bind("shift+u", input_image);
 
         add_toolbar_button('card', 'Flip', flip_selected);
         add_toolbar_button('card', 'Rotate', rotate_selected);
         add_toolbar_button('card', 'Discard', discard_selected);
+        add_toolbar_button('card', 'URL', input_image);
         add_toolbar_button('card', '<-', card_left);
         add_toolbar_button('card', '->', card_right);
         add_toolbar_button('phase', 'Prev', decrement_phase);
@@ -459,7 +468,8 @@
         $('#card_preview').html(i);
         $('.preview').css('z-index', window.current_top+1);
         $('#card_preview').show();
-        //console.log('Hovering over '+$(card).attr('card_name'));
+        //$('#hover_text').html($(card).attr('card_name'));
+        console.log('Hovering over '+$(card).attr('card_name'));
       }
     }
 
@@ -475,11 +485,22 @@
       if(deck && deck.length > 0){
         deselect_deck();
         $(d).addClass('current_deck');
+        // display?
+        if($(deck_div).attr('face') == 'up'){
+          var i = new Image();
+          i.src = card_image(deck[0]);
+          i.width = 400;
+          $('#card_preview').html(i);
+          $('.preview').css('z-index', window.current_top+1);
+          $('#card_preview').show();
+        }
+
       }
     }
 
     function deselect_deck(){
       $('.current_deck').removeClass('current_deck');
+      $('#card_preview').hide();
     }
 
     function serialise_deck(deck){
@@ -493,6 +514,14 @@
       }
       //console.log(JSON.stringify(out));
       return JSON.stringify(out);
+    }
+
+    function input_image(){
+      if(!$('.current_card')[0]) return;
+      var url = window.prompt("Enter URL", "");
+      if(url != null){
+        $('.current_card').children().first().attr('src', url);
+      }
     }
 
     function unserialise_deck(deck_json){
@@ -1768,10 +1797,11 @@
     //const flatten = (arr) => arr.reduce((flat, next) => flat.concat(next), []);
 
     function replace_image(id, top, bottom = window.default_encounter_card){
+      console.log('looking to replace '+id);
       // First deal with all in DOM
       $('[card_id="'+id+'"]').each(function(){
-        //console.log('replacing image with new one on card '+id);
-        //console.log('New image for '+$(this).attr('card_name')+': '+top);
+        console.log('replacing image with new one on card '+id);
+        console.log('New image for '+$(this).attr('card_name')+': '+top);
         if($(this).attr('face') == 'up'){
           // Card is face down
           $(this).children().first().attr('src', top);
@@ -1786,17 +1816,10 @@
       // Then deal with all in other decks
 
       window.all_decks.forEach(function(a){
-        /*a.forEach(function(b){
-          console.log(b);
-          console.log($(b).attr('card_id'));
-          if(b.getAttribute('card_id') == id){
-            b.src = top;
-            b.setAttribute('reverse', bottom);
-            console.log('New image in deck for '+b.getAttribute('card_name')+': '+b);
-          }
-        });*/
         var filtered = a.filter(card => $(card).attr('card_id') == id);
         filtered.forEach(function(c){
+          console.log('replacing image with new one on card '+id);
+          console.log('New image for '+$(this).attr('card_name')+': '+top);
           if($(c).attr('face') == 'up'){
             //$(c).attr('card_name')
             $(c).children().first().attr('src', top);
@@ -1851,79 +1874,130 @@
     function load_encounter_deck_logic(xml){
       var xmldoc = $.parseXML(xml);
       $('#load_encounter_deck').hide();
+
+      // Need to put scenario logic here so that we don't carry on until we have the scenario info!
+      status('Loading scenario set(s)...');
+      var scenario = dumb_quotes($('#encounter_select option:selected').text().replace('&#39;', '\''));
+      //console.log('searching for '+scenario);
+      var jqxhr = $.ajax(cors+"http://hallofbeorn.com/LotR?Scenario="+encodeURIComponent(scenario)).done(function(){
+        var res = jqxhr.responseText;
+        var result = [];
+        while(result = window.set_rx.exec(res)){
+          //console.log("set details: "+result[1]);
+          if(result[1].search(/Nightmare/i) == -1){ // Rule out nightmare sets!
+            //console.log("set found: "+result[1]);
+            window.scenario_sets = window.scenario_sets.add(result[1]);
+          }
+        }
+        //console.log(scenarios.size+" sets found");
+
+        // Now here comes the rest of the logic!!
+        var s = '';
+        for(let item of window.scenario_sets) s += item + ' ';
+      status('Scenario set(s) loaded: '+s);
+
       $(xmldoc).find('section').each(function() {
         var name = $(this).attr('name');
 
-        var cards = [];
-        $(this).children('card').each(function(){
-          //var id = $(this).children('name').first().attr('id');
-          var qty = $(this).attr('qty');
-          var id = $(this).attr('id');
-          var card_name = $(this).html();
 
-          //var [top, bottom] = id.split(',');
-          //var cd = encounter_card(images[0], images[1]);
-          //console.log('Making card: '+JSON.stringify(images));
-          var cd = new Card(window.default_blank_card, window.default_encounter_card, card_name, id);
-          for(var j = 0; j < qty; j++){
-            cards.push(cd);
-          }
-          search_beorn(card_name, id, name, card_name); // To add images later
+          var cards = [];
+          $(this).children('card').each(function(){
+            //var id = $(this).children('name').first().attr('id');
+            var qty = $(this).attr('qty');
+            var id = $(this).attr('id');
+            var card_name = $(this).html();
+
+            //var [top, bottom] = id.split(',');
+            //var cd = encounter_card(images[0], images[1]);
+            //console.log('Making card: '+JSON.stringify(images));
+            var cd = {};
+            if(window.use_local_copies){
+              var back = "Cards/"+id+".B.jpg";
+
+              var request = new XMLHttpRequest();
+              request.open('GET', back, false);
+              request.send(null);
+              if(request.status === 200){
+                console.log("yes to "+card_name);
+              }else{
+                console.log("no to "+card_name);
+                back = window.default_encounter_card;
+              }
+              cd = new Card("Cards/"+id+".jpg", back, card_name, id);
+              /*$.get("Cards/"+id+".B.jpg").done(function(){
+                console.log("yes to "+card_name);
+              }).fail(function(){
+                console.log("no to "+card_name);
+                card_setdownface(cd, window.default_encounter_card);
+              });*/
+
+
+            }else{
+              cd = new Card(window.default_blank_card, window.default_encounter_card, card_name, id);
+            }
+            for(var j = 0; j < qty; j++){
+              cards.push(cd);
+            }
+            if(!window.use_local_copies){
+              search_beorn(card_name, id, name, card_name); // To add images later
+            }
+          });
+          if(name == "Quest"){
+              for(var i in cards){
+                window.quest.push($(cards[i]).clone(true));
+                //$('#quest_cards').append($(cards[i]).clone(true));
+              }
+              update_discard_image('quest_deck', window.quest);
+            }else if(name == "Encounter"){
+              for(var i in cards){
+                // !! REVERT SOON
+                var c = $(cards[i]).clone(true);
+                //c = flip_card(c); //upside-down
+                window.encounter.draw.push(c);
+                //$('#encounter_cards').append($(cards[i]).clone(true));
+              }
+            }else if(name == "Setup"){
+              for(var i in cards){
+                  window.aside.push($(cards[i]).clone(true));
+                  update_discard_image('aside_deck', window.aside);
+                  //$('#encounter_cards').append($(cards[i]).clone(true));
+              }
+            }else if(cards.length > 0){
+              // Extra decks with more than 0 cards in
+              status('Additional deck found: '+name+'.');
+              window.extra[name] = [];
+              var title = $('<td><h4>'+name+'</h4></td>');
+              $('.deck_titles_marker').first().after(title);
+              $('.deck_titles_marker').first().removeClass('deck_titles_marker');
+              $(title).addClass('deck_titles_marker');
+              var place_td = $('<td></td>');
+              var place = $('<div></div>');
+              $(place_td).append(place);
+              var make_id = name.replace(/\s/g, "_") + "_extra_deck";
+              $(place).attr('id', make_id);
+              $(place).addClass('deck_drag');
+              $(place).addClass('dropzone');
+              $(place).attr('deck', "window.extra['"+name+"']");
+              $(place).attr('deals', 'up');
+              $(place).attr('face', 'up');
+              $('.deck_place_marker').first().after(place_td);
+              $('.deck_place_marker').first().removeClass('deck_place_marker');
+              $(place_td).addClass('deck_place_marker');
+              make_deck_interface(make_id, window.default_blank_card, window.extra[name], 'game_space');
+              for(var i in cards){
+                  window.extra[name].push($(cards[i]).clone(true));
+                  update_discard_image(make_id, window.extra[name]);
+                  //$('#encounter_cards').append($(cards[i]).clone(true));
+              }
+              window.all_decks.push(window.extra[name]);
+            }
+
         });
-        if(name == "Quest"){
-            for(var i in cards){
-              window.quest.push($(cards[i]).clone(true));
-              //$('#quest_cards').append($(cards[i]).clone(true));
-            }
-            update_discard_image('quest_deck', window.quest);
-          }else if(name == "Encounter"){
-            for(var i in cards){
-              // !! REVERT SOON
-              var c = $(cards[i]).clone(true);
-              //c = flip_card(c); //upside-down
-              window.encounter.draw.push(c);
-              //$('#encounter_cards').append($(cards[i]).clone(true));
-            }
-          }else if(name == "Setup"){
-            for(var i in cards){
-                window.aside.push($(cards[i]).clone(true));
-                update_discard_image('aside_deck', window.aside);
-                //$('#encounter_cards').append($(cards[i]).clone(true));
-            }
-          }else if(cards.length > 0){
-            // Extra decks with more than 0 cards in
-            status('Additional deck found: '+name+'.');
-            window.extra[name] = [];
-            var title = $('<td><h4>'+name+'</h4></td>');
-            $('.deck_titles_marker').first().after(title);
-            $('.deck_titles_marker').first().removeClass('deck_titles_marker');
-            $(title).addClass('deck_titles_marker');
-            var place_td = $('<td></td>');
-            var place = $('<div></div>');
-            $(place_td).append(place);
-            var make_id = name.replace(/\s/g, "_") + "_extra_deck";
-            $(place).attr('id', make_id);
-            $(place).addClass('deck_drag');
-            $(place).addClass('dropzone');
-            $(place).attr('deck', "window.extra['"+name+"']");
-            $(place).attr('deals', 'up');
-            $(place).attr('face', 'up');
-            $('.deck_place_marker').first().after(place_td);
-            $('.deck_place_marker').first().removeClass('deck_place_marker');
-            $(place_td).addClass('deck_place_marker');
-            make_deck_interface(make_id, window.default_blank_card, window.extra[name], 'game_space');
-            for(var i in cards){
-                window.extra[name].push($(cards[i]).clone(true));
-                update_discard_image(make_id, window.extra[name]);
-                //$('#encounter_cards').append($(cards[i]).clone(true));
-            }
-            window.all_decks.push(window.extra[name]);
-          }
 
-      });
+        shuffle_deck(window.encounter.draw);
+        update_discard_image('encounter_deck', window.encounter.draw);
 
-      shuffle_deck(window.encounter.draw);
-      update_discard_image('encounter_deck', window.encounter.draw);
+        });
 
     }
 
@@ -1987,8 +2061,9 @@
 
     function strip_punct(str){
       var d = str.replace(/-/g, ' ');
-      d = d.replace(/[!.?]+/g, '');
+      d = d.replace(/[!.?'']+/g, '');
       d = d.replace(/^The /, '');
+      d = d.normalize('NFD').replace(/[\u0300-\u036f]/g, "");
       return d;
     }
 
@@ -2038,7 +2113,7 @@
           url = decodeURI(url);
           url = decodeHtml(url);
           var start_URL = "https://s3.amazonaws.com/hallofbeorn-resources/Images/Cards/";
-          var matches = url.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+)(\.[^\'\"]+)/);
+          var matches = url.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^\/]+\/[^.]+)(\.[^\'\"]+)/);
           var name_bit = matches[1];
           var ext = matches[2];
           if(/(A|B)$/.test(name_bit)){
@@ -2048,6 +2123,7 @@
             var top_URL = encodeURI(start_URL+name_stripped+'A'+ext);
             var bot_URL = encodeURI(start_URL+name_stripped+'B'+ext);
             replace_image(id, top_URL, bot_URL);
+            load_less();
           }else if(/(C|D)$/.test(name_bit)){
             // Two-sided!
             //console.log(name_bit+' is 2-sided!');
@@ -2055,9 +2131,11 @@
             var top_URL = encodeURI(start_URL+name_stripped+'C'+ext);
             var bot_URL = encodeURI(start_URL+name_stripped+'D'+ext);
             replace_image(id, top_URL, bot_URL);
+            load_less();
           }else{
-            var match = url.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+\.[^\'\"]+)/);
+            var match = url.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^\/]+\/[^.]+\.[^\'\"]+)/);
             replace_image(id, encodeURI(start_URL+match[1]));
+            load_less();
           }
           $('#'+id).remove();
         });
@@ -2114,46 +2192,82 @@
       });
     }
 
+    function dumb_quotes(t){
+      return t.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"');
+    }
+
+    function load_more(){
+      window.remaining_to_load++;
+      $('#remaining').html(window.remaining_to_load+" encounter cards left to load");
+    }
+
+    function load_less(){
+      window.remaining_to_load--;
+      $('#remaining').html(window.remaining_to_load+" encounter cards left to load");
+      if(window.remaining_to_load == 0){
+        status('All encounter cards loaded!');
+        $('#remaining').html('');
+      }
+    }
+
     function search_beorn(name, id, deck, full_name){
       var orig_name = name;
-      name = strip_punct(name); // Remove punctuation
+      //name = strip_punct(name); // Remove punctuation
+      if(name == full_name){
+        // First search!
+        load_more();
+      }
+      name = dumb_quotes(name);
       name = name.replace(/[1234][ABCD]/g, ''); // Remove side markers
       name = name.trim();
       //console.log('searching for '+name);
-      var jqxhr = $.ajax(cors+'http://hallofbeorn.com/LotR?Query='+encodeURIComponent(name)).done(function(){
+      var search_term = 'http://hallofbeorn.com/LotR?Query='+encodeURIComponent(name);
+      var search_term = search_term.replace(/'/g, '%27');
+      var jqxhr = $.ajax(cors+search_term).done(function(){
+        if(window.local_replacements.includes(id)){
+          //alert('found');
+          replace_image(id, "card_images/"+id+".jpg", "card_images/"+id+".B.jpg");
+          load_less();
+          return;
+        }
         var res = jqxhr.responseText;
         var num = res.match(/([0-9]+) results? found/i);
-        //var image_re = new RegExp(RegExp.escape('https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/')+'[^/]+\/[^.]')
-        var images = res.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/[^/]+\/[^.]+\.[^\'\"]+/g);
+        //var image_re = new RegExp(RegExp.escape('https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/')+'[^\/]+\/[^.]')
+        var images = res.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/[^\/]+\/[^.]+\.[^\'\"]+/g);
 
         var start_URL = "https://s3.amazonaws.com/hallofbeorn-resources/Images/Cards/";
 
-        //console.log('searched Beorn for '+name);
-
-        //console.log('searching beorn');
-
-        //console.log(JSON.stringify(images));
-
-        //https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/Core-Set/Hill-Troll.jpg
-
         if(images){
-          //console.log("searched for "+name+" and found "+images.length);
 
           for(i in images){
             images[i] = decodeURI(images[i]);
             images[i] = decodeHtml(images[i]);
           }
 
+          //console.log("found "+JSON.stringify(images));
+
 
           var images = images.filter(function(u){
-            var matches = u.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/[^/]+\/([^.]+)\.[^\'\"]+/);
+            var matches = u.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/[^\/]+\/([^.]+)\.[^\'\"]+/);
             var decoded = strip_punct(matches[1]);
             var d_name = strip_punct(name);
 
-            if(decoded.includes(d_name)){
+
+            //console.log("Comparing "+decoded+" and "+d_name);
+
+            if(decoded.toLowerCase().includes(d_name.toLowerCase())){
               //console.log('Yes! '+decoded+' matches '+name);
-              return true;
-            }
+
+              // Now test for set too!
+              var result = u.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^\/]+)\/[^.]+\.[^\'\"]+/);
+              if(result){
+                //console.log("found a set for "+name+": "+result[1]);
+                if(window.scenario_sets.has(result[1])){
+                  return true;
+                }
+              }
+              return false;
+              }
             //console.log("not a match for "+decoded+' against '+d_name);
             return false;
           });
@@ -2167,11 +2281,11 @@
             var match = images[0].match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+\.[^\'\"]+)/);
             var image_URL = encodeURI(start_URL+match[1]);
             replace_image(id, image_URL, window.default_encounter_card);
-
+            load_less();
           }else if(images.length == 2){
             //Probably a pair
             //console.log('found 2 for '+name);
-            var matches = images[0].match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+)(\.[^\'\"]+)/);
+            var matches = images[0].match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^\/]+\/[^.]+)(\.[^\'\"]+)/);
             var name_bit = matches[1];
             var ext = matches[2];
             if(/(A|B)$/.test(name_bit)){
@@ -2180,12 +2294,14 @@
               var top_URL = encodeURI(start_URL+name_stripped+'A'+ext);
               var bot_URL = encodeURI(start_URL+name_stripped+'B'+ext);
               replace_image(id, top_URL, bot_URL);
+              load_less();
             }else if(/(C|D)$/.test(name_bit)){
               // Two-sided!
               var name_stripped = name_bit.slice(0, -1);
               var top_URL = encodeURI(start_URL+name_stripped+'C'+ext);
               var bot_URL = encodeURI(start_URL+name_stripped+'D'+ext);
               replace_image(id, top_URL, bot_URL);
+              load_less();
             }else{
               // If not a pair, still carry on as normal!
               choose_between(name, id, images, deck, full_name);
@@ -2193,9 +2309,8 @@
           }else if(images.length > 1){
             //console.log('found multiple for '+name);
             choose_between(name, id, images, deck, full_name);
-
           }else if(images.length == 0){
-            console.log('found nothing for '+name);
+            console.log('found nothing for '+name+" ("+search_term+")");
             // Try with one word less if you can
             var name_bits = orig_name.split(/-|\s/);
             //console.log(name_bits);
@@ -2210,16 +2325,22 @@
           console.log('found less than nothing for '+name);
           //console.log(res);
           //console.log('found nothing for '+name);
-          // Try with one word less if you can
-          var name_bits = orig_name.split(/-|\s/);
-          //console.log(name_bits);
-          if(name_bits.length > 1){
-            name_bits.pop();
+          // First try stripping the punctuation
+          var nopunct_name = strip_punct(name);
+          console.log("stripping punctuation from "+name+" to make "+nopunct_name);
+          if(nopunct_name != name){
+            search_beorn(nopunct_name, id, deck, full_name);
+          }else{
+            // Try with one word less if you can
+            var name_bits = orig_name.split(/-|\s/);
             //console.log(name_bits);
-            var new_name = name_bits.join(' ');
-            search_beorn(new_name, id, deck, full_name);
+            if(name_bits.length > 1){
+              name_bits.pop();
+              //console.log(name_bits);
+              var new_name = name_bits.join(' ');
+              search_beorn(new_name, id, deck, full_name);
+            }
           }
-
         }
       });
 
@@ -2252,6 +2373,7 @@
 
   </div>
   <div id="big_container">
+  <div id="remaining"></div>
   <div id="status"></div>
   <button id="clear_status">Clear status</button>
   <div id="choices"></div>
@@ -2320,8 +2442,8 @@
   <div id="deck_display" class="dropzone deck_display"></div>
 </div>
 </div>
-  <div style="display: inline;" id="phase_display">Round 1, Planning phase</div>
   <div style="display: inline;" id="phase_toolbar"></div>
+  <div style="display: inline;" id="phase_display">Round 1, Planning phase</div>
   <div id="game_space" class="game_space dropzone">
   </div>
 </div>
@@ -2331,7 +2453,7 @@
   <div id="card_toolbar" class="toolbar" >
 </div>
 <p>
-  Placeholder
+  <span id="hover_text">Placeholder</span>
 </body>
 
 </html>
