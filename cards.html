@@ -1878,6 +1878,7 @@
       // Need to put scenario logic here so that we don't carry on until we have the scenario info!
       status('Loading scenario set(s)...');
       var scenario = dumb_quotes($('#encounter_select option:selected').text().replace('&#39;', '\''));
+      scenario = scenario.replace(/In/g, 'in');
       //console.log('searching for '+scenario);
       var jqxhr = $.ajax(cors+"http://hallofbeorn.com/LotR?Scenario="+encodeURIComponent(scenario)).done(function(){
         var res = jqxhr.responseText;
@@ -1885,7 +1886,8 @@
         while(result = window.set_rx.exec(res)){
           //console.log("set details: "+result[1]);
           if(result[1].search(/Nightmare/i) == -1){ // Rule out nightmare sets!
-            //console.log("set found: "+result[1]);
+            result[1] = strip_punct(result[1].toLowerCase());
+            //console.log("scenario set found: "+result[1]);
             window.scenario_sets = window.scenario_sets.add(result[1]);
           }
         }
@@ -2061,8 +2063,9 @@
 
     function strip_punct(str){
       var d = str.replace(/-/g, ' ');
-      d = d.replace(/[!.?'']+/g, '');
+      d = d.replace(/[!.?'"]+/g, '');
       d = d.replace(/^The /, '');
+      d = d.replace(/&#39;/, '');
       d = d.normalize('NFD').replace(/[\u0300-\u036f]/g, "");
       return d;
     }
@@ -2261,8 +2264,10 @@
               // Now test for set too!
               var result = u.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^\/]+)\/[^.]+\.[^\'\"]+/);
               if(result){
-                //console.log("found a set for "+name+": "+result[1]);
+                result[1] = strip_punct(result[1].toLowerCase());
+                console.log("found a set for "+name+": "+result[1]);
                 if(window.scenario_sets.has(result[1])){
+                  console.log(result[1]+" is here!")
                   return true;
                 }
               }
