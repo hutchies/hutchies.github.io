@@ -2255,7 +2255,9 @@
             var decoded = strip_punct(matches[1]);
             var d_name = strip_punct(name);
 
-
+            if(u.match(/\.png$/)){ // Cut icons off
+              return false;
+            }
             //console.log("Comparing "+decoded+" and "+d_name);
 
             if(decoded.toLowerCase().includes(d_name.toLowerCase())){
