@@ -1878,7 +1878,7 @@
       // Need to put scenario logic here so that we don't carry on until we have the scenario info!
       status('Loading scenario set(s)...');
       var scenario = dumb_quotes($('#encounter_select option:selected').text().replace('&#39;', '\''));
-      scenario = scenario.replace(/In/g, 'in');
+      scenario = scenario.replace(/In /g, 'in ');
       //console.log('searching for '+scenario);
       var jqxhr = $.ajax(cors+"http://hallofbeorn.com/LotR?Scenario="+encodeURIComponent(scenario)).done(function(){
         var res = jqxhr.responseText;
