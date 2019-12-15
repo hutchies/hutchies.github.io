@@ -22,6 +22,11 @@
   font-weight: bold;
 }
 
+.floating-controls {
+  position: absolute;
+  bottom: 0;
+}
+
 .current-beat {
   color: red;
 }
@@ -41,7 +46,7 @@
 </style>
 <script src="fraction/fraction.js"></script>
 <!--<script src="metronome/metronome.js"></script>-->
-<script src="metronome/worker.js"></script>
+<!--<script src="metronome/worker.js"></script>-->
 <script src="metronome/monkeypatch.js"></script>
 <script src="pako.js"></script>
 <script src="mespeak.js"></script>
@@ -67,7 +72,14 @@ var loop = true;
 var reset_bn_on_loop = false;
 var tempo_percent = 100;
 var speech = false;
-var blink = true;
+var blink = false;
+var pixels_per_sec = 100;
+var score_canvas;
+var canvas_left_buffer = pixels_per_sec;
+var score_width = 1000;
+var score_canvas_png;
+var anim_id = 0;
+var all_hits = [];
 
 var rhythm = {
   crotchet: Fraction(4,1),
@@ -125,7 +137,7 @@ var rhythm = {
 function tempo_to_string(tempo, british = true){
   var unit = Fraction(tempo.unit.n, tempo.unit.d);
   var bpm = tempo.bpm;
-  console.log("making string of "+tempo.unit+" and "+tempo.bpm);
+  //console.log("making string of "+tempo.unit+" and "+tempo.bpm);
   //console.log(JSON.stringify(tempo.unit));
 
   if(!british){
@@ -211,14 +223,33 @@ function Metre(num, denom){
   this.denom = Fraction(denom); // will this work with alternatives?
   this.click_bpm = function(tempo){
     return Fraction(tempo.bpm).div(tempo.unit).mul(this.denom);
-  }
+  };
   this.bar_bpm = function(tempo){
     return Fraction(this.click_bpm(tempo), this.num);
-  }
+  };
+  this.click_duration = function(tempo){
+    var top = Fraction(60).mul(tempo.unit);
+    var bottom = Fraction(tempo.bpm).mul(this.denom);
+    return top.div(bottom);
+  };
+  this.bar_duration = function(tempo){
+    return this.click_duration(tempo).mul(this.num);
+  };
 }
 
 var default_tempo = new Tempo(rhythm.crotchet, 120);
 var default_metre = new Metre(4, 4);
+
+function Bars(tempo = default_tempo, metre = default_metre, bars = 1, rehearsal = undefined){
+  this.tempo = tempo;
+  this.metre = metre;
+  this.bars = bars;
+  this.rehearsal = rehearsal;
+  this.duration = {
+    // HERE
+  }
+}
+
 
 var current_params = {
   tempo: default_tempo,
@@ -236,6 +267,7 @@ function unroll(rolled){
   var unrolled = [];
   var working_tempo = default_tempo;
   var working_metre = default_metre;
+  var running_end = 0.0;
   for (block of rolled){
     //console.log("Block info: "+JSON.stringify(block));
     var b = {};
@@ -265,9 +297,15 @@ function unroll(rolled){
             delete b.rehearsal;
           }
         }
+        running_end += b.metre.bar_duration(b.tempo).valueOf();
+        b.end_time = running_end;
+        //console.log('ends at '+running_end);
         unrolled.push(b);
       }
     }else{
+      running_end += b.metre.bar_duration(b.tempo).valueOf();
+      b.end_time = running_end;
+      //console.log('ends at '+running_end);
       unrolled.push(b);
     }
   }
@@ -278,9 +316,11 @@ function metronome_init(){
   audioContext = new AudioContext();
   timerWorker = new Worker("metronome/worker.js");
 
+  console.log('init');
+
   timerWorker.onmessage = function(e) {
     if (e.data == "tick") {
-      //console.log('tick');
+      console.log('tick');
       scheduler();
     } else {
       console.log("message: " + e.data);
@@ -300,6 +340,7 @@ function scheduler() {
     scheduleNote(current_beat, nextNoteTime);
     next_beat();
   }
+  //draw_current_beat();
 }
 
 function max_beats(){
@@ -361,9 +402,10 @@ function next_beat(){
 
   // We are actually scheduling the next beat here, so highlight the last one (bit of a cheat I know)
   if(current_beat == 0){
-    scroll_to_bar();
+    //scroll_to_bar();
   }
-  highlight_beat();
+  //highlight_beat();
+  draw_current_beat();
   flash();
 
   if(working_bars[current_bar] == undefined){
@@ -371,7 +413,7 @@ function next_beat(){
     return;
   }
 
-  console.log("tempo is "+tempo_to_string(working_bars[current_bar].tempo));
+  //console.log("tempo is "+tempo_to_string(working_bars[current_bar].tempo));
 
   var secondsPerBeat = Fraction(60).div(working_bars[current_bar].metre.click_bpm(working_bars[current_bar].tempo)).mul(percent);
     nextNoteTime += secondsPerBeat.valueOf();    // Add beat length to last beat time
@@ -465,7 +507,7 @@ function create_table(b){
     if(num != undefined){
       current_bar = num;
       current_beat = 0;
-      highlight_beat();
+      //highlight_beat();
     }
   });
 
@@ -475,7 +517,7 @@ function create_table(b){
     if(num != undefined){
       current_bar = num;
       current_beat = 0;
-      highlight_beat();
+      //highlight_beat();
     }
     play();
   });
@@ -488,11 +530,189 @@ function highlight_beat(){
   $('.current-bar').removeClass('current-bar');
   $('#bar-'+current_bar).addClass('current-bar');
 
+  //draw_current_beat();
   //console.log($('#beat-'+current_bar+"-"+current_beat));
 }
 
 function scroll_to_bar(){
   $('#bar-'+(current_bar))[0].scrollIntoView(true);
+}
+
+function hits_from_unrolled(unrolled){
+  var hits = [];
+  var loc = 0.0;
+  for(bar of unrolled){
+    hits.push({
+      weight: 1,
+      time: loc
+    });
+    for(var i = 1; i < bar.metre.num; i++){
+      // add more clever subdivisions HERE
+      loc += bar.metre.click_duration(bar.tempo).valueOf();
+      hits.push({
+        weight: 0.5,
+        time: loc
+      });
+    }
+    loc += bar.metre.click_duration(bar.tempo).valueOf();
+  }
+  return hits;
+}
+
+function draw_beat(ctx, time, weight, trans = 0){
+  // var canvas_left_buffer = 1;
+  var x = time * pixels_per_sec + canvas_left_buffer - trans;
+  if(x == canvas_left_buffer){
+    console.log('clash');
+    return; // avoid clash
+  }
+  //console.log('drawing beat at '+x);
+  ctx.moveTo(x, 50);
+  ctx.lineTo(x, 50 + (weight*100));
+}
+
+function add_hit(time, h){
+  var rounded_down = Math.floor(time);
+  if(typeof all_hits[rounded_down] === 'undefined'){
+    // make new
+    all_hits[rounded_down] = [];
+  }
+  all_hits[rounded_down].push(h);
+}
+
+function collate_hits(bars){
+  all_hits = [];
+  var loc = 0.0;
+  for(bar of bars){
+    add_hit(loc, {
+      weight: 1,
+      time: loc
+    });
+    for(var i = 1; i < bar.metre.num; i++){
+      // add more clever subdivisions HERE
+      loc += bar.metre.click_duration(bar.tempo).valueOf();
+      add_hit(loc, {
+        weight: 0.5,
+        time: loc
+      });
+    }
+    loc += bar.metre.click_duration(bar.tempo).valueOf();
+  }
+}
+
+
+function draw_score(){
+  var bars = unroll(m);
+  var loc = 0.0;
+  var final_time = bars[bars.length-1].end_time;
+  //console.log('last place:'+final_time);
+
+  score_canvas = document.createElement('canvas');
+  var ctx = score_canvas.getContext("2d");
+  ctx.canvas.width = (final_time+2) * pixels_per_sec; // Give a second's worth of space on either side
+  ctx.canvas.height = 200; // For now...
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 3;
+
+  ctx.beginPath();
+
+  for(bar of bars){
+    // first beat
+    draw_beat(ctx, loc, 1);
+    for(var i = 1; i < bar.metre.num; i++){
+      // add more clever subdivisions HERE
+      loc += bar.metre.click_duration(bar.tempo).valueOf();
+      draw_beat(ctx, loc, 0.5);
+    }
+    loc += bar.metre.click_duration(bar.tempo).valueOf();
+  }
+
+  ctx.stroke();
+  ctx.closePath();
+
+  score_canvas_png = new Image();
+  score_canvas_png.src = score_canvas.toDataURL("image/png");
+}
+
+function imgLoaded(imgElement) {
+  return imgElement.complete && imgElement.naturalHeight !== 0;
+}
+
+var timer = function(name) {
+    var start = performance.now();
+    return {
+        stop: function() {
+            var end  = performance.now();
+            var time = end - start;
+            console.log('Timer:', name, 'finished in', time, 'ms');
+        }
+    }
+};
+
+function draw_playhead(){
+  var ctx = document.getElementById('beat_canvas').getContext('2d');
+  ctx.strokeStyle = '#ff0000';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(canvas_left_buffer, 0);
+  ctx.lineTo(canvas_left_buffer, 200);
+  ctx.stroke();
+  ctx.closePath();
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 3;
+}
+
+function draw_current_beat(){
+  // Go back and sort this out: it's inconsistent...
+  var trans = 0;
+  var static_image = false;
+  var now = 0;
+  //console.log('width='+score_canvas.width);
+  var ctx = document.getElementById('beat_canvas').getContext('2d');
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  if(audioContext){
+    now = audioContext.currentTime;
+    trans = now * pixels_per_sec;
+    //ctx.translate(-trans,0);
+  }
+
+  //ctx.drawImage(score_canvas, 0, 0);
+  if(static_image){
+    //var t = timer('Drawing');
+    //if(imgLoaded(score_canvas_png)) ctx.drawImage(score_canvas_png, trans, 0, score_width, 200, 0, 0, score_width, 200);
+    //t.stop();
+  }else{
+    // draw interactively
+    //draw_beat(ctx, loc, 0.5);
+    //var t = timer('Drawing');
+    ctx.beginPath();
+
+    var start_time = Math.floor(now-(canvas_left_buffer/pixels_per_sec));
+    if(start_time < 0) start_time = 0;
+    var end_time = Math.ceil(start_time+score_width/pixels_per_sec);
+    //console.log('between '+start_time+' and '+end_time);
+    for(var i = start_time; i <= end_time; i++){
+      if(i == all_hits.length) break;
+      for(hit of all_hits[i]){
+        draw_beat(ctx, hit.time, hit.weight, trans);
+      }
+    }
+
+    ctx.stroke();
+    ctx.closePath();
+    draw_playhead();
+    //t.stop();
+  }
+
+  //ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+}
+
+function animate_beats(){
+  draw_current_beat();
+  scheduler();
+  if(isPlaying) anim_id = window.requestAnimationFrame(animate_beats);
 }
 
 function play() {
@@ -501,20 +721,17 @@ function play() {
   //audioContext = new AudioContext(); // Here so it is from a tap for Safari
   //audioContext = window.AudioContext || window.webkitAudioContext; // Here so it is from a tap for Safari
 
-  audioContext.resume();
-
   if (isPlaying) {
-
-    working_bars = unroll(m);
+    audioContext.resume();
 
     current_beat = 0;
     //current_bar = 0;
     real_bar_number = current_bar + 1;
     //set_params();
 
-    $('#beat_table').addClass('not-current');
+    /*$('#beat_table').addClass('not-current');
     highlight_beat();
-    scroll_to_bar();
+    scroll_to_bar();*/
     flash();
 
     if(speech){
@@ -523,15 +740,20 @@ function play() {
     }
 
     nextNoteTime = audioContext.currentTime;
-    timerWorker.postMessage("start");
+    //!!
+    //timerWorker.postMessage("start");
+    anim_id = window.requestAnimationFrame(animate_beats);
     document.getElementById("play").innerHTML = "Pause";
     $('#reset').removeClass('ui-disabled');
+    //$('#play_controls').addClass('floating-controls');
   } else {
 
     $('#beat_table').removeClass('not-current');
+    //$('#play_controls').removeClass('floating-controls');
 
 
-    timerWorker.postMessage("stop");
+    //timerWorker.postMessage("stop");
+    //window.cancelAnimationFrame(animate_beats);
     document.getElementById("play").innerHTML = "Play";
     $('#reset').addClass('ui-disabled');
   }
@@ -662,11 +884,21 @@ function m_changed(){
 
   mirror_structure(); // to make sure it is displayed canonically (good idea or not?)
   set_gzipped();
-  create_table(m);
+  //create_table(m);
+
+  working_bars = unroll(m);
+  /*hits = hits_from_unrolled(working_bars);
+  console.log(hits);
+  draw_hits(hits);*/
+  //draw_score();
+  collate_hits(working_bars);
+  draw_playhead();
+
+  draw_current_beat();
 }
 
 function set_gzipped(){
-  console.log(JSON.stringify(m));
+  //console.log(JSON.stringify(m));
   var compressed = pako.deflateRaw(JSON.stringify(m), {to: 'string'});
   $('#gz_url').val("http://hutchies.github.io/metronome.html?sequence="+encodeURIComponent(compressed));
 }
@@ -697,6 +929,13 @@ $(document).ready(function(){
   metronome_init();
   speech_init();
 
+  var ctx = document.getElementById('beat_canvas').getContext('2d');
+  ctx.canvas.width = score_width;
+  ctx.canvas.height = 200;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  draw_playhead();
+
   var urlParams = new URLSearchParams(window.location.search);
 
   //alert(urlParams);
@@ -709,11 +948,10 @@ $(document).ready(function(){
     //console.log(infl);
     m = JSON.parse(infl);
     $('#play_link').click();
-
-    m_changed();
     //m_changed();
     //mirror_structure();
   }
+  m_changed();
 
   //$('#reset').button('disable');
   //$('#reset').button('refresh');
@@ -766,24 +1004,24 @@ $(document).on('pageinit', function(){
   </div>
   <div id="playback" class="ui-content main">
     <div class="ui-body ui-body-a ui-corner-all">
+      <div id="play_controls">
     <button data-inline="true" id="play">Play</button>
     <button data-inline="true" class="ui-disabled" id="reset">Reset</button>
-    <div id="play_reh"></div>
 <div data-role="fieldcontain">
     <label for="percent">Play at % of final tempo:</label>
     <input type="range" name="percent" id="percent" value="100" min="1" max="200" />
   </div>
+</div>
   <div data-role="collapsible">
     <h4>Playback options</h4>
     <label for="loop">Loop at end of piece?</label><input id="loop" type="checkbox" checked>
-    <label for="blink">Flash screen in time?</label><input id="blink" type="checkbox" checked>
+    <label for="blink">Flash screen in time?</label><input id="blink" type="checkbox" >
   </div>
 </div>
 <div class="ui-body ui-body-a ui-corner-all">
 <h3>Piece structure:</h3>
-Click a line to move start bar to there. Double-click to start playback from there. Click line whilst playing to pause.
 <div class="play_table" id="beat_table"></div>
-  </div>
+<canvas id="beat_canvas"></canvas>
 </div>
 <div id="export" class="ui-content">
   <div>Encoded in URL format: <input id="gz_url" type="text"><button data-inline="true" id="copy">Copy</button></div>
