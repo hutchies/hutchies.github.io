@@ -767,6 +767,7 @@ function draw_current_beat(){
 }
 
 function animate_beats(){
+  console.log('animating...');
   draw_current_beat();
   scheduler();
   if(isPlaying) anim_id = window.requestAnimationFrame(animate_beats);
