@@ -720,6 +720,7 @@ function draw_current_beat(){
 
   if(audioContext){
     now = audioContext.currentTime;
+    console.log(now);
     while((now > double_bar)&&(loop)){
       // Loop back
       //console.log('looping');
@@ -767,7 +768,7 @@ function draw_current_beat(){
 }
 
 function animate_beats(){
-  console.log('animating...');
+  //console.log('animating...');
   draw_current_beat();
   scheduler();
   if(isPlaying) anim_id = window.requestAnimationFrame(animate_beats);
@@ -775,6 +776,7 @@ function animate_beats(){
 
 function play() {
   isPlaying = !isPlaying;
+  console.log('pressed play');
 
   //audioContext = new AudioContext(); // Here so it is from a tap for Safari
   //audioContext = window.AudioContext || window.webkitAudioContext; // Here so it is from a tap for Safari
