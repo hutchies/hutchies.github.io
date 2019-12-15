@@ -77,9 +77,12 @@ var pixels_per_sec = 100;
 var score_canvas;
 var canvas_left_buffer = pixels_per_sec;
 var score_width = 1000;
+var score_height = 300;
 var score_canvas_png;
 var anim_id = 0;
 var all_hits = [];
+var canvas_top_buffer = 80;
+var double_bar = 0;
 
 var rhythm = {
   crotchet: Fraction(4,1),
@@ -559,16 +562,45 @@ function hits_from_unrolled(unrolled){
   return hits;
 }
 
+function draw_bar_number(ctx, time, bn, trans =0){
+  var px = canvas_top_buffer/4;
+  ctx.font = px+"px sans-serif";
+  ctx.fillStyle = "#000000";
+  var x = time * pixels_per_sec + canvas_left_buffer - trans;
+  ctx.fillText(bn, x, 2 * (canvas_top_buffer/3));
+  ctx.fillStyle = "#ffffff";
+}
+
+function draw_rehearsal(ctx, time, reh, trans = 0){
+  var px = canvas_top_buffer/2;
+  ctx.font = "bold "+px+"px sans-serif";
+  ctx.fillStyle = "#000000";
+  var x = time * pixels_per_sec + canvas_left_buffer - trans;
+  ctx.fillText(reh, x, 0);
+  ctx.fillStyle = "#ffffff";
+}
+
 function draw_beat(ctx, time, weight, trans = 0){
   // var canvas_left_buffer = 1;
   var x = time * pixels_per_sec + canvas_left_buffer - trans;
-  if(x == canvas_left_buffer){
+  /*if(x == canvas_left_buffer){
     console.log('clash');
     return; // avoid clash
-  }
+  }*/
   //console.log('drawing beat at '+x);
-  ctx.moveTo(x, 50);
-  ctx.lineTo(x, 50 + (weight*100));
+  ctx.moveTo(x, canvas_top_buffer);
+  ctx.lineTo(x, canvas_top_buffer + (weight*100));
+}
+
+function draw_end(ctx, time, trans = 0){
+  var x = time * pixels_per_sec + canvas_left_buffer - trans;
+  /*if(x == canvas_left_buffer){
+    console.log('clash');
+    return; // avoid clash
+  }*/
+  //console.log('drawing beat at '+x);
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x, score_height);
 }
 
 function add_hit(time, h){
@@ -583,11 +615,15 @@ function add_hit(time, h){
 function collate_hits(bars){
   all_hits = [];
   var loc = 0.0;
+  var bar_num = 1;
   for(bar of bars){
-    add_hit(loc, {
+    h = {
       weight: 1,
-      time: loc
-    });
+      time: loc,
+      bn: bar_num
+    };
+    if(bar.rehearsal !== undefined) h.rehearsal = bar.rehearsal;
+    add_hit(loc, h);
     for(var i = 1; i < bar.metre.num; i++){
       // add more clever subdivisions HERE
       loc += bar.metre.click_duration(bar.tempo).valueOf();
@@ -597,11 +633,13 @@ function collate_hits(bars){
       });
     }
     loc += bar.metre.click_duration(bar.tempo).valueOf();
+    bar_num++;
   }
+  double_bar = loc;//+bars[bars.length-1].metre.click_duration(bar.tempo).valueOf(); // Final time
 }
 
 
-function draw_score(){
+/*function draw_score(){
   var bars = unroll(m);
   var loc = 0.0;
   var final_time = bars[bars.length-1].end_time;
@@ -632,7 +670,7 @@ function draw_score(){
 
   score_canvas_png = new Image();
   score_canvas_png.src = score_canvas.toDataURL("image/png");
-}
+}*/
 
 function imgLoaded(imgElement) {
   return imgElement.complete && imgElement.naturalHeight !== 0;
@@ -655,7 +693,7 @@ function draw_playhead(){
   ctx.lineWidth = 5;
   ctx.beginPath();
   ctx.moveTo(canvas_left_buffer, 0);
-  ctx.lineTo(canvas_left_buffer, 200);
+  ctx.lineTo(canvas_left_buffer, score_height);
   ctx.stroke();
   ctx.closePath();
   ctx.strokeStyle = '#000000';
@@ -673,6 +711,11 @@ function draw_current_beat(){
 
   if(audioContext){
     now = audioContext.currentTime;
+    while((now > double_bar)&&(loop)){
+      // Loop back
+      //console.log('looping');
+      now -= double_bar;
+    }
     trans = now * pixels_per_sec;
     //ctx.translate(-trans,0);
   }
@@ -687,7 +730,6 @@ function draw_current_beat(){
     //draw_beat(ctx, loc, 0.5);
     //var t = timer('Drawing');
     ctx.beginPath();
-
     var start_time = Math.floor(now-(canvas_left_buffer/pixels_per_sec));
     if(start_time < 0) start_time = 0;
     var end_time = Math.ceil(start_time+score_width/pixels_per_sec);
@@ -695,8 +737,14 @@ function draw_current_beat(){
     for(var i = start_time; i <= end_time; i++){
       if(i == all_hits.length) break;
       for(hit of all_hits[i]){
+        if(hit.rehearsal !== undefined) draw_rehearsal(ctx, hit.time, hit.rehearsal, trans);
         draw_beat(ctx, hit.time, hit.weight, trans);
+        if(hit.bn !== undefined) draw_bar_number(ctx, hit.time, hit.bn, trans);
       }
+    }
+    if(double_bar < end_time){
+      // Close to end
+      draw_end(ctx, double_bar, trans);
     }
 
     ctx.stroke();
@@ -722,10 +770,11 @@ function play() {
   //audioContext = window.AudioContext || window.webkitAudioContext; // Here so it is from a tap for Safari
 
   if (isPlaying) {
-    audioContext.resume();
+
+    audioContext = new AudioContext();
 
     current_beat = 0;
-    //current_bar = 0;
+    current_bar = 0;
     real_bar_number = current_bar + 1;
     //set_params();
 
@@ -749,6 +798,9 @@ function play() {
   } else {
 
     $('#beat_table').removeClass('not-current');
+    audioContext.close();
+    audioContext = new AudioContext();
+    draw_current_beat();
     //$('#play_controls').removeClass('floating-controls');
 
 
@@ -840,22 +892,26 @@ function load_new(){
     var b = {};
 
     for(j in units){
-      //console.log("''"+units[j]+"''");
+      console.log("''"+units[j]+"''");
       if(/^[^:]+:$/.test(units[j])){
         rehearsal = units[j].slice(0,-1);
+        console.log('rehearsal='+rehearsal);
         continue;
       }
       if(/^x[0-9]+$/.test(units[j])){
         bars = units[j].slice(1);
+        console.log('bars='+bars);
         continue;
       }
-      if(/^[0-9]+\/[0-9+]$/.test(units[j])){
+      if(/^[0-9]+\/[0-9]+$/.test(units[j])){
         metre = units[j];
+        console.log('metre='+metre);
         continue;
       }
       if(/^[0-9sbmcqdh]+=[0-9]+$/.test(units[j])){
+        console.log('tempo is '+units[j]);
         var [scrap, r, bpm] = units[j].match(/^([0-9sbmcqdh]+)\=([0-9]+)$/);
-        //console.log('found rhythm '+r+' and bpm '+bpm);
+        console.log('found rhythm '+r+' and bpm '+bpm);
         tempo = new Tempo(rhythm.fromText(r), bpm);
       }
     }
@@ -931,8 +987,10 @@ $(document).ready(function(){
 
   var ctx = document.getElementById('beat_canvas').getContext('2d');
   ctx.canvas.width = score_width;
-  ctx.canvas.height = 200;
+  ctx.canvas.height = score_height;
   ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   draw_playhead();
 
