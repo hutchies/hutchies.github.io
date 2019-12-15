@@ -784,6 +784,7 @@ function play() {
   if (isPlaying) {
 
     audioContext = new AudioContext();
+    audioContext.resume();
 
     current_beat = 0;
     current_bar = 0;
