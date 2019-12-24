@@ -27,6 +27,12 @@
   bottom: 0;
 }
 
+.piece_row {
+  border: 1px solid black;
+  background-color: whitesmoke;
+}
+
+
 .current-beat {
   color: red;
 }
@@ -181,43 +187,6 @@ function tempo_to_string(tempo, british = true){
 function Tempo(unit, bpm){
   this.unit = unit;
   this.bpm = bpm;
-
-  /*this.makeString = function(british = true){
-    console.log("making string of "+this.unit+" and "+this.bpm);
-
-    if(!british){
-      return this.unit.toString() + "=" + this.bpm;
-    }else{
-      var unit_s;
-      switch(this.unit){
-        case rhythm.semibreve:
-          unit_s = 'sb';
-          break;
-        case rhythm.minim:
-          unit_s = 'm';
-          break;
-        case rhythm.crotchet:
-          unit_s = 'c';
-          break;
-        case rhythm.quaver:
-          unit_s = 'q';
-          break;
-        case rhythm.semiquaver:
-          unit_s = 'sq';
-          break;
-        case rhythm.demisemiquaver:
-          unit_s = 'ds';
-          break;
-        case rhythm.hemidemisemiquaver:
-          unit_s = 'hd';
-          break;
-        default:
-          unit_s = this.unit.toString();
-          break;
-      }
-      return unit_s + "=" + this.bpm;
-    }
-  }*/
 }
 
 function str_metre(str){
@@ -360,19 +329,6 @@ function max_beats(){
   return beats;
 }
 
-/*function set_params(){ // !! Should be unnecessary!
-  var b = working_bars[current_bar];
-  //console.log("Bar "+current_bar+", tempo "+b.tempo+", metre "+b.metre);
-  if(b.tempo !== undefined){
-    //console.log("New tempo info");
-    current_params.tempo = b.tempo;
-  }
-  if(b.metre !== undefined){
-    //console.log("New metre info");
-    current_params.metre = str_metre(b.metre);
-  }
-}*/
-
 function next_bar(){
   current_beat = 0;
   current_bar++;
@@ -389,8 +345,6 @@ function next_bar(){
       return; //avoid any crashes on basis of current_bar being too big
     }
   }
-  //scroll_to_bar();
-  //set_params(); //Update with current bar
 }
 
 function flash(){
@@ -404,19 +358,12 @@ function flash(){
       setTimeout(function(){
         $('.main').removeClass(c);
       }, 50)
-      /*$('.play_table').stop(.animate({backgroundColor: 'black'}, {duration: 100});*/
   }
 }
 
 function next_beat(){
   var percent = Fraction(100).div(tempo_percent);
-  //console.log(JSON.stringify(working_bars[current_bar].metre));
 
-  // We are actually scheduling the next beat here, so highlight the last one (bit of a cheat I know)
-  if(current_beat == 0){
-    //scroll_to_bar();
-  }
-  //highlight_beat();
   draw_current_beat();
   flash();
 
@@ -424,8 +371,6 @@ function next_beat(){
     play();
     return;
   }
-
-  //console.log("tempo is "+tempo_to_string(working_bars[current_bar].tempo));
 
   var secondsPerBeat = Fraction(60).div(working_bars[current_bar].metre.click_bpm(working_bars[current_bar].tempo)).mul(percent);
     nextNoteTime += secondsPerBeat.valueOf();    // Add beat length to last beat time
@@ -478,76 +423,6 @@ function scheduleNote(beatNumber, time){
 
     //source.start(time);
   }
-}
-
-function create_table(b){
-  var bars = unroll(b);
-  //var html = $('table');
-  var html = '<table class="bars">';
-  var bn = 0;
-  for(bar of bars){
-    //var row = $('tr');
-    var real_bn = bn+1;
-    var reh = "<td></td>"; // Default for no rehearsal mark
-    if(bar.rehearsal !== undefined){
-      //console.log('found mark '+bar.rehearsal);
-      reh = '<td id="reh-'+bar.rehearsal+'"><b>('+bar.rehearsal+')</b></td>';
-    }
-    var row = '<tr class="bar" id="bar-'+bn+'">'+reh+'<td class="bar_num">'+real_bn+": </td>";
-
-    for(let i = 0; i < bar.metre.num; i++){
-      //console.log("beat-"+bn+'-'+i);
-      var col = '<td id="beat-'+bn+'-'+i+'"> &bull; </td>';
-      //var col = $('td').append(i);
-      //row.append(col);
-      row += col;
-    }
-    html += row+"</tr>";
-    //html.append(row);
-    bn++;
-  }
-  html += "</table>";
-  //console.log(html);
-  $('#beat_table').html(html);
-  $('.bar').on('click', function(){
-    //console.log(this);
-    if(isPlaying){
-      play();
-    }
-    var id = $(this).attr('id');
-    var [scrap, num] = id.match(/bar-([0-9]+)/);
-    if(num != undefined){
-      current_bar = num;
-      current_beat = 0;
-      //highlight_beat();
-    }
-  });
-
-  $('.bar').on('dblclick', function(){
-    var id = $(this).attr('id');
-    var [scrap, num] = id.match(/bar-([0-9]+)/);
-    if(num != undefined){
-      current_bar = num;
-      current_beat = 0;
-      //highlight_beat();
-    }
-    play();
-  });
-}
-
-function highlight_beat(){
-  $('.current-beat').removeClass('current-beat');
-  $('#beat-'+current_bar+"-"+current_beat).addClass('current-beat');
-
-  $('.current-bar').removeClass('current-bar');
-  $('#bar-'+current_bar).addClass('current-bar');
-
-  //draw_current_beat();
-  //console.log($('#beat-'+current_bar+"-"+current_beat));
-}
-
-function scroll_to_bar(){
-  $('#bar-'+(current_bar))[0].scrollIntoView(true);
 }
 
 function hits_from_unrolled(unrolled){
@@ -647,40 +522,6 @@ function collate_hits(bars){
   double_bar = loc;//+bars[bars.length-1].metre.click_duration(bar.tempo).valueOf(); // Final time
 }
 
-
-/*function draw_score(){
-  var bars = unroll(m);
-  var loc = 0.0;
-  var final_time = bars[bars.length-1].end_time;
-  //console.log('last place:'+final_time);
-
-  score_canvas = document.createElement('canvas');
-  var ctx = score_canvas.getContext("2d");
-  ctx.canvas.width = (final_time+2) * pixels_per_sec; // Give a second's worth of space on either side
-  ctx.canvas.height = 200; // For now...
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 3;
-
-  ctx.beginPath();
-
-  for(bar of bars){
-    // first beat
-    draw_beat(ctx, loc, 1);
-    for(var i = 1; i < bar.metre.num; i++){
-      // add more clever subdivisions HERE
-      loc += bar.metre.click_duration(bar.tempo).valueOf();
-      draw_beat(ctx, loc, 0.5);
-    }
-    loc += bar.metre.click_duration(bar.tempo).valueOf();
-  }
-
-  ctx.stroke();
-  ctx.closePath();
-
-  score_canvas_png = new Image();
-  score_canvas_png.src = score_canvas.toDataURL("image/png");
-}*/
-
 function imgLoaded(imgElement) {
   return imgElement.complete && imgElement.naturalHeight !== 0;
 }
@@ -720,7 +561,7 @@ function draw_current_beat(){
 
   if(audioContext){
     now = audioContext.currentTime;
-    console.log(now);
+    //console.log(now);
     while((now > double_bar)&&(loop)){
       // Loop back
       //console.log('looping');
@@ -785,15 +626,13 @@ function play() {
 
     audioContext = new AudioContext();
     audioContext.resume();
+    //console.log('resumed');
 
     current_beat = 0;
     current_bar = 0;
     real_bar_number = current_bar + 1;
     //set_params();
 
-    /*$('#beat_table').addClass('not-current');
-    highlight_beat();
-    scroll_to_bar();*/
     flash();
 
     if(speech){
@@ -810,7 +649,6 @@ function play() {
     //$('#play_controls').addClass('floating-controls');
   } else {
 
-    $('#beat_table').removeClass('not-current');
     audioContext.close();
     audioContext = new AudioContext();
     draw_current_beat();
@@ -953,7 +791,6 @@ function m_changed(){
 
   mirror_structure(); // to make sure it is displayed canonically (good idea or not?)
   set_gzipped();
-  //create_table(m);
 
   working_bars = unroll(m);
   /*hits = hits_from_unrolled(working_bars);
@@ -964,6 +801,55 @@ function m_changed(){
   draw_playhead();
 
   draw_current_beat();
+  create_table(m);
+}
+
+function create_table(piece){
+  var table = $('<table>');
+  var bn = 0;
+  for(block of piece){
+    var b = {};
+    var bar_num = ++bn;
+    var row = $('<tr>').addClass('piece_row');
+    var reh_cell;
+    if(block.rehearsal !== undefined){
+      reh_cell = $('<td>').html('Mark '+block.rehearsal+' - ');
+    }else{
+      reh_cell = $('<td>');
+    }
+    if(block.bn !== undefined){
+      bar_num = block.bn;
+    }
+    var bar_cell = $('<td>').html("<b>"+bar_num+":</b>");
+    var b_count = "1 bar of";
+    if(block.bars > 1){
+      b_count = block.bars+" bars of";
+      bn += block.bars - 1;
+      console.log('bar count now '+b_count);
+    }
+    var bc_cell = $('<td>').html(b_count);
+    var metre_cell;
+    if(block.metre !== undefined){
+      metre_cell = $('<td>').html(metre_str(block.metre)+' ');
+    }else{
+      metre_cell = $('<td>').html('same metre ');
+    }
+
+    var tempo_cell;
+    if(block.tempo !== undefined){
+      tempo_cell = $('<td>').html('at tempo '+tempo_to_string(block.tempo, true)+' ');
+    }else{
+      tempo_cell = $('<td>').html('at same tempo');
+    }
+    row.append(reh_cell);
+    row.append(bar_cell);
+    row.append(bc_cell);
+    row.append(metre_cell);
+    row.append(tempo_cell);
+    table.append(row);
+  }
+  //console.log(table);
+  $('#piece_table').html(table);
 }
 
 function set_gzipped(){
@@ -1088,10 +974,10 @@ $(document).on('pageinit', function(){
     <label for="loop">Loop at end of piece?</label><input id="loop" type="checkbox" checked>
     <label for="blink">Flash screen in time?</label><input id="blink" type="checkbox" >
   </div>
+  <h3>Piece structure:</h3>
+  <div class="piece_structure" id="piece_table"></div>
 </div>
 <div class="ui-body ui-body-a ui-corner-all">
-<h3>Piece structure:</h3>
-<div class="play_table" id="beat_table"></div>
 <canvas id="beat_canvas"></canvas>
 </div>
 <div id="export" class="ui-content">
