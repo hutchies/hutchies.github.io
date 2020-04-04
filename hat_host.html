@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Host the Hat Game!</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/7.13.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/7.13.2/firebase-firestore.js"></script>
+  <script>
+  $(document).ready(function() {
+    $('#start_adding').on('click', setup_game);
+    $('#add_word').on('click', add_word);
+    $('#start_adding').on('click', start_game);
+
+    var firebaseConfig = {
+    apiKey: "AIzaSyDJz4s1AktoO9kHHVAWHq0PzUmF6FkWogY",
+    authDomain: "group-games-9ea0c.firebaseapp.com",
+    databaseURL: "https://group-games-9ea0c.firebaseio.com",
+    projectId: "group-games-9ea0c",
+    storageBucket: "group-games-9ea0c.appspot.com",
+    messagingSenderId: "405219687766",
+    appId: "1:405219687766:web:2a4fd6b4ab1258cfe56af7",
+    measurementId: "G-FHG2RLCLCX"
+    };
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    window.db = firebase.firestore();
+
+    $('#adding_words').hide();
+  });
+
+  function setup_game(){
+    window.group_name = $('#group_name').val().replace(/[^0-9a-z() ]/gi, '');
+    window.words_per_player = $('#words_per_player').val();
+    db.collection("hat_game").doc(window.group_name).set({
+      players: 1,
+      words_per_player: window.words_per_player,
+      round_count: 1,
+      round_start: 0,
+      words: []
+    });
+    // NB silently overwrites duplicate games
+    window.words_left = window.words_per_player;
+    $('#words_left').text(window.words_left);
+    db.collection("hat_game").doc(window.group_name).onSnapshot(function(data){ update_stats(data);});
+    $('#making_game').hide();
+    $('#adding_words').show();
+  }
+
+  function update_stats(data){
+    console.log(data);
+    var players = data.players;
+    if(players == 1){
+      $('#num_players').text('1 player');
+    }else{
+      $('#num_players').text(players+' players');
+    }
+
+    var words = data.words.length;
+    if(words == 1){
+      $('#num_words').text('1 word');
+    }else{
+      $('#num_words').text(words+' words');
+    }
+  }
+
+  function add_word(){
+    var word = $('#word_to_add').val().replace(/[^0-9a-z() ]/gi, '');
+    db.collection("hat_game").doc(window.group_name)
+    // NB doesn't check for duplicate words, because we wouldn't in the real game
+  }
+
+  function start_game(){
+
+  }
+  </script>
+</head>
+<body>
+  <div class="w3-container w3-teal">
+  <h1>Host the Hat Game!</h1>
+</div>
+
+<div id="making_game" class="w3-container">
+
+      <p><label><b>Group name:</b></label>
+      <input id="group_name" class="w3-input w3-border" type="text"></p>
+      <p><label><b>Words per player:</b></label>
+      <input id="words_per_player" class="w3-input w3-border" type="number" value="3" min="1" style="width: 100px;"></p>
+      <p><button id="start_adding" class="w3-btn w3-teal">Add words!</button></p>
+</div>
+
+<div id="adding_words" class="w3-container">
+  <p><span id="num_players">1 player</span> in game, <span id="num_words">0 words</span> added so far</p>
+  <p><label><b>Word to add (<span id="words_left">3</span> left):</b></label>
+  <input id="word_to_add" class="w3-input w3-border" type="text"></p>
+  <p><button id="add_word" class="w3-btn w3-teal">Add</button></p>
+  <p><button id="start_game" class="w3-btn w3-teal">Start game!</button></p>
+</div>
+
+</body>
+</html>
