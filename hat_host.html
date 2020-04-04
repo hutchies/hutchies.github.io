@@ -442,9 +442,9 @@
             throw "Document does not exist!";
         }
         var new_words = doc.data().words;
-        if(new_words.length < 1){
+        if(new_words.length <= 1){
           // Can't pass
-          $('#pass').hide(); // Not possible to pass now
+          if(window.current_pass === '') $('#pass').hide(); // Not possible to pass now
         }else{
           $('#pass').show();
         }
@@ -461,6 +461,7 @@
             //console.log('going to pass');
             window.current_word = window.current_pass;
             window.current_pass = '';
+            $('#pass').hide();
             //transaction.update(docRef, { words: new_words });
           }
         }else{
@@ -523,6 +524,8 @@
         }
         var rn = doc.data().round_number+1;
         var spp = $('#seconds_per_player').val();
+        var nw = doc.data().out;
+        console.log(nw);
         transaction.update(docRef, {
             round_ready: 1,
             round_number: rn,
@@ -530,8 +533,8 @@
             last_turn: {},
             current_player: '',
             round_team: '',
-            words: doc.data().out,
-            out: doc.data().words
+            words: nw,
+            out: []
           });
       });
     }).then(function() {
