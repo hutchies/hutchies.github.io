@@ -12,7 +12,22 @@
   $(document).ready(function() {
     $('#start_adding').on('click', setup_game);
     $('#add_word').on('click', add_word);
-    $('#start_adding').on('click', start_game);
+    $('#start_game').on('click', start_game);
+    $('#join_game').on('click', join_game);
+    $('#start_round').on('click', start_round);
+    $('#play_turn').on('click', play_turn);
+    $('#games').on('change', fill_teams_list);
+    $('#pass').on('click', pass);
+    $('#got_it').on('click', got_it);
+    $('#next_round').on('click', next_round);
+    window.number_of_teams = 2;
+    window.host = false;
+    window.current_word = '';
+    window.current_pass = '';
+    window.timer_running = false;
+    window.my_turn = false;
+    window.my_score = 0;
+    window.empty_bag = false;
 
     var firebaseConfig = {
     apiKey: "AIzaSyDJz4s1AktoO9kHHVAWHq0PzUmF6FkWogY",
@@ -27,30 +42,131 @@
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     window.db = firebase.firestore();
-
-    $('#adding_words').hide();
+    fill_games_list();
+    show_phase('making_game');
+    $('#round_count').hide();
+    $('#stats').hide();
   });
 
+  function fill_games_list(){
+    var ref = '';
+    var docRef = db.collection("hat_game").get().then(function(querySnapshot) {
+      querySnapshot.forEach(function(doc) {
+        $('#games').append('<option value="'+doc.id+'">'+doc.id+'</option>');
+        ref = doc.id;
+      });
+      if(ref != '') fill_teams_list();
+    });
+  }
+
+  function fill_teams_list(){
+    var docRef = db.collection("hat_game").doc($('#games').val());
+    $('#teams').text('');
+    docRef.get().then(function(doc) {
+    if (doc.exists) {
+        window.teams = doc.data().teams;
+        window.teams.forEach(function(team){
+          $('#teams').append('<option value="'+team.name+'">'+team.name+'</option>');
+        });
+    } else {
+        // doc.data() will be undefined in this case
+        console.log("No such document!");
+    }
+  }).catch(function(error) {
+    console.log("Error getting document:", error);
+  });
+  }
+
   function setup_game(){
+    window.host = true;
+    window.player_name = $('#player_name').val();
     window.group_name = $('#group_name').val().replace(/[^0-9a-z() ]/gi, '');
     window.words_per_player = $('#words_per_player').val();
+    window.teams = [];
+    for(var i=1; i <= window.number_of_teams; i++){
+      var team_name = $('#team_'+i).val().replace(/[^0-9a-z() ]/gi, '');
+      if(team_name == '') team_name = "Team "+i;
+      window.teams.push({
+                      name: team_name,
+                      players: [],
+                      score: 0
+                    });
+    }
+    window.my_team = window.teams[0].name;
+    window.teams[0].players.push(window.player_name);
+    var spp = $('#seconds_per_player').val();
     db.collection("hat_game").doc(window.group_name).set({
       players: 1,
       words_per_player: window.words_per_player,
-      round_count: 1,
-      round_start: 0,
-      words: []
+      round_number: 1,
+      round_ready: 0, // 1 = ready, -1 = turn in progress
+      round_seconds: spp,
+      round_end: 0,
+      last_turn: {},
+      current_player: '',
+      round_team: '',
+      teams: window.teams,
+      words: [],
+      out: []
     });
     // NB silently overwrites duplicate games
     window.words_left = window.words_per_player;
     $('#words_left').text(window.words_left);
-    db.collection("hat_game").doc(window.group_name).onSnapshot(function(data){ update_stats(data);});
-    $('#making_game').hide();
-    $('#adding_words').show();
+    db.collection("hat_game").doc(window.group_name).onSnapshot(function(doc){ update_stats(doc.data());});
+    show_phase('adding_words');
+    $('#stats').show();
+  }
+
+  function isEmpty(obj) {
+    for(var key in obj) {
+        if(obj.hasOwnProperty(key))
+            return false;
+    }
+    return true;
+  }
+
+  function join_game(){
+    window.player_name = $('#player_name').val();
+    window.group_name = $('#games').val();
+    window.my_team = $('#teams').val();
+    if(window.group_name == "") return; // Don't accept null
+    if(window.my_team == "") window.my_team = window.teams[0].name;
+
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    return transaction.get(docRef).then(function(doc) {
+        if (!doc.exists) {
+            throw "Document does not exist!";
+        }
+        var new_players = doc.data().players + 1;
+        var new_teams = doc.data().teams;
+        // Add player name to list
+        let t = new_teams.find((o, i) => {
+          if (o.name === window.my_team){
+            new_teams[i].players.push(window.player_name);
+            return true;
+          }
+        });
+
+        transaction.update(docRef, { players: new_players, teams: new_teams });
+        // Other info to set up
+        window.words_per_player = doc.data().words_per_player;
+      });
+    }).then(function() {
+        //console.log("Transaction successfully committed!");
+        window.words_left = window.words_per_player;
+        $('#words_left').text(window.words_left);
+        db.collection("hat_game").doc(window.group_name).onSnapshot(function(doc){ update_stats(doc.data());});
+        show_phase('adding_words');
+        $('#stats').show();
+
+        }).catch(function(error) {
+            console.log("Transaction failed: ", error);
+            });
   }
 
   function update_stats(data){
-    console.log(data);
+    //console.log(data);
     var players = data.players;
     if(players == 1){
       $('#num_players').text('1 player');
@@ -64,40 +180,506 @@
     }else{
       $('#num_words').text(words+' words');
     }
+
+    var possible_words = players * window.words_per_player;
+    $('#total_words').text(possible_words);
+
+    $('#round_number').text(data.round_number);
+
+    write_teams(data.teams);
+
+    if(data.round_ready == 1){
+      show_phase('starting_round');
+      $('#set_turn').show();
+      $('#set_round').hide();
+    }
+    if(data.round_ready == -1){
+      show_phase('playing_round');
+      $('#playing_team').text(data.round_team);
+      $('#playing_player').text(data.current_player);
+      $('#seconds_left').text(data.seconds_left);
+      if(data.current_player === window.player_name){
+        $('#current_player').show();
+        $('#watching_player').hide();
+
+      }else{
+        $('#watching_player').show();
+        $('#current_player').hide();
+      }
+    }
+
+    if(data.round_end != 0 && !window.timer_running){
+      start_timer(data.round_end);
+    }
+
+    if(data.round_ready == -2){
+      // Round just finished!
+      show_phase('starting_round');
+      $('#set_turn').hide();
+      if(window.host) $('#set_round').show();
+    }
+
+    if(!isEmpty(data.last_turn)){
+      // Fill last turn data and show
+      $('#last_player').text(data.last_turn.player);
+      $('#last_score').text(data.last_turn.score);
+      $('#last_turn').show();
+    }else{
+      $('#last_turn').hide();
+    }
+  }
+
+  function hide_extras(){
+    $('#stats').hide();
+    $('#header').hide();
+    $('#round_count').hide();
+  }
+
+  function show_extras(){
+    $('#stats').show();
+    $('#header').show();
+    $('#round_count').show();
   }
 
   function add_word(){
     var word = $('#word_to_add').val().replace(/[^0-9a-z() ]/gi, '');
-    db.collection("hat_game").doc(window.group_name)
-    // NB doesn't check for duplicate words, because we wouldn't in the real game
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    // This code may get re-run multiple times if there are conflicts.
+    return transaction.get(docRef).then(function(doc) {
+        if (!doc.exists) {
+            throw "Document does not exist!";
+        }
+
+        var new_words = doc.data().words;
+        new_words.push(word);
+        // NB doesn't check for duplicate words, because we wouldn't in the real game
+        transaction.update(docRef, { words: new_words });
+      });
+    }).then(function() {
+        //console.log("Transaction successfully committed!");
+        $('#word_to_add').val('');
+        window.words_left--;
+        $('#words_left').text(window.words_left);
+        if(window.words_left == 0){
+          show_phase('rounds');
+          $('#round_count').show();
+          if(window.host){
+            $('#round_setup').show();
+            $('#round_holder').hide();
+          }else{
+            $('#round_setup').hide();
+            $('#round_holder').show();
+          }
+        }
+        }).catch(function(error) {
+            console.log("Transaction failed: ", error);
+            });
+
   }
 
   function start_game(){
 
   }
+
+  function write_teams(teams_struct){
+    var text = '';
+    teams_struct.forEach(function(t){
+      text += '<p><b>'+t.name+'</b>: ';
+      for(var i=0;i < t.players.length; i++){
+        text += t.players[i];
+        if(t.players[i] === window.player_name) text += ' (you)';
+        if(i < t.players.length-1) text += ', ';
+      }
+      text += '. <b>Score: '+t.score+'</b></p>';
+    });
+    $('#teams_text').html(text);
+  }
+
+  function openTab(evt, tabName) {
+  var i;
+  var x = document.getElementsByClassName("tab_option");
+  for (i = 0; i < x.length; i++) {
+    x[i].style.display = "none";
+  }
+  tablinks = document.getElementsByClassName("tablink");
+  for (i = 0; i < x.length; i++) {
+    tablinks[i].className = tablinks[i].className.replace(" w3-teal", "");
+  }
+  document.getElementById(tabName).style.display = "block";
+  evt.currentTarget.className += " w3-teal";
+}
+
+  function show_phase(phase){
+    var i;
+    var x = document.getElementsByClassName("phase");
+    for (i = 0; i < x.length; i++) {
+      x[i].style.display = "none";
+    }
+
+    document.getElementById(phase).style.display = "block";
+  }
+
+  function start_round(){
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    // This code may get re-run multiple times if there are conflicts.
+    return transaction.get(docRef).then(function(doc) {
+        if (!doc.exists) {
+            throw "Document does not exist!";
+        }
+        var spp = $('#seconds_per_player').val();
+        transaction.update(docRef, { round_ready: 1, round_seconds: spp });
+      });
+    }).then(function() {
+        //console.log("Transaction successfully committed!");
+    }).catch(function(error) {
+            console.log("Transaction failed: ", error);
+            });
+
+  }
+
+  function play_turn(){
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    // This code may get re-run multiple times if there are conflicts.
+    return transaction.get(docRef).then(function(doc) {
+        if (!doc.exists) {
+            throw "Document does not exist!";
+        }
+        window.round_seconds = doc.data().round_seconds;
+        transaction.update(docRef, { round_ready: -1, current_player: window.player_name, round_team: window.my_team });
+      });
+    }).then(function() {
+        //console.log("Transaction successfully committed!");
+        // And here is where we set up the game logic!
+        game_logic(window.round_seconds);
+
+    }).catch(function(error) {
+            console.log("Transaction failed: ", error);
+    });
+  }
+
+  function time_up(){
+    //alert('time\'s up!');
+    window.timer_running = false;
+    $('#word_text').text('');
+
+    if(window.my_turn){
+      show_extras();
+      var new_last_turn = {player: window.player_name, score: window.my_score};
+      var docRef = db.collection("hat_game").doc(window.group_name);
+      db.runTransaction(function(transaction) {
+      // This code may get re-run multiple times if there are conflicts.
+      return transaction.get(docRef).then(function(doc) {
+          if (!doc.exists) {
+              throw "Document does not exist!";
+          }
+          var new_words = doc.data().words;
+          if(window.current_word !== ''){
+            new_words.push(window.current_word);
+            window.current_word = '';
+          }
+          if(window.current_pass !== ''){
+            new_words.push(window.current_pass);
+            window.current_pass = '';
+          }
+          var new_rr = 1;
+          if(window.empty_bag){
+            // End of round
+            new_rr = -2;
+          }
+          transaction.update(docRef, { round_end: 0, round_ready: new_rr, last_turn: new_last_turn, words: new_words });
+        });
+      }).then(function() {
+          //console.log("Transaction successfully committed!");
+      }).catch(function(error) {
+              console.log("Transaction failed: ", error);
+      });
+    }
+    window.my_turn = false;
+  }
+
+  function start_timer(end){
+    window.timer_running = true;
+    window.timer_x = setInterval(function(){
+    var now = new Date().getTime();
+    var distance = end - now;
+    var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+    if (distance < 0){
+      clearInterval(window.timer_x);
+      // Do stuff!
+      time_up();
+
+    }else{
+      $('#seconds_left').text(seconds);
+    }
+
+  }, 250);
+  }
+
+  function pass(){
+    if(window.current_pass === ''){
+      // Not yet passed
+      window.current_pass = window.current_word;
+      next_word();
+    }else{
+      // Just swap
+      var tmp = window.current_pass;
+      window.current_pass = window.current_word;
+      window.current_word = tmp;
+      $('#word_text').text(window.current_word);
+    }
+  }
+
+  function next_word(){
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    // This code may get re-run multiple times if there are conflicts.
+    return transaction.get(docRef).then(function(doc) {
+        if (!doc.exists) {
+            throw "Document does not exist!";
+        }
+        var new_words = doc.data().words;
+        if(new_words.length < 1){
+          // Can't pass
+          $('#pass').hide(); // Not possible to pass now
+        }else{
+          $('#pass').show();
+        }
+        if(new_words.length == 0){
+          // You've got them all!
+          if(window.current_pass === ''){
+            window.current_word = '';
+            window.current_pass = '';
+            clearInterval(window.timer_x);
+            window.empty_bag = true;
+            time_up();
+            return;
+          }else{
+            //console.log('going to pass');
+            window.current_word = window.current_pass;
+            window.current_pass = '';
+            //transaction.update(docRef, { words: new_words });
+          }
+        }else{
+          var index = Math.floor(Math.random()*new_words.length);
+          window.current_word = new_words[index];
+          new_words.splice(index, 1);
+          transaction.update(docRef, { words: new_words });
+          console.log(new_words);
+        }
+        $('#word_text').text(window.current_word);
+      });
+    }).then(function() {
+        //console.log("Transaction successfully committed!");
+    }).catch(function(error) {
+            console.log("Transaction failed: ", error);
+    });
+  }
+
+  function got_it(){
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    // This code may get re-run multiple times if there are conflicts.
+    return transaction.get(docRef).then(function(doc) {
+      if (!doc.exists) {
+          throw "Document does not exist!";
+      }
+      var new_out = doc.data().out;
+      new_out.push(window.current_word);
+      window.current_word = '';
+      window.my_score++;
+
+      var new_teams = doc.data().teams;
+      for(var i = 0; i < new_teams.length; i++){
+        if(new_teams[i].name == window.my_team){
+          new_teams[i].score++;
+        }
+      }
+
+      transaction.update(docRef, {
+        out: new_out,
+        teams: new_teams
+      });
+    });
+  }).then(function() {
+      //console.log("Transaction successfully committed!");
+      next_word();
+  }).catch(function(error) {
+          console.log("Transaction failed: ", error);
+  });
+
+  }
+
+  function next_round(){
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    // This code may get re-run multiple times if there are conflicts.
+    return transaction.get(docRef).then(function(doc) {
+        if (!doc.exists) {
+            throw "Document does not exist!";
+        }
+        var rn = doc.data().round_number+1;
+        var spp = $('#seconds_per_player').val();
+        transaction.update(docRef, {
+            round_ready: 1,
+            round_number: rn,
+            round_seconds: spp,
+            last_turn: {},
+            current_player: '',
+            round_team: '',
+            words: doc.data().out,
+            out: doc.data().words
+          });
+      });
+    }).then(function() {
+        //console.log("Transaction successfully committed!");
+    }).catch(function(error) {
+            console.log("Transaction failed: ", error);
+            });
+  }
+
+  function game_logic(seconds){
+    var now = new Date().getTime();
+    var end = new Date(now + seconds * 1000);
+
+    hide_extras();
+    $('#seconds_left').text(seconds);
+
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    // This code may get re-run multiple times if there are conflicts.
+    return transaction.get(docRef).then(function(doc) {
+        if (!doc.exists) {
+            throw "Document does not exist!";
+        }
+        transaction.update(docRef, { round_end: end.getTime() });
+      });
+    }).then(function() {
+        //console.log("Transaction successfully committed!");
+        window.my_turn = true;
+        next_word();
+        start_timer(end);
+    }).catch(function(error) {
+            console.log("Transaction failed: ", error);
+    });
+    // No distractions...
+
+    /*var x = setInterval(function(){
+      var now = new Date().getTime();
+      var distance = end - now;
+      var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      var docRef = db.collection("hat_game").doc(window.group_name);
+      db.runTransaction(function(transaction) {
+      // This code may get re-run multiple times if there are conflicts.
+      return transaction.get(docRef).then(function(doc) {
+          if (!doc.exists) {
+              throw "Document does not exist!";
+          }
+          transaction.update(docRef, { seconds_left: seconds });
+        });
+      }).then(function() {
+          //console.log("Transaction successfully committed!");
+      }).catch(function(error) {
+              console.log("Transaction failed: ", error);
+      });
+
+      if (distance < 0){
+        clearInterval(x);
+        // Do stuff!
+        show_extras();
+      }
+
+    }, 1000);*/
+  }
   </script>
 </head>
 <body>
-  <div class="w3-container w3-teal">
-  <h1>Host the Hat Game!</h1>
+<div id="header" class="w3-container w3-teal">
+  <h1>Play the Hat Game!</h1>
 </div>
 
-<div id="making_game" class="w3-container">
-
+<div id="making_game" class="phase w3-container">
+<p><label><b>My name is:</b></label>
+<input id="player_name" class="w3-input w3-border" type="text"></p>
+<div class="w3-bar w3-black">
+  <button class="w3-bar-item w3-button tablink w3-teal" onclick="openTab(event, 'hosting_game')">Host a game!</button>
+  <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'joining_game')">Join a game!</button>
+</div>
+<div id="hosting_game" class="tab_option">
+<h2>Host a game!</h2>
       <p><label><b>Group name:</b></label>
       <input id="group_name" class="w3-input w3-border" type="text"></p>
-      <p><label><b>Words per player:</b></label>
+      <p><label><b>Teams (you will be on the first of these):</b></label></p>
+      <div class="w3-row">
+        <input id="team_1" class="w3-input w3-border w3-quarter" type="text">
+        <input id="team_2" class="w3-input w3-border w3-quarter" type="text">
+      </div>
+      <p><label><b>Words per player:</b></label></p>
       <input id="words_per_player" class="w3-input w3-border" type="number" value="3" min="1" style="width: 100px;"></p>
-      <p><button id="start_adding" class="w3-btn w3-teal">Add words!</button></p>
+      <p><button id="start_adding" class="w3-btn w3-teal">Setup game!</button></p>
 </div>
 
-<div id="adding_words" class="w3-container">
-  <p><span id="num_players">1 player</span> in game, <span id="num_words">0 words</span> added so far</p>
-  <p><label><b>Word to add (<span id="words_left">3</span> left):</b></label>
-  <input id="word_to_add" class="w3-input w3-border" type="text"></p>
-  <p><button id="add_word" class="w3-btn w3-teal">Add</button></p>
-  <p><button id="start_game" class="w3-btn w3-teal">Start game!</button></p>
+<div id="joining_game" class="tab_option" style="display:none">
+  <h2>Join a game!</h2>
+      <p><label><b>Join game:</b></label>
+      <select id="games" name="games"></select></p>
+      <div id="team_list">
+        <p><label><b>Join team:</b></label>
+        <p><select id="teams" name="teams"></select></p>
+      </div>
+      <p><button id="join_game" class="w3-btn w3-teal">Join game!</button></p>
 </div>
+</div>
+
+<div id="stats" class="w3-container">
+  <p><span id="num_players">1 player</span> in game, <span id="num_words">0 words</span> in hat (of possible <span id="total_words">0</span>)</p>
+  <div id="teams_text" class="w3-container"></div>
+</div>
+
+<div id="adding_words" class="phase w3-container">
+  <div id="word_form"><p><label><b>Word to add (<span id="words_left">3</span> left):</b></label>
+  <input id="word_to_add" class="w3-input w3-border" type="text"></p>
+  <p><button id="add_word" class="w3-btn w3-teal">Add</button></p></div>
+</div>
+
+<div id="round_count"><h2>Round <span id="round_number">1</span></h2></div>
+
+<div id="rounds" class="phase w3-container">
+  <div id="round_setup">
+  <p><label><b>Seconds per player</b></label></p>
+  <input id="seconds_per_player" class="w3-input w3-border" type="number" value="30" min="1" style="width: 150px;"></p>
+  <p><label>
+  <p><button id="start_round" class="w3-btn w3-teal">Ready to start!</button></p>
+</div>
+<div id="round_holder">
+  Waiting for host to set up round...
+</div>
+</div>
+
+<div id="starting_round" class="phase w3-container">
+  <div id="last_turn"><span id="last_player"></span> scored <span id="last_score"></span> points!</div>
+  <div id="set_turn">If it's your turn, press...
+  <p><button id="play_turn" class="w3-btn w3-teal">Start my turn now!</button></p>
+</div>
+<div id="set_round"><p><button id="next_round" class="w3-btn w3-teal">Next round!</button></p></div>
+</div>
+
+<div id="playing_round" class="phase w3-container">
+  <p><b><span id="seconds_left"></span> seconds left</b></p>
+  <div id="current_player">
+  <h1><span id="word_text"></span></h1>
+  <div class="w3-row"><button id="pass" class="w3-btn w3-red w3-half">Pass!</button><button id="got_it" class="w3-btn w3-teal w3-half">Got it!</button></div>
+</div>
+<div id="watching_player">
+Turn in progress for <span id="playing_player"></span> of <span id="playing_team"></span>!
+</div>
+</div>
+
+
 
 </body>
 </html>
