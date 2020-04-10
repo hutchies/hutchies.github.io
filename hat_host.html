@@ -522,6 +522,7 @@ function join_game(){
     if(window.my_turn){
       show_extras();
       var new_last_turn = {player: window.player_name, score: window.my_score};
+      window.my_score = 0; // Reset for next time
       var docRef = db.collection("hat_game").doc(window.group_name);
       db.runTransaction(function(transaction) {
       // This code may get re-run multiple times if there are conflicts.
@@ -693,7 +694,6 @@ function join_game(){
         transaction.update(docRef, {
           round_ready: 1,
           round_seconds: spp,
-          last_turn: {},
           current_player: '',
           round_team: ''
          });
