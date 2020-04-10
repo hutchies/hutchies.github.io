@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>Host the Hat Game!</title>
+  <title>Play the Hat Game!</title>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
@@ -19,15 +19,12 @@
     $('#games').on('change', fill_teams_list);
     $('#pass').on('click', pass);
     $('#got_it').on('click', got_it);
-    $('#next_round').on('click', next_round);
-    window.number_of_teams = 2;
-    window.host = false;
-    window.current_word = '';
-    window.current_pass = '';
-    window.timer_running = false;
-    window.my_turn = false;
-    window.my_score = 0;
-    window.empty_bag = false;
+
+
+    $(window).on('beforeunload', function(){
+      return window.playing;
+    });
+
 
     var firebaseConfig = {
     apiKey: "AIzaSyDJz4s1AktoO9kHHVAWHq0PzUmF6FkWogY",
@@ -42,21 +39,75 @@
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     window.db = firebase.firestore();
-    fill_games_list();
+
+    setup();
+  });
+
+  function setup(){
+
+    window.players = 1;
+    window.number_of_teams = 2;
+    window.host = false;
+    window.current_word = '';
+    window.current_pass = '';
+    window.timer_running = false;
+    window.my_turn = false;
+    window.my_score = 0;
+    window.empty_bag = false;
+    window.unsub = null;
+    window.my_words = [];
+    window.words = [];
+    window.round_ready = false;
+    window.teams = [];
+    window.playing = false;
+    window.games = [];
+
+    var docRef = db.collection("hat_game").get().then(function(querySnapshot) {
+      fill_games_list(querySnapshot);
+      window.games_unsub = db.collection("hat_game").onSnapshot(function(games) { fill_games_list(games);});
+    });
     show_phase('making_game');
     $('#round_count').hide();
     $('#stats').hide();
-  });
+  }
 
-  function fill_games_list(){
+  function fill_games_list(list){
     var ref = '';
-    var docRef = db.collection("hat_game").get().then(function(querySnapshot) {
-      querySnapshot.forEach(function(doc) {
-        $('#games').append('<option value="'+doc.id+'">'+doc.id+'</option>');
-        ref = doc.id;
+    var remove_list = [];
+    var cut_off = Date.now() - (1000 * 60 * 60 * 24); // A day ago
+    var new_list = list.docs.filter(x => !window.games.includes(x));
+    if(new_list.length == 0) return;
+    window.games = list.docs;
+
+    var selected = $('#games').val();
+    var selected_still_there = false;
+    $('#games').html('');
+
+      window.games.forEach(function(doc) {
+        if(doc.id == '') return;
+        if(doc.id == selected) selected_still_there = true;
+        if(doc.data().created > cut_off && doc.data().host != ''){ // Unhosted games also deleted
+          $('#games').append('<option value="'+doc.id+'">'+doc.id+'</option>');
+          ref = doc.id;
+        }else{
+          // Remove it!
+          remove_list.push(doc.id);
+
+        }
       });
+
+      remove_list.forEach(function(game){
+        db.collection("hat_game").doc(game).delete().then(function() {
+          console.log("Old or unhosted game "+game+" successfully deleted!");
+        }).catch(function(error) {
+          console.error("Error removing old game "+game+": ", error);
+        });
+      });
+      if(selected_still_there){
+        $('#games').val(selected);
+      }
       if(ref != '') fill_teams_list();
-    });
+    //});
   }
 
   function fill_teams_list(){
@@ -78,10 +129,24 @@
   }
 
   function setup_game(){
-    window.host = true;
-    window.player_name = $('#player_name').val();
+    window.player_name = $('#player_name').val().replace(/[^0-9a-z() ]/gi, '');;
     window.group_name = $('#group_name').val().replace(/[^0-9a-z() ]/gi, '');
     window.words_per_player = $('#words_per_player').val();
+
+    if(window.player_name === ''){
+      alert('You need to give yourself a name!');
+      return;
+    }
+    if(window.group_name === ''){
+      alert('You need to provide a group name!');
+      return;
+    }
+    $('#game_name').text(window.group_name);
+    window.host = true;
+
+    $('#host_panel').show();
+    $('#player_panel').hide();
+
     window.teams = [];
     for(var i=1; i <= window.number_of_teams; i++){
       var team_name = $('#team_'+i).val().replace(/[^0-9a-z() ]/gi, '');
@@ -96,6 +161,7 @@
     window.teams[0].players.push(window.player_name);
     var spp = $('#seconds_per_player').val();
     db.collection("hat_game").doc(window.group_name).set({
+      host: window.player_name,
       players: 1,
       words_per_player: window.words_per_player,
       round_number: 1,
@@ -107,13 +173,17 @@
       round_team: '',
       teams: window.teams,
       words: [],
-      out: []
+      out: [],
+      created: Date.now()
     });
     // NB silently overwrites duplicate games
     window.words_left = window.words_per_player;
     $('#words_left').text(window.words_left);
-    db.collection("hat_game").doc(window.group_name).onSnapshot(function(doc){ update_stats(doc.data());});
+    window.games_unsub();
+    window.unsub = db.collection("hat_game").doc(window.group_name).onSnapshot(function(doc){ update_stats(doc.data());});
+    window.playing = true;
     show_phase('adding_words');
+     // No need to keep up to date
     $('#stats').show();
   }
 
@@ -125,12 +195,23 @@
     return true;
   }
 
-  function join_game(){
+function join_game(){
     window.player_name = $('#player_name').val();
+
+    if(window.player_name === ''){
+      alert('You need to give your name!');
+      return;
+    }
+
     window.group_name = $('#games').val();
     window.my_team = $('#teams').val();
     if(window.group_name == "") return; // Don't accept null
     if(window.my_team == "") window.my_team = window.teams[0].name;
+
+    $('#game_name').text(window.group_name);
+
+    $('#host_panel').hide();
+    $('#player_panel').show();
 
     var docRef = db.collection("hat_game").doc(window.group_name);
     db.runTransaction(function(transaction) {
@@ -140,6 +221,17 @@
         }
         var new_players = doc.data().players + 1;
         var new_teams = doc.data().teams;
+
+        // Check no player already with this name
+        for(var i = 0; i < new_teams.length; i++){
+          for(var j = 0; j < new_teams[i].players.length; j++){
+            if(new_teams[i].players[j] === window.player_name){
+              alert('Player with name '+player_name+' already exists! Do you want to replace them?');
+              throw "Player already exists";
+            }
+          }
+        }
+
         // Add player name to list
         let t = new_teams.find((o, i) => {
           if (o.name === window.my_team){
@@ -156,22 +248,94 @@
         //console.log("Transaction successfully committed!");
         window.words_left = window.words_per_player;
         $('#words_left').text(window.words_left);
-        db.collection("hat_game").doc(window.group_name).onSnapshot(function(doc){ update_stats(doc.data());});
+        window.games_unsub(); // No need to keep up to date on games list
+        window.unsub = db.collection("hat_game").doc(window.group_name).onSnapshot(function(doc){ update_stats(doc.data());});
+        window.playing = true;
         show_phase('adding_words');
         $('#stats').show();
 
         }).catch(function(error) {
             console.log("Transaction failed: ", error);
-            });
+        });
+  }
+
+
+  function remove_player(){
+    var name = $(this).text();
+    if(window.player_name == name){
+      if(!confirm("Are you sure you want to leave the game?")) return;
+      window.playing = false;
+    }else{
+      if(!window.host || !confirm("Are you sure you want to remove player "+name+"?")) return  // Non-hosts can't boot out other players
+    };
+
+    window.players--;
+    outer_loop:
+    for(var i = 0; i < window.teams.length; i++){
+      for(var j = 0; j < window.teams[i].players.length; j++){
+        if(window.teams[i].players[j] === name){
+          console.log("Removing player "+name);
+          window.teams[i].players.splice(j, 1);
+          break outer_loop;
+        }
+      }
+    }
+
+    /* can't remove words for other players if(window.round_ready == 0){
+      for(var i = 0; i < window.words.length; i++){
+        for(var j = 0; j < window.my_words.length; j++){
+          if(window.words[i] === window.my_words[j]){
+            window.words.splice(i, 1);
+            // Don't need to worry about
+          }
+        }
+      }
+    }*/
+
+    if(window.host && window.player_name == name){
+      db.collection("hat_game").doc(window.group_name).update({
+        host: '',
+        players: window.players,
+        teams: window.teams
+      }).then(function(){
+        window.location.reload();
+      });
+    }else{
+      db.collection("hat_game").doc(window.group_name).update({
+        players: window.players,
+        teams: window.teams
+      }).then(function(){
+        if(window.player_name == name){
+          window.location.reload(); // Start new game
+        }
+      });
+    }
+
   }
 
   function update_stats(data){
-    //console.log(data);
-    var players = data.players;
-    if(players == 1){
+    // Check whether you are still in the game
+    var am_i_playing = false;
+    for(var i = 0; i < data.teams.length; i++){
+      for(var j = 0; j < data.teams[i].players.length; j++){
+        if(data.teams[i].players[j] === window.player_name) am_i_playing = true;
+      }
+    }
+    //If host leaves or I am booted out, stop game
+    if(data.host == false || !am_i_playing){
+      show_phase('game_over');
+      window.unsub();
+      return;
+    }
+
+    window.players = data.players; // backup
+    window.teams = data.teams; // backup
+    window.round_ready = data.round_ready; // backup
+
+    if(window.players == 1){
       $('#num_players').text('1 player');
     }else{
-      $('#num_players').text(players+' players');
+      $('#num_players').text(window.players+' players');
     }
 
     var words = data.words.length;
@@ -181,7 +345,7 @@
       $('#num_words').text(words+' words');
     }
 
-    var possible_words = players * window.words_per_player;
+    var possible_words = window.players * window.words_per_player;
     $('#total_words').text(possible_words);
 
     $('#round_number').text(data.round_number);
@@ -191,7 +355,6 @@
     if(data.round_ready == 1){
       show_phase('starting_round');
       $('#set_turn').show();
-      $('#set_round').hide();
     }
     if(data.round_ready == -1){
       show_phase('playing_round');
@@ -214,9 +377,11 @@
 
     if(data.round_ready == -2){
       // Round just finished!
-      show_phase('starting_round');
+      /*show_phase('starting_round');
       $('#set_turn').hide();
-      if(window.host) $('#set_round').show();
+      if(window.host) */
+
+      setup_round();
     }
 
     if(!isEmpty(data.last_turn)){
@@ -241,9 +406,22 @@
     $('#round_count').show();
   }
 
+  function setup_round(){
+    show_phase('rounds');
+    $('#round_count').show();
+    if(window.host){
+      $('#round_setup').show();
+      $('#round_holder').hide();
+    }else{
+      $('#round_setup').hide();
+      $('#round_holder').show();
+    }
+  }
+
   function add_word(){
     var word = $('#word_to_add').val().replace(/[^0-9a-z() ]/gi, '');
     var docRef = db.collection("hat_game").doc(window.group_name);
+    window.my_words.push(word); // Add to personal record so that if I leave they go too
     db.runTransaction(function(transaction) {
     // This code may get re-run multiple times if there are conflicts.
     return transaction.get(docRef).then(function(doc) {
@@ -262,19 +440,11 @@
         window.words_left--;
         $('#words_left').text(window.words_left);
         if(window.words_left == 0){
-          show_phase('rounds');
-          $('#round_count').show();
-          if(window.host){
-            $('#round_setup').show();
-            $('#round_holder').hide();
-          }else{
-            $('#round_setup').hide();
-            $('#round_holder').show();
-          }
+          setup_round();
         }
-        }).catch(function(error) {
+    }).catch(function(error) {
             console.log("Transaction failed: ", error);
-            });
+    });
 
   }
 
@@ -287,13 +457,16 @@
     teams_struct.forEach(function(t){
       text += '<p><b>'+t.name+'</b>: ';
       for(var i=0;i < t.players.length; i++){
-        text += t.players[i];
-        if(t.players[i] === window.player_name) text += ' (you)';
+        text += '<span class="click_to_leave">'+t.players[i]+'</span>';
+        if(t.players[i] === window.player_name){
+          text += ' (you)';
+        }
         if(i < t.players.length-1) text += ', ';
       }
       text += '. <b>Score: '+t.score+'</b></p>';
     });
     $('#teams_text').html(text);
+    $('.click_to_leave').on('click', remove_player);
   }
 
   function openTab(evt, tabName) {
@@ -318,25 +491,6 @@
     }
 
     document.getElementById(phase).style.display = "block";
-  }
-
-  function start_round(){
-    var docRef = db.collection("hat_game").doc(window.group_name);
-    db.runTransaction(function(transaction) {
-    // This code may get re-run multiple times if there are conflicts.
-    return transaction.get(docRef).then(function(doc) {
-        if (!doc.exists) {
-            throw "Document does not exist!";
-        }
-        var spp = $('#seconds_per_player').val();
-        transaction.update(docRef, { round_ready: 1, round_seconds: spp });
-      });
-    }).then(function() {
-        //console.log("Transaction successfully committed!");
-    }).catch(function(error) {
-            console.log("Transaction failed: ", error);
-            });
-
   }
 
   function play_turn(){
@@ -376,6 +530,8 @@
               throw "Document does not exist!";
           }
           var new_words = doc.data().words;
+          var new_out = doc.data().out;
+          var rn = doc.data().round_number;
           if(window.current_word !== ''){
             new_words.push(window.current_word);
             window.current_word = '';
@@ -388,8 +544,19 @@
           if(window.empty_bag){
             // End of round
             new_rr = -2;
+            // Everything should be in out, so swap over
+            new_words = new_out;
+            new_out = [];
+            rn++;
           }
-          transaction.update(docRef, { round_end: 0, round_ready: new_rr, last_turn: new_last_turn, words: new_words });
+          transaction.update(docRef, {
+            round_end: 0,
+            round_ready: new_rr,
+            round_number: rn,
+            last_turn: new_last_turn,
+            words: new_words,
+            out: new_out
+          });
         });
       }).then(function() {
           //console.log("Transaction successfully committed!");
@@ -514,7 +681,31 @@
 
   }
 
-  function next_round(){
+  function start_round(){
+    var docRef = db.collection("hat_game").doc(window.group_name);
+    db.runTransaction(function(transaction) {
+    // This code may get re-run multiple times if there are conflicts.
+    return transaction.get(docRef).then(function(doc) {
+        if (!doc.exists) {
+            throw "Document does not exist!";
+        }
+        var spp = $('#seconds_per_player').val();
+        transaction.update(docRef, {
+          round_ready: 1,
+          round_seconds: spp,
+          last_turn: {},
+          current_player: '',
+          round_team: ''
+         });
+      });
+    }).then(function() {
+        //console.log("Transaction successfully committed!");
+    }).catch(function(error) {
+            console.log("Transaction failed: ", error);
+            });
+  }
+
+/*  function next_round(){
     var docRef = db.collection("hat_game").doc(window.group_name);
     db.runTransaction(function(transaction) {
     // This code may get re-run multiple times if there are conflicts.
@@ -542,7 +733,7 @@
     }).catch(function(error) {
             console.log("Transaction failed: ", error);
             });
-  }
+  }*/
 
   function game_logic(seconds){
     var now = new Date().getTime();
@@ -604,7 +795,7 @@
 <div id="header" class="w3-container w3-teal">
   <h1>Play the Hat Game!</h1>
 </div>
-
+(Socially distant version)
 <div id="making_game" class="phase w3-container">
 <p><label><b>My name is:</b></label>
 <input id="player_name" class="w3-input w3-border" type="text"></p>
@@ -639,7 +830,9 @@
 </div>
 
 <div id="stats" class="w3-container">
-  <p><span id="num_players">1 player</span> in game, <span id="num_words">0 words</span> in hat (of possible <span id="total_words">0</span>)</p>
+  <p><span id="num_players">1 player</span> in game <span id="game_name"></span>, <span id="num_words">0 words</span> in hat (of possible <span id="total_words">0</span>)</p>
+  <p><span id="host_panel">As host, you can click on a name to remove them from the game.</span>
+     <span id="player_panel">Click your name to leave the game.</span></p>
   <div id="teams_text" class="w3-container"></div>
 </div>
 
@@ -654,7 +847,7 @@
 <div id="rounds" class="phase w3-container">
   <div id="round_setup">
   <p><label><b>Seconds per player</b></label></p>
-  <input id="seconds_per_player" class="w3-input w3-border" type="number" value="30" min="1" style="width: 150px;"></p>
+  <input id="seconds_per_player" class="w3-input w3-border" type="number" value="60" min="1" style="width: 150px;"></p>
   <p><label>
   <p><button id="start_round" class="w3-btn w3-teal">Ready to start!</button></p>
 </div>
@@ -667,8 +860,7 @@
   <div id="last_turn"><span id="last_player"></span> scored <span id="last_score"></span> points!</div>
   <div id="set_turn">If it's your turn, press...
   <p><button id="play_turn" class="w3-btn w3-teal">Start my turn now!</button></p>
-</div>
-<div id="set_round"><p><button id="next_round" class="w3-btn w3-teal">Next round!</button></p></div>
+  </div>
 </div>
 
 <div id="playing_round" class="phase w3-container">
@@ -682,7 +874,10 @@ Turn in progress for <span id="playing_player"></span> of <span id="playing_team
 </div>
 </div>
 
-
+<div id="game_over" class="phase w3-container">
+<h1>Game over</h2>
+<p>The game has finished! Hope you enjoyed it. Refresh the page to begin a new game.</p>
+</div>
 
 </body>
 </html>
