@@ -542,13 +542,14 @@ function join_game(){
             window.current_pass = '';
           }
           var new_rr = 1;
-          if(window.empty_bag){
+          if(doc.data().words.length == 0){ // We've got them all!
             // End of round
             new_rr = -2;
             // Everything should be in out, so swap over
             new_words = new_out;
             new_out = [];
             rn++;
+            window.empty_bag = false;
           }
           transaction.update(docRef, {
             round_end: 0,
