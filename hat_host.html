@@ -542,7 +542,7 @@ function join_game(){
             window.current_pass = '';
           }
           var new_rr = 1;
-          if(doc.data().words.length == 0){ // We've got them all!
+          if(new_words.length == 0){ // We've got them all!
             // End of round
             new_rr = -2;
             // Everything should be in out, so swap over
@@ -880,6 +880,6 @@ Turn in progress for <span id="playing_player"></span> of <span id="playing_team
 <p>The game has finished! Hope you enjoyed it. Refresh the page to begin a new game.</p>
 </div>
 
-Version 1.2
+Version 1.3
 </body>
 </html>
