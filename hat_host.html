@@ -112,13 +112,16 @@
 
   function fill_teams_list(){
     var docRef = db.collection("hat_game").doc($('#games').val());
-    $('#teams').text('');
+    var inner_text = '';
     docRef.get().then(function(doc) {
-    if (doc.exists) {
+    if(doc.exists) {
         window.teams = doc.data().teams;
         window.teams.forEach(function(team){
-          $('#teams').append('<option value="'+team.name+'">'+team.name+'</option>');
+          console.log(team.name);
+          inner_text += '<option value="'+team.name+'">'+team.name+'</option>';
         });
+        $('#teams').html(inner_text);
+        console.log('at end of list, got '+inner_text);
     } else {
         // doc.data() will be undefined in this case
         console.log("No such document!");
@@ -524,12 +527,8 @@ function join_game(){
       var new_last_turn = {player: window.player_name, score: window.my_score};
       window.my_score = 0; // Reset for next time
       var docRef = db.collection("hat_game").doc(window.group_name);
-      db.runTransaction(function(transaction) {
-      // This code may get re-run multiple times if there are conflicts.
-      return transaction.get(docRef).then(function(doc) {
-          if (!doc.exists) {
-              throw "Document does not exist!";
-          }
+      docRef.get().then(function(doc){
+        if (doc.exists) {
           var new_words = doc.data().words;
           var new_out = doc.data().out;
           var rn = doc.data().round_number;
@@ -551,20 +550,27 @@ function join_game(){
             rn++;
             window.empty_bag = false;
           }
-          transaction.update(docRef, {
+          docRef.update({
             round_end: 0,
             round_ready: new_rr,
             round_number: rn,
             last_turn: new_last_turn,
             words: new_words,
             out: new_out
+          }).then(function() {
+            console.log("Document successfully updated!");
+          })
+          .catch(function(error) {
+              // The document probably doesn't exist.
+              console.error("Error updating document: ", error);
           });
-        });
-      }).then(function() {
-          //console.log("Transaction successfully committed!");
+        } else {
+          // doc.data() will be undefined in this case
+          console.log("No such document!");
+          throw "No doc";
+        }
       }).catch(function(error) {
-              console.log("Transaction failed: ", error);
-              $('#errors').text("Transaction failed in got_it: "+error);
+      console.log("Error getting document:", error);
       });
     }
     window.my_turn = false;
@@ -605,60 +611,53 @@ function join_game(){
 
   function next_word(){
     var docRef = db.collection("hat_game").doc(window.group_name);
-    db.runTransaction(function(transaction) {
-    // This code may get re-run multiple times if there are conflicts.
-    return transaction.get(docRef).then(function(doc) {
-        if (!doc.exists) {
-            throw "Document does not exist!";
-        }
-        var new_words = doc.data().words;
-        if(new_words.length <= 1){
-          // Can't pass
-          if(window.current_pass === '') $('#pass').hide(); // Not possible to pass now
+    docRef.get().then(function(doc){
+      if (!doc.exists) {
+          throw "Document does not exist!";
+      }
+      var new_words = doc.data().words;
+      if(new_words.length <= 1){
+        // Can't pass
+        if(window.current_pass === '') $('#pass').hide(); // Not possible to pass now
+      }else{
+        $('#pass').show();
+      }
+      if(new_words.length == 0){
+        if(window.current_pass === ''){
+          // You've got them all!
+          window.current_word = '';
+          window.current_pass = '';
+          clearInterval(window.timer_x);
+          window.empty_bag = true;
+          time_up();
+          return;
         }else{
-          $('#pass').show();
+          //console.log('going to pass');
+          window.current_word = window.current_pass;
+          window.current_pass = '';
+          $('#pass').hide();
+          //transaction.update(docRef, { words: new_words });
         }
-        if(new_words.length == 0){
-          if(window.current_pass === ''){
-            // You've got them all!
-            window.current_word = '';
-            window.current_pass = '';
-            clearInterval(window.timer_x);
-            window.empty_bag = true;
-            time_up();
-            return;
-          }else{
-            //console.log('going to pass');
-            window.current_word = window.current_pass;
-            window.current_pass = '';
-            $('#pass').hide();
-            //transaction.update(docRef, { words: new_words });
-          }
-        }else{
-          var index = Math.floor(Math.random()*new_words.length);
-          window.current_word = new_words[index];
-          new_words.splice(index, 1);
-          transaction.update(docRef, { words: new_words });
-          console.log(new_words);
-        }
-        $('#word_text').text(window.current_word);
-      });
-    }).then(function() {
-        //console.log("Transaction successfully committed!");
+      }else{
+        var index = Math.floor(Math.random()*new_words.length);
+        window.current_word = new_words[index];
+        new_words.splice(index, 1);
+        docRef.update({
+          words: new_words
+        }).then(function() {
+          console.log("Document successfully updated!");
+        })
+      }
+      $('#word_text').text(window.current_word);
     }).catch(function(error) {
-            console.log("Transaction failed: ", error);
-            $('#errors').text("Transaction failed in next_word: "+error);
+    console.log("Error getting document:", error);
     });
   }
 
   function got_it(){
     var docRef = db.collection("hat_game").doc(window.group_name);
-    db.runTransaction(function(transaction) {
-    // This code may get re-run multiple times if there are conflicts.
-    return transaction.get(docRef).then(function(doc) {
-      if (!doc.exists) {
-          throw "Document does not exist!";
-      }
+    docRef.get().then(function(doc){
+      if(!doc.exists) throw "Document not got!";
       var new_out = doc.data().out;
       new_out.push(window.current_word);
       window.current_word = '';
@@ -670,20 +669,16 @@ function join_game(){
           new_teams[i].score++;
         }
       }
-
-      transaction.update(docRef, {
+      docRef.update({
         out: new_out,
         teams: new_teams
+      }).then(function(){
+        console.log("Doc updated!");
+        next_word();
       });
+    }).catch(function(error) {
+    console.log("Error getting document:", error);
     });
-  }).then(function() {
-      //console.log("Transaction successfully committed!");
-      next_word();
-  }).catch(function(error) {
-          console.log("Transaction failed: ", error);
-          $('#errors').text("Transaction failed in got_it: "+error);
-  });
-
   }
 
   function start_round(){
@@ -798,8 +793,8 @@ function join_game(){
 <body>
 <div id="header" class="w3-container w3-teal">
   <h1>Play the Hat Game!</h1>
+  (Socially distant version)
 </div>
-(Socially distant version)
 <div id="making_game" class="phase w3-container">
 <p><label><b>My name is:</b></label>
 <input id="player_name" class="w3-input w3-border" type="text"></p>
@@ -861,7 +856,7 @@ function join_game(){
 </div>
 
 <div id="starting_round" class="phase w3-container">
-  <div id="last_turn"><span id="last_player"></span> scored <span id="last_score"></span> points!</div>
+  <div id="last_turn"><span id="last_player"></span> scored <span id="last_score"></span> point(s)!</div>
   <div id="set_turn">If it's your turn, press...
   <p><button id="play_turn" class="w3-btn w3-teal">Start my turn now!</button></p>
   </div>
@@ -883,7 +878,7 @@ Turn in progress for <span id="playing_player"></span> of <span id="playing_team
 <p>The game has finished! Hope you enjoyed it. Refresh the page to begin a new game.</p>
 </div>
 
-Version 1.3 with error reporting
+<div id="version" style="font-size: smaller; font-style: italic">Version 1.4, 2 May 2020</div>
 <div id="errors"></div>
 </body>
 </html>
