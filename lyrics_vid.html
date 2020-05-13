@@ -37,13 +37,18 @@
   }
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="VideoFrame.min.js"></script>
   <script>
     $(document).ready(function() {
       $('#process').on('click', process_lyrics);
       $('#clear').on('click', function(){
         $('#lyrics').val('');
       });
-      $('#vid_file').on('change', add_vid);
+      $('#vid_file').on('change', function(evt){
+          var source = $('#video_here');
+          source[0].src = URL.createObjectURL(this.files[0]);
+          source.parent()[0].load();
+      });
       $('#vid').on('canplay', vid_ready);
       $('#vid').on('timeupdate', sync_lyrics);
       $('#make_video').on('click', process_video);
@@ -61,17 +66,6 @@
 
     function bgcol(){
       $('#preview_container').css('background', $('#bg_colour').val()+'88');
-    }
-
-    function add_vid(){
-      const files = $(this).prop('files');
-      if(files.length < 1) return;
-      var vid_name = files[0].name;
-
-      $('#vid').attr('src', vid_name);
-      $('#vid')[0].load();
-      //$('#vid').on('canplay', vid_ready);
-
     }
 
     function vid_ready(){
@@ -178,7 +172,6 @@
     function process_video(){
       var ffmpeg_command = 'ffmpeg -i "'+$('#vid')[0].src+'" -vf ';
       var filtergraph = '';
-      var test = "this is a 'string': may contain one, or more, special characters";
       window.timecodes.forEach(function(line){
         var bgcol = $('#bg_colour').val()+'88';
         var col = $('#text_colour').val();
@@ -207,7 +200,10 @@
   <h2>Video</h2>
   <p><input type="file" id="vid_file"/></p>
   <div id="video_container">
-    <video id="vid" src="/Users/Mark/Downloads/Beethovenlate.mov" controls="true"></video>
+    <video id="vid" controls="true">
+      <source src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" id="video_here">
+       Your browser does not support HTML5 video.
+    </video>
     <div id="preview_container">
       <div id="preview">Lyrics go here!</div>
     </div>
