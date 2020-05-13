@@ -26,6 +26,7 @@
     width: 100%;
     bottom: 0;
     background: rgba(255,255,255,0.5);
+    pointer-events: none;
   }
   #preview {
     font-family: "Arial", sans-serif;
@@ -34,10 +35,10 @@
     text-align: center;
     vertical-align: middle;
     color: white;
+    pointer-events: none;
   }
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
-  <script src="VideoFrame.min.js"></script>
   <script>
     $(document).ready(function() {
       $('#process').on('click', process_lyrics);
@@ -52,6 +53,7 @@
       $('#vid').on('canplay', vid_ready);
       $('#vid').on('timeupdate', sync_lyrics);
       $('#make_video').on('click', process_video);
+      $('#export_srt').on('click', export_srt);
       $('.instructions').hide();
       $('#text_colour').on('change', textcol);
       $('#bg_colour').on('change', bgcol);
@@ -83,6 +85,46 @@
     function escape_filtergraph_for_shell(text){
       return text.replace(/\\/g, '\\\\');
     }
+
+    function time_to_hms(time){
+      var s = Math.floor(time);
+      var ms = Math.floor ((time - s)*1000);
+      console.log(s);
+      console.log(ms);
+      var date = new Date(null);
+      date.setSeconds(s, ms);
+      return date.toISOString().substr(11, 12).replace(/\./, ',');
+    }
+
+    function export_srt(){
+      var file = '';
+      for(var i = 0; i < window.timecodes.length; i++){
+        var num = i+1;
+        file += '' + num + '\n';
+        file += time_to_hms(window.timecodes[i].start) + ' --> '+time_to_hms(window.timecodes[i].end) + '\n';
+        file += window.timecodes[i].text+'\n\n';
+
+      }
+      download(file, "lyrics.srt", 'text/srt');
+    }
+
+    function download(data, filename, type) {
+    var file = new Blob([data], {type: type});
+    if (window.navigator.msSaveOrOpenBlob) // IE10+
+        window.navigator.msSaveOrOpenBlob(file, filename);
+    else { // Others
+        var a = document.createElement("a"),
+                url = URL.createObjectURL(file);
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 0);
+    }
+}
 
     function process_lyrics(){
       var lyrics = $.trim($('#lyrics').val());
@@ -214,6 +256,7 @@
   <div id="lyrics_array"></div>
   <div class="instructions">
     <button type=button id="make_video">Process video!</button>
+    <button type=button id="export_srt">Export lyrics as SRT file</button>
   </div>
   <p>Copy your lyrics here, then press 'Process lyrics!' to split into lines:</p>
   <p><textarea id="lyrics" rows="10" cols="50"></textarea></p>
