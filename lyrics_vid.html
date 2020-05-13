@@ -20,6 +20,7 @@
   }
 
   #vid {
+    max-width: 100%;
   }
   #preview_container {
     position: absolute;
@@ -57,8 +58,10 @@
       $('.instructions').hide();
       $('#text_colour').on('change', textcol);
       $('#bg_colour').on('change', bgcol);
+      $('#add').on('click', add_line);
       window.selected_line = -1;
       window.timecodes = [];
+      window.ids = 0;
     });
 
     function textcol(){
@@ -71,8 +74,8 @@
     }
 
     function vid_ready(){
-      $('#video_container').width($('#vid')[0].videoWidth/2);
-      $('#vid').width($('#video_container').width());
+      $('#video_container').width($('#vid').width());
+      //$('#vid').width($('#video_container').width());
     }
 
     function escape_filter_option(text){
@@ -87,6 +90,7 @@
     }
 
     function time_to_hms(time){
+      if(!time) return time_to_hms($('#vid')[0].duration);
       var s = Math.floor(time);
       var ms = Math.floor ((time - s)*1000);
       console.log(s);
@@ -131,13 +135,23 @@
       if(lyrics === '') return;
       window.timecodes = []; // Reset everything
       var lines = lyrics.match(/[^\r\n]+/g);
-      var ln = 0;
       var inside = '';
       lines.forEach(function(line){
-        inside += '<div id="lyric_line_'+ln+'"><span class="line_text" id="lyric_text_'+ln+'">'+line+'</span> from <span id="lyric_start_'+ln+'">0</span> seconds to <span id="lyric_end_'+ln+'">0</span> seconds</div>';
-        ln++;
+        inside += '<div id="lyric_line_'+window.ids+'"></div><span class="line_text" id="lyric_text_'+window.ids+'">'+line+'</span>' // from <span id="lyric_start_'+ln+'">0</span> seconds to <span id="lyric_end_'+ln+'">0</span> seconds</div>';
+        window.ids++;
       });
       $('#lyrics_array').html(inside);
+      $('.line_text').on('click', click_line);
+      $('.instructions').show();
+    }
+
+    function add_line(){
+      var h = $('#extra_lyrics').html();
+      var line = $('#single_line').val();
+      if(line === '') return;
+      h += '<div id="lyric_line_'+window.ids+'"></div><span class="line_text" id="lyric_text_'+window.ids+'">'+line+'</span>';
+      window.ids++;
+      $('#extra_lyrics').html(h);
       $('.line_text').on('click', click_line);
       $('.instructions').show();
     }
@@ -190,7 +204,39 @@
       $('#lyric_'+type+'_'+line).text(t);
     }
 
+    function push_lyric(text){
+      var t = timecode();
+      var l = {};
+      l.start = t;
+      l.text = text;
+      window.timecodes.push(l);
+    }
+
+    function end_lyric(){
+      window.timecodes[window.timecodes.length - 1].end = timecode();
+    }
+
     function click_line(){
+      var id = $(this).attr('id').substring(11);
+      if(window.selected_line == id){
+        //Deselect this line
+        end_lyric();
+        deselect();
+        return;
+      }
+      if(window.selected_line != -1 ){
+          // There was a previous line, so deselect them and set their end_time
+          //$('#lyric_end_'+window.selected_line).text(timecode());
+          end_lyric();
+          deselect();
+      }
+        //$('#lyric_start_'+id).text(timecode());
+      push_lyric($(this).text());
+      $(this).addClass('selected');
+      window.selected_line = id;
+    }
+
+    function click_line_old(){
       var id = $(this).attr('id').substring(11);
       if(window.selected_line == id){
         // This was previously selected, so deselect
@@ -212,7 +258,7 @@
     }
 
     function process_video(){
-      var ffmpeg_command = 'ffmpeg -i "'+$('#vid')[0].src+'" -vf ';
+      var ffmpeg_command = 'ffmpeg -i "'+$('#video_here')[0].src+'" -vf ';
       var filtergraph = '';
       window.timecodes.forEach(function(line){
         var bgcol = $('#bg_colour').val()+'88';
@@ -226,7 +272,11 @@
       });
       ffmpeg_command += escape_filtergraph_for_shell(filtergraph);
       ffmpeg_command += ' output.mp4';
-      alert('Copy and paste this text to process the video: \n'+ffmpeg_command);
+      $('#ffmpeg').text(ffmpeg_command);
+      //$('#ffmpeg')[0].select();
+      //$('#ffmpeg')[0].setSelectionRange(0,99999);
+      document.execCommand("copy");
+      alert('Command for ffmpeg copied to clipboard');
     }
   </script>
 </head>
@@ -253,11 +303,15 @@
   <div id="controls"></div>
   <h2>Lyrics</h2>
   <p class="instructions">Click on the lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric).</p>
+  <div id="extra_lyrics"></div>
   <div id="lyrics_array"></div>
   <div class="instructions">
     <button type=button id="make_video">Process video!</button>
     <button type=button id="export_srt">Export lyrics as SRT file</button>
   </div>
+  <div id="ffmpeg"></div>
+  <p>If you want to add a single lyric line, type it below and press 'add':</p>
+  <input type="text" id="single_line" /><button type="button" id="add">Add line</button>
   <p>Copy your lyrics here, then press 'Process lyrics!' to split into lines:</p>
   <p><textarea id="lyrics" rows="10" cols="50"></textarea></p>
   <button type="button" id="clear">Clear</button>
