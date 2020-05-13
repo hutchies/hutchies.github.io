@@ -15,12 +15,20 @@
   .selected {
     background-color: pink;
   }
+  .lyrics_array {
+    height:200px;
+    width: 500px;
+    border:1px solid #ccc;
+    overflow: scroll;
+  }
+  .options {
+    visibility: hidden;
+  }
   #video_container {
     position: relative;
   }
 
   #vid {
-    max-width: 100%;
   }
   #preview_container {
     position: absolute;
@@ -38,8 +46,19 @@
     color: white;
     pointer-events: none;
   }
+  .time {
+    cursor: pointer;
+    color:blue;
+    text-decoration: underline;
+  }
+  .delete {
+    cursor: pointer;
+    color:red;
+    text-decoration: underline;
+  }
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="mousetrap.min.js"></script>
   <script>
     $(document).ready(function() {
       $('#process').on('click', process_lyrics);
@@ -59,9 +78,37 @@
       $('#text_colour').on('change', textcol);
       $('#bg_colour').on('change', bgcol);
       $('#add').on('click', add_line);
+      //$('#list_div').hide();
       window.selected_line = -1;
       window.timecodes = [];
       window.ids = 0;
+      Mousetrap.bind('space', function(e){
+        if (e.preventDefault) {
+        e.preventDefault();
+    } else {
+        // internet explorer
+        e.returnValue = false;
+    }
+        playpause();
+      });
+      Mousetrap.bind('down', function(e){
+        if (e.preventDefault) {
+        e.preventDefault();
+    } else {
+        // internet explorer
+        e.returnValue = false;
+    }
+        next_lyric();
+      });
+      Mousetrap.bind('up', function(e){
+        if (e.preventDefault) {
+        e.preventDefault();
+    } else {
+        // internet explorer
+        e.returnValue = false;
+    }
+       prev_lyric();
+      });
     });
 
     function textcol(){
@@ -69,13 +116,30 @@
       $('#preview').css('color', $('#text_colour').val());
     }
 
+    function goto_time(){
+      var id=$(this).attr('id');
+      if(id.match(/start/)){
+        var num = id.substring(6);
+        $('#vid')[0].currentTime = window.timecodes[num].start;
+      }else if(id.match(/end/)){
+        var num = id.substring(4);
+        $('#vid')[0].currentTime = window.timecodes[num].end;
+      }
+    }
+
+    function delete_sub(){
+      var id = $(this).attr('id').substring(7);
+      window.timecodes.splice(id, 1);
+      update_list();
+    }
+
     function bgcol(){
       $('#preview_container').css('background', $('#bg_colour').val()+'88');
     }
 
     function vid_ready(){
-      $('#video_container').width($('#vid').width());
-      //$('#vid').width($('#video_container').width());
+      $('#video_container').width($('#vid')[0].videoWidth/2);
+      $('#vid').width($('#video_container').width());
     }
 
     function escape_filter_option(text){
@@ -112,6 +176,35 @@
       download(file, "lyrics.srt", 'text/srt');
     }
 
+    function playpause(){
+      if($('#vid')[0].paused) $('#vid')[0].play();
+      else $('#vid')[0].pause();
+    }
+
+    function next_lyric(){
+      if(window.selected_line == window.ids - 1){
+        $('#lyric_text_'+window.selected_line).trigger('click');
+        return; // To deselect last one
+      }
+      var new_id = +window.selected_line+1; // Means when nothing is selected it will move to the start
+      $('#lyric_text_'+new_id).trigger('click');
+    }
+
+    function prev_lyric(){
+      if(window.selected_line < 0){
+        var num = +window.ids - 1;
+        $('#lyric_text_'+num).trigger('click');
+        return;
+      }; // No prev ID
+      if(window.selected_line == 0){
+        $('#lyric_text_0').trigger('click');  // To deselect
+        return;
+      }
+      var new_id = window.selected_line-1;
+      $('#lyric_text_'+new_id).trigger('click');
+    }
+
+
     function download(data, filename, type) {
     var file = new Blob([data], {type: type});
     if (window.navigator.msSaveOrOpenBlob) // IE10+
@@ -146,12 +239,12 @@
     }
 
     function add_line(){
-      var h = $('#extra_lyrics').html();
+      var h = $('#lyrics_array').html();
       var line = $('#single_line').val();
       if(line === '') return;
       h += '<div id="lyric_line_'+window.ids+'"></div><span class="line_text" id="lyric_text_'+window.ids+'">'+line+'</span>';
       window.ids++;
-      $('#extra_lyrics').html(h);
+      $('#lyrics_array').html(h);
       $('.line_text').on('click', click_line);
       $('.instructions').show();
     }
@@ -159,7 +252,7 @@
     function sync_lyrics(){
       //console.log(window.timecodes);
       if(window.timecodes.length < 1){
-        $('#preview').text('Lyrics go here!');
+        $('#preview').text('');
         return;
       }
       //console.log(window.timecodes);
@@ -210,14 +303,33 @@
       l.start = t;
       l.text = text;
       window.timecodes.push(l);
+      update_list();
     }
 
     function end_lyric(){
       window.timecodes[window.timecodes.length - 1].end = timecode();
+      update_list();
+    }
+
+    function update_list(){
+      var html = '<table>';
+      window.timecodes.forEach(function(line, index){
+        if(line.end){
+          html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - <span class="time" id="end_'+index+'">'+time_to_hms(line.end)+'</span>:</td><td>'+line.text+'</td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
+        }else{
+          html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - (no end yet):</td><td>'+line.text+'</td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
+
+        }
+      });
+      html += '</table>';
+      $('#list').html(html);
+      $('.delete').on('click', delete_sub);
+      $('.time').on('click', goto_time);
     }
 
     function click_line(){
       var id = $(this).attr('id').substring(11);
+      console.log(id+' is id');
       if(window.selected_line == id){
         //Deselect this line
         end_lyric();
@@ -234,6 +346,7 @@
       push_lyric($(this).text());
       $(this).addClass('selected');
       window.selected_line = id;
+      console.log('selected line is '+id);
     }
 
     function click_line_old(){
@@ -266,6 +379,7 @@
         var size = 24;
         var x_offset = "w / 2 - tw / 2";
         var y_offset = "h - th";
+        if(!line.end) line.end = $('#vid')[0].duration;
         var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':box=1:boxcolor='+bgcol+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
         if(filtergraph !== '') filtergraph += ',';
         filtergraph += escape_filter_description(dt);
@@ -282,14 +396,7 @@
 </head>
 <body>
   <h1>Make your own lyrics video!</h1>
-  <h2>Lyric format options</h2>
-  <p>
-  Text colour: <input type='color' id='text_colour' value='#000000'/>
-  </p>
-  <p>
-  Background colour: <input type='color' id='bg_colour' value='#ffffff'/>
-  </p>
-  <h2>Video</h2>
+    <h2>Choosing a video file</h2>
   <p><input type="file" id="vid_file"/></p>
   <div id="video_container">
     <video id="vid" controls="true">
@@ -297,24 +404,41 @@
        Your browser does not support HTML5 video.
     </video>
     <div id="preview_container">
-      <div id="preview">Lyrics go here!</div>
+      <div id="preview"></div>
     </div>
   </div>
   <div id="controls"></div>
-  <h2>Lyrics</h2>
-  <p class="instructions">Click on the lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric).</p>
-  <div id="extra_lyrics"></div>
-  <div id="lyrics_array"></div>
-  <div class="instructions">
-    <button type=button id="make_video">Process video!</button>
-    <button type=button id="export_srt">Export lyrics as SRT file</button>
-  </div>
-  <div id="ffmpeg"></div>
-  <p>If you want to add a single lyric line, type it below and press 'add':</p>
+  <div>
+  <h2>Making subtitles</h2>
+  <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
+  <p>Created subtitles will appear in the list to the right, where you can revisit or delete them if needed.</p>
+  <table><tr><td><b>Available lyrics (click on lyrics to make them appear)<b><div id="lyrics_array" class="lyrics_array"></div>
+  </td><td><b>List of created subtitles (click on times to jump to them)</b>
+      <div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;">
+      </div>
+</td></tr></table>
+</div>
+  <h2>Adding lyrics</h2>
+  <p>Before you can start adding subtitles, you will need to add some lyrics. If you want to add a single lyric line, type it below and press 'add':</p>
   <input type="text" id="single_line" /><button type="button" id="add">Add line</button>
-  <p>Copy your lyrics here, then press 'Process lyrics!' to split into lines:</p>
+  <p>You can also add lots of lyrics at once. Copy them here, then press 'Process lyrics!' to split into lines:</p>
   <p><textarea id="lyrics" rows="10" cols="50"></textarea></p>
   <button type="button" id="clear">Clear</button>
   <button type="button" id="process">Process lyrics!</button>
+  <div>
+  <h2>Exporting your file</h2>
+  You can export the subtitle file ready to 'Burn in' using Handbrake, or you can get the (complicated) command you could use to add these subtitles in FFMPEG (not recommended at the moment).
+    <button type=button id="export_srt">Export lyrics as SRT file</button>
+    <button type=button id="make_video">Get FFMPEG command</button>
+  </div>
+  <div id="ffmpeg"></div>
+  <div class="options"><h2>Lyric format options</h2>
+  <p>
+  Text colour: <input type='color' id='text_colour' value='#000000'/>
+  </p>
+  <p>
+  Background colour: <input type='color' id='bg_colour' value='#ffffff'/>
+  </p>
+</div>
 </body>
 </html>
