@@ -56,6 +56,9 @@
     color:red;
     text-decoration: underline;
   }
+  .lyrics_text {
+    cursor: pointer;
+  }
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
   <script src="mousetrap.min.js"></script>
@@ -116,8 +119,7 @@
       $('#preview').css('color', $('#text_colour').val());
     }
 
-    function goto_time(){
-      var id=$(this).attr('id');
+    function goto_time(id){
       if(id.match(/start/)){
         var num = id.substring(6);
         $('#vid')[0].currentTime = window.timecodes[num].start;
@@ -125,6 +127,17 @@
         var num = id.substring(4);
         $('#vid')[0].currentTime = window.timecodes[num].end;
       }
+    }
+
+    function set_time(id){
+      if(id.match(/start/)){
+        var num = id.substring(6);
+        window.timecodes[num].start = $('#vid')[0].currentTime;
+      }else if(id.match(/end/)){
+        var num = id.substring(4);
+        window.timecodes[num].end = $('#vid')[0].currentTime;
+      }
+      update_list();
     }
 
     function delete_sub(){
@@ -157,8 +170,6 @@
       if(!time) return time_to_hms($('#vid')[0].duration);
       var s = Math.floor(time);
       var ms = Math.floor ((time - s)*1000);
-      console.log(s);
-      console.log(ms);
       var date = new Date(null);
       date.setSeconds(s, ms);
       return date.toISOString().substr(11, 12).replace(/\./, ',');
@@ -315,7 +326,7 @@
       var html = '<table>';
       window.timecodes.forEach(function(line, index){
         if(line.end){
-          html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - <span class="time" id="end_'+index+'">'+time_to_hms(line.end)+'</span>:</td><td>'+line.text+'</td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
+          html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - <span class="time" id="end_'+index+'">'+time_to_hms(line.end)+'</span>:</td><td><span class="lyrics_text" id="text_'+index+'">'+line.text+'</span></td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
         }else{
           html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - (no end yet):</td><td>'+line.text+'</td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
 
@@ -324,7 +335,32 @@
       html += '</table>';
       $('#list').html(html);
       $('.delete').on('click', delete_sub);
-      $('.time').on('click', goto_time);
+      $('.lyrics_text').on('click', edit_lyric);
+      $('.time').on('click', function(evt){
+        if(evt.shiftKey){
+          set_time($(this).attr('id'))
+        }else{
+          goto_time($(this).attr('id'));
+        }
+      });
+    }
+
+
+
+    function edit_lyric(){
+      var id = $(this).attr('id').substring(5);
+      $(this).html('<input id="edit_'+id+'" value="'+window.timecodes[id].text+'" />');
+      $('#edit_'+id).on('change', function() {
+          window.timecodes[id].text = $(this).val();
+          update_list();
+      });
+      $('#edit_'+id).keyup(function(evt) {
+        if(evt.keyCode === 13){
+          window.timecodes[id].text = $(this).val();
+          update_list();
+        }
+      });
+      $('#edit_'+id).focus();
     }
 
     function click_line(){
@@ -413,7 +449,7 @@
   <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
   <p>Created subtitles will appear in the list to the right, where you can revisit or delete them if needed.</p>
   <table><tr><td><b>Available lyrics (click on lyrics to make them appear)<b><div id="lyrics_array" class="lyrics_array"></div>
-  </td><td><b>List of created subtitles (click on times to jump to them)</b>
+  </td><td><b>List of created subtitles. Click on times to jump to them, shift-click to set to current time. Click on text to edit</b>
       <div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;">
       </div>
 </td></tr></table>
