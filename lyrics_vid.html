@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Make a lyrics video</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+  .line_text {
+    cursor: pointer;
+    border-style: solid;
+    border-width: 1px;
+    border-color: blue;
+    background-color: lightblue;
+  }
+  .selected {
+    background-color: pink;
+  }
+  #video_container {
+    position: relative;
+  }
+
+  #vid {
+  }
+  #preview_container {
+    position: absolute;
+    width: 100%;
+    bottom: 0;
+    background: rgba(255,255,255,0.5);
+  }
+  #preview {
+    font-family: "Arial", sans-serif;
+    font-size: 20pt;
+    line-height: 2;
+    text-align: center;
+    vertical-align: middle;
+    color: white;
+  }
+  </style>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script>
+    $(document).ready(function() {
+      $('#process').on('click', process_lyrics);
+      $('#clear').on('click', function(){
+        $('#lyrics').val('');
+      });
+      $('#vid_file').on('change', add_vid);
+      $('#vid').on('canplay', vid_ready);
+      $('#vid').on('timeupdate', sync_lyrics);
+      $('#make_video').on('click', process_video);
+      $('.instructions').hide();
+      $('#text_colour').on('change', textcol);
+      $('#bg_colour').on('change', bgcol);
+      window.selected_line = -1;
+      window.timecodes = [];
+    });
+
+    function textcol(){
+
+      $('#preview').css('color', $('#text_colour').val());
+    }
+
+    function bgcol(){
+      $('#preview_container').css('background', $('#bg_colour').val()+'88');
+    }
+
+    function add_vid(){
+      const files = $(this).prop('files');
+      if(files.length < 1) return;
+      var vid_name = files[0].name;
+
+      $('#vid').attr('src', vid_name);
+      $('#vid')[0].load();
+      //$('#vid').on('canplay', vid_ready);
+
+    }
+
+    function vid_ready(){
+      $('#video_container').width($('#vid')[0].videoWidth/2);
+      $('#vid').width($('#video_container').width());
+    }
+
+    function escape_filter_option(text){
+      return text.replace(/([:'])/g, "\\$1");
+    }
+    function escape_filter_description(text){
+      return text.replace(/([\[\]\\\',;])/g, "\\$1");
+    }
+
+    function escape_filtergraph_for_shell(text){
+      return text.replace(/\\/g, '\\\\');
+    }
+
+    function process_lyrics(){
+      var lyrics = $.trim($('#lyrics').val());
+      if(lyrics === '') return;
+      window.timecodes = []; // Reset everything
+      var lines = lyrics.match(/[^\r\n]+/g);
+      var ln = 0;
+      var inside = '';
+      lines.forEach(function(line){
+        inside += '<div id="lyric_line_'+ln+'"><span class="line_text" id="lyric_text_'+ln+'">'+line+'</span> from <span id="lyric_start_'+ln+'">0</span> seconds to <span id="lyric_end_'+ln+'">0</span> seconds</div>';
+        ln++;
+      });
+      $('#lyrics_array').html(inside);
+      $('.line_text').on('click', click_line);
+      $('.instructions').show();
+    }
+
+    function sync_lyrics(){
+      //console.log(window.timecodes);
+      if(window.timecodes.length < 1){
+        $('#preview').text('Lyrics go here!');
+        return;
+      }
+      //console.log(window.timecodes);
+      // Presume if not that we have at least some timecodes to work with!
+      var time = timecode();
+      var lyric_line = window.timecodes.find(function(line){
+        if(!('start' in line)) return false;
+        if(line.start < time){
+          if(!('end' in line)) return true; // No end so definitely yes!
+          if(line.end > time) return true;
+          return false;
+        }
+      });
+      if(lyric_line){
+        $('#preview').text(lyric_line.text);
+      }else{
+        // No lyrics here
+        $('#preview').text('');
+      }
+    }
+
+    function timecode(){
+      return $('#vid')[0].currentTime;
+    }
+
+    function deselect(){
+      $('.selected').removeClass('selected');
+      window.selected_line = -1;
+    }
+
+    function add_timecode(line, text, type){
+      var t = timecode();
+      //console.log(line);
+      if(window.timecodes[line]){
+          window.timecodes[line][type] = t;
+      }else{
+        window.timecodes[line] = {};
+        window.timecodes[line][type] = t;
+        if(text !== '') window.timecodes[line].text = text;
+      }
+
+      $('#lyric_'+type+'_'+line).text(t);
+    }
+
+    function click_line(){
+      var id = $(this).attr('id').substring(11);
+      if(window.selected_line == id){
+        // This was previously selected, so deselect
+        deselect();
+        //$('#lyric_end_'+id).text(timecode());
+        add_timecode(id, '', 'end');
+      }else{
+        if(window.selected_line != -1 ){
+          // There was a previous line, so deselect them and set their end_time
+          //$('#lyric_end_'+window.selected_line).text(timecode());
+          add_timecode(window.selected_line, '', 'end');
+          deselect();
+        }
+        //$('#lyric_start_'+id).text(timecode());
+        add_timecode(id, $(this).text(), 'start');
+        $(this).addClass('selected');
+        window.selected_line = id;
+      }
+    }
+
+    function process_video(){
+      var ffmpeg_command = 'ffmpeg -i "'+$('#vid')[0].src+'" -vf ';
+      var filtergraph = '';
+      var test = "this is a 'string': may contain one, or more, special characters";
+      window.timecodes.forEach(function(line){
+        var bgcol = $('#bg_colour').val()+'88';
+        var col = $('#text_colour').val();
+        var size = 24;
+        var x_offset = "w / 2 - tw / 2";
+        var y_offset = "h - th";
+        var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':box=1:boxcolor='+bgcol+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+        if(filtergraph !== '') filtergraph += ',';
+        filtergraph += escape_filter_description(dt);
+      });
+      ffmpeg_command += escape_filtergraph_for_shell(filtergraph);
+      ffmpeg_command += ' output.mp4';
+      alert('Copy and paste this text to process the video: \n'+ffmpeg_command);
+    }
+  </script>
+</head>
+<body>
+  <h1>Make your own lyrics video!</h1>
+  <h2>Lyric format options</h2>
+  <p>
+  Text colour: <input type='color' id='text_colour' value='#000000'/>
+  </p>
+  <p>
+  Background colour: <input type='color' id='bg_colour' value='#ffffff'/>
+  </p>
+  <h2>Video</h2>
+  <p><input type="file" id="vid_file"/></p>
+  <div id="video_container">
+    <video id="vid" src="/Users/Mark/Downloads/Beethovenlate.mov" controls="true"></video>
+    <div id="preview_container">
+      <div id="preview">Lyrics go here!</div>
+    </div>
+  </div>
+  <div id="controls"></div>
+  <h2>Lyrics</h2>
+  <p class="instructions">Click on the lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric).</p>
+  <div id="lyrics_array"></div>
+  <div class="instructions">
+    <button type=button id="make_video">Process video!</button>
+  </div>
+  <p>Copy your lyrics here, then press 'Process lyrics!' to split into lines:</p>
+  <p><textarea id="lyrics" rows="10" cols="50"></textarea></p>
+  <button type="button" id="clear">Clear</button>
+  <button type="button" id="process">Process lyrics!</button>
+</body>
+</html>
