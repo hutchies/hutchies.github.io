@@ -21,9 +21,6 @@
     border:1px solid #ccc;
     overflow: scroll;
   }
-  .options {
-    visibility: hidden;
-  }
   #video_container {
     position: relative;
   }
@@ -38,12 +35,12 @@
     pointer-events: none;
   }
   #preview {
-    font-family: "Arial", sans-serif;
-    font-size: 20pt;
+    font-family: "Verdana", sans-serif;
+    font-size: 30px;
     line-height: 2;
     text-align: center;
     vertical-align: middle;
-    color: white;
+    color: black;
     pointer-events: none;
   }
   .time {
@@ -78,13 +75,47 @@
       $('#make_video').on('click', process_video);
       $('#export_srt').on('click', export_srt);
       $('.instructions').hide();
-      $('#text_colour').on('change', textcol);
-      $('#bg_colour').on('change', bgcol);
+      $('.options').hide();
+      $('.opt_control').on('change', change_opt);
+      $('.opt_control').on('input', change_opt);
       $('#add').on('click', add_line);
+      $('#opts').on('click', function(){
+        $('.options').toggle();
+      });
+      $('#ffmpeg').hide();
       //$('#list_div').hide();
       window.selected_line = -1;
       window.timecodes = [];
       window.ids = 0;
+      window.opts = {
+        text_colour: "#000000",
+        bg_colour: "#ffffff", // Alpha needed too
+        font_size: 30, // pixels
+        bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
+        bg_border: 0,
+        bg_opacity: 0.5
+      };
+      //window.font_options = ["Arial", "Times New Roman", "Verdana", "Courier New"];
+      window.os_specific = {
+        "Mac": {
+          script_ext: 'command',
+          script: '#!/bin/bash\necho "Enter the name of the input video (you can probably just drag and drop it on this window):"\nread -r name\nffmpeg -i ${name} ',
+          script_mime: 'application/x-shellscript'
+        },
+        "*nix": {
+          script_ext: 'sh',
+          script: '#!/bin/bash\necho "Enter the name of the input video (you can probably just drag and drop it on this window):"\nread -r name\nffmpeg -i ${name} ',
+          script_mime: 'application/x-shellscript'
+        },
+        "Windows":{
+          script_ext: 'bat',
+          script: '@ECHO OFF\nset /P name="Enter the path of the input video: "\nffmpeg -i %name% ',
+          script_mime: 'application/x-bat'
+        }
+      }
+      set_os();
+      set_opt_controls();
+      display_opts();
       Mousetrap.bind('space', function(e){
         if (e.preventDefault) {
         e.preventDefault();
@@ -114,9 +145,31 @@
       });
     });
 
-    function textcol(){
+    function set_os(){
+      if (navigator.userAgent.indexOf("Win")!=-1) window.osname="Windows";
+      if (navigator.userAgent.indexOf("Mac")!=-1) window.osname="Mac";
+      if (navigator.userAgent.indexOf("X11")!=-1) window.osname="*nix";
+      if (navigator.userAgent.indexOf("Linux")!=-1) window.osname="*nix";
+    }
 
+    function textcol(){
       $('#preview').css('color', $('#text_colour').val());
+    }
+
+    function display_opts(){
+      $('#preview').css('color', window.opts.text_colour);
+      var bg_colour = "rgba(" + window.opts.bg_colour.match(/[A-Za-z0-9]{2}/g).map(function(v) { return parseInt(v, 16) }).join(",") + ","+window.opts.bg_opacity+")";
+
+      $('#preview_container').css('background', bg_colour);
+      $('#preview').css('font-size', window.opts.font_size/2 +'px');
+    }
+
+    function set_opt_controls(){
+      for(o in window.opts){
+        $('#'+o).val(window.opts[o]);
+      };
+      $('#font_size_range').val(window.opts.font_size);
+      $('#bg_opacity_range').val(window.opts.bg_opacity);
     }
 
     function goto_time(id){
@@ -153,6 +206,12 @@
     function vid_ready(){
       $('#video_container').width($('#vid')[0].videoWidth/2);
       $('#vid').width($('#video_container').width());
+    }
+
+    function change_opt(){
+      var opt = $(this).attr('id');
+      window.opts[opt] = $(this).val();
+      display_opts();
     }
 
     function escape_filter_option(text){
@@ -365,7 +424,7 @@
 
     function click_line(){
       var id = $(this).attr('id').substring(11);
-      console.log(id+' is id');
+      //console.log(id+' is id');
       if(window.selected_line == id){
         //Deselect this line
         end_lyric();
@@ -382,7 +441,7 @@
       push_lyric($(this).text());
       $(this).addClass('selected');
       window.selected_line = id;
-      console.log('selected line is '+id);
+      //console.log('selected line is '+id);
     }
 
     function click_line_old(){
@@ -407,26 +466,42 @@
     }
 
     function process_video(){
-      var ffmpeg_command = 'ffmpeg -i "'+$('#video_here')[0].src+'" -vf ';
+      var ffmpeg_command = 'ffmpeg -i '+$('#input_video').val()+' -vf ';
       var filtergraph = '';
       window.timecodes.forEach(function(line){
-        var bgcol = $('#bg_colour').val()+'88';
-        var col = $('#text_colour').val();
-        var size = 24;
+        var bgcol = window.opts.bg_colour+'@'+window.opts.bg_opacity;
+        var col = window.opts.text_colour;
+        var size = window.opts.font_size; //pixels, I think
         var x_offset = "w / 2 - tw / 2";
-        var y_offset = "h - th";
+        var y_offset = "h - "+size+" * 1.5";  //(max_glyph_h / 2)" //  + ascent";
+        var box_edge = '20'; //$('#vid')[0].videoWidth / 2;
         if(!line.end) line.end = $('#vid')[0].duration;
-        var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':box=1:boxcolor='+bgcol+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+        //console.log('font color='+col);
+        var db = 'drawbox="y=ih-'+size*2+':h='+size*2+':t=fill:color='+bgcol+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+        var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+        //var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':box=1:boxcolor='+bgcol+':boxborderw='+box_edge+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+
         if(filtergraph !== '') filtergraph += ',';
-        filtergraph += escape_filter_description(dt);
+        filtergraph += escape_filter_description(db)+','+escape_filter_description(dt);
+        //filtergraph += escape_filter_description(dt);
       });
       ffmpeg_command += escape_filtergraph_for_shell(filtergraph);
-      ffmpeg_command += ' output.mp4';
-      $('#ffmpeg').text(ffmpeg_command);
+      ffmpeg_command += ' '+$('#output_video').val();
+      //$('#ffmpeg').text(ffmpeg_command);
       //$('#ffmpeg')[0].select();
       //$('#ffmpeg')[0].setSelectionRange(0,99999);
-      document.execCommand("copy");
-      alert('Command for ffmpeg copied to clipboard');
+      //document.execCommand("copy");
+      $('#ffmpeg').show();
+      $('#ffmpeg_command').val(ffmpeg_command);
+      $('#ffmpeg_command')[0].select();
+      $('#ffmpeg_command')[0].setSelectionRange(0,99999);
+      if(document.execCommand("copy")){
+        $('#ffmpeg').hide();
+        alert('FFMPEG command has been copied to clipboard: paste into a command line window to make the video');
+      }else{
+        alert('FFMPEG command is in textbox at bottom of page – copy and paste into a command line window to make the video');
+      }
+
     }
   </script>
 </head>
@@ -434,6 +509,19 @@
   <h1>Make your own lyrics video!</h1>
     <h2>Choosing a video file</h2>
   <p><input type="file" id="vid_file"/></p>
+  <button id="opts" type="button">Show/hide formatting options</button>
+  <div class="options">
+  <p>
+  Text colour: <input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
+  Text size: <input type='range' min='1' max='100' value='30' class='slider' id='font_size_range' oninput="font_size.value = font_size_range.value; window.opts.font_size = font_size.value; display_opts();"/>
+  <input id="font_size" class="opt_control" value="30" size="3"/>
+  </p>
+  <p>
+  Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
+  Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' oninput="bg_opacity.value = bg_opacity_range.value; window.opts.bg_opacity = bg_opacity.value; display_opts();"/>
+  <input id="bg_opacity" class="opt_control" value="0.5" size="3"/>
+  </p>
+</div>
   <div id="video_container">
     <video id="vid" controls="true">
       <source src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" id="video_here">
@@ -444,7 +532,7 @@
     </div>
   </div>
   <div id="controls"></div>
-  <div>
+  <div class="instructions">
   <h2>Making subtitles</h2>
   <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
   <p>Created subtitles will appear in the list to the right, where you can revisit or delete them if needed.</p>
@@ -463,18 +551,12 @@
   <button type="button" id="process">Process lyrics!</button>
   <div>
   <h2>Exporting your file</h2>
-  You can export the subtitle file ready to 'Burn in' using Handbrake, or you can get the (complicated) command you could use to add these subtitles in FFMPEG (not recommended at the moment).
+  You can export the subtitle file ready to 'Burn in' using Handbrake, or you can get the (complicated) command you could use to add these subtitles with exact formatting in FFMPEG. Make sure you enter the full pathnames of the input and output video here if you want to run the FFMPEG command.
+  <p>Input video: <input type="text" id="input_video" value="input.mov" /></p>
+  <p>Output video: <input type="text" id="output_video" value="output.mov" /></p>
     <button type=button id="export_srt">Export lyrics as SRT file</button>
-    <button type=button id="make_video">Get FFMPEG command</button>
+    <button type=button id="make_video">Create FFMPEG command!</button> (note: this will copy to the clipboard a command you can run to make your video. You need to have installed FFMPEG first.)
   </div>
-  <div id="ffmpeg"></div>
-  <div class="options"><h2>Lyric format options</h2>
-  <p>
-  Text colour: <input type='color' id='text_colour' value='#000000'/>
-  </p>
-  <p>
-  Background colour: <input type='color' id='bg_colour' value='#ffffff'/>
-  </p>
-</div>
-</body>
+  <div id="ffmpeg">FFMPEG command: <input type="text" id="ffmpeg_command" /></div>
+ </body>
 </html>
