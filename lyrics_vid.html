@@ -36,8 +36,8 @@
     pointer-events: none;
   }
   #preview {
-    font-family: "Verdana", sans-serif;
-    font-size: 30px;
+    font-family: sans-serif;
+    font-size: 50px;
     line-height: 2;
     text-align: center;
     vertical-align: middle;
@@ -66,9 +66,32 @@
       $('#clear').on('click', function(){
         $('#lyrics').val('');
       });
+      $('#sub_file').on('change', function(evt){
+        if(window.timecodes.length > 0){
+          if(!confirm('Are you sure you want to load a new set of subs and wipe existing timings?')) return;
+        }
+        var f = this.files[0];
+        const reader = new FileReader();
+        reader.addEventListener('load', (event) => {
+          load_subs(event.target.result);
+        });
+        reader.readAsText(f);
+      });
+      $('#save_subs').on('click', save_subs);
       $('#vid_file').on('change', function(evt){
           var source = $('#video_here');
-          source[0].src = URL.createObjectURL(this.files[0]);
+          var f = this.files[0];
+          if(f.type.match('video.*')){
+            source[0].src = URL.createObjectURL(f);
+          }else if(f.type.match('audio.*')){
+            $('#video_container').html('<p style="padding-bottom:100px;"/><audio id="vid" controls="true"><source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/WFMU/Broke_For_Free/Directionless_EP/Broke_For_Free_-_01_-_Night_Owl.mp3" id="video_here" />Your browser does not support HTML5 audio.</audio><div id="preview_container"><div id="preview"></div></div>');
+            $('#video_here').src = URL.createObjectURL(f);
+            $('#vid').videoWidth = 640; // Placeholder to stop breakage
+            $('#vid').videoHeight = 480; // Placeholder to stop breakage
+            $('#vid').on('canplay', vid_ready); // Reinstate events
+            $('#vid').on('timeupdate', sync_lyrics); // Reinstate events
+          }
+
           source.parent()[0].load();
       });
       $('#vid').on('canplay', vid_ready);
@@ -105,7 +128,7 @@
       window.opts = {
         text_colour: "#000000",
         bg_colour: "#ffffff", // Alpha needed too
-        font_size: 30, // pixels
+        font_size: 50, // pixels
         bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
         bg_border: 0,
         bg_opacity: 0.5,
@@ -113,7 +136,7 @@
         out_size: 0,
         shad_colour: "#000000",
         shad_off: 0,
-        font: 'Sans'
+        font: 'sans-serif'
       };
 
       if(storageAvailable('localStorage')){
@@ -287,7 +310,10 @@
     }
 
     function time_to_hms(time){
-      if(!time) return time_to_hms($('#vid')[0].duration);
+      if(!time){
+        if($('#vid')[0].duration) return time_to_hms($('#vid')[0].duration);
+        return '00:00:00,000';
+      }
       var s = Math.floor(time);
       var ms = Math.floor ((time - s)*1000);
       var date = new Date(null);
@@ -296,7 +322,10 @@
     }
 
     function time_to_ass(time){
-      if(!time) return time_to_ass($('#vid')[0].duration);
+      if(!time){
+        if($('#vid')[0].duration) return time_to_ass($('#vid')[0].duration);
+        return '0:00:00.00';
+      }
       var s = Math.floor(time);
       var hs = Math.floor ((time - s)*100);
       var date = new Date(null);
@@ -554,6 +583,15 @@
       //console.log('selected line is '+id);
     }
 
+  function save_subs(){
+    download(JSON.stringify(window.timecodes), "lyrics.json", "application/json");
+  }
+
+  function load_subs(file){
+    window.timecodes = JSON.parse(file);
+    update_list();
+  }
+
   function storageAvailable(type) {
     var storage;
     try {
@@ -592,7 +630,7 @@
           text_colour: "#000000",
           bg_colour: "#ffffff", // Alpha needed too
           font_size: 30, // pixels
-          font: 'Sans',
+          font: 'sans-serif',
           bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
           bg_border: 0,
           bg_opacity: 0.5,
@@ -698,9 +736,10 @@
     <h1>Make your own lyrics video!</h1>
   </div>
   <p>Choose a video file to work with: <input type="file" id="vid_file"/></p>
+  <button id="save_subs">Save work in progress </button> Or load from a previous save: <input type="file" id="sub_file"/>
   <div id="video_container">
     <video id="vid" controls="true">
-      <source src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" id="video_here">
+      <source src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" id="video_here" />
        Your browser does not support HTML5 video.
     </video>
     <div id="preview_container">
@@ -737,10 +776,10 @@
 <h2>Format subtitles</h2>
 <p>
 Text colour: <input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
-Text size: <input type='range' min='1' max='100' value='30' class='slider' id='font_size_range' />
-<input id="font_size" class="opt_control" value="30" size="3"/>
+Text size: <input type='range' min='1' max='100' value='50' class='slider' id='font_size_range' />
+<input id="font_size" class="opt_control" value="50" size="3"/>
 </p><p>
-Font: <input id="font" class="opt_control" type="text" value='Sans' />  (you should be able to type any on your system, or the standard families 'Sans', 'Serif' or 'Monospace')
+Font: <input id="font" class="opt_control" type="text" value='sans-serif' size="10"/>  (you should be able to type any on your system, or the standard families 'sans-serif', 'serif' or 'monospace')
 </p>
 <p>
 Outline colour: <input class="opt_control" type='color' id='out_colour' value='#000000'/>
