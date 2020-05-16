@@ -610,14 +610,14 @@
     </div>
   </div>
   <div class="w3-bar w3-black">
-    <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Add</button>
+    <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Import</button>
     <button class="w3-bar-item w3-button tablink" id="place_tab" onclick="openTab(event, 'place_lyrics')">Place</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'edit_lyrics')">Edit</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'options')">Format</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'export')">Export</button>
   </div>
 <div id="add_lyrics" class="tab_option">
-  <h2>Adding lyrics</h2>
+  <h2>Import lyrics</h2>
   <p>Copy your lyrics here, then press 'Process lyrics!' (or hit shift-return) to split into lines:</p>
   <p><textarea id="lyrics" class="lyrics_array"></textarea></p>
   <button type="button" id="clear">Clear</button>
@@ -631,10 +631,12 @@
   <div id="lyrics_array" class="lyrics_array"></div>
 </div>
 <div id="edit_lyrics" class="tab_option" style="display: none;">
+<h2>Edit subtitles</h2>
 <p>Click on times to jump to them in the video. Shift-click to set to current time. Click on subtitle text to edit it.
 <div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
 </div>
 <div id="options" class="tab_option" style="display: none;">
+<h2>Format subtitles</h2>
 <p>
 Text colour: <input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
 Text size: <input type='range' min='1' max='100' value='30' class='slider' id='font_size_range' oninput="font_size.value = font_size_range.value; window.opts.font_size = font_size.value; display_opts();"/>
@@ -647,7 +649,7 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
 </p>
 </div>
 <div id="export" class="tab_option" style="display: none;">
-  <h2>Exporting your file</h2>
+  <h2>Export your file</h2>
   You can export the subtitle file ready to 'Burn in' using Handbrake, or you can get the (complicated) command you could use to add these subtitles with exact formatting in FFMPEG. Make sure you enter the full pathnames of the input and output video here if you want to run the FFMPEG command.
   <p>Input video: <input type="text" id="input_video" value="input.mov" /></p>
   <p>Output video: <input type="text" id="output_video" value="output.mov" /></p>
