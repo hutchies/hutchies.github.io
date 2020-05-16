@@ -80,6 +80,7 @@
       $('.options').hide();
       $('.opt_control').on('change', change_opt);
       $('.opt_control').on('input', change_opt);
+      $('.slider').on('input', adjust_range);
       $('#lyrics').on('keyup', function(e){
         if(e.keyCode === 13 && e.shiftKey){
           e.preventDefault();
@@ -107,8 +108,22 @@
         font_size: 30, // pixels
         bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
         bg_border: 0,
-        bg_opacity: 0.5
+        bg_opacity: 0.5,
+        out_colour: "#000000",
+        out_size: 0,
+        shad_colour: "#000000",
+        shad_off: 0,
+        font: 'Sans'
       };
+
+      if(storageAvailable('localStorage')){
+        $('#save_opts').on('click', save_opts);
+        $('#reset_opts').on('click', load_opts);
+        $('#wipe_opts').on('click', wipe_opts);
+        load_opts();
+      }else{
+        $('#saving').hide();
+      }
       //window.font_options = ["Arial", "Times New Roman", "Verdana", "Courier New"];
       window.os_specific = {
         "Mac": {
@@ -187,6 +202,10 @@
 
       $('#preview_container').css('background', bg_colour);
       $('#preview').css('font-size', window.opts.font_size/2 +'px');
+      $('#preview').css('-webkit-text-stroke', window.opts.out_size + 'px '+ window.opts.out_colour);
+      //console.log(window.opts.out_colour);
+      $('#preview').css('text-shadow', window.opts.shad_off + 'px ' + window.opts.shad_off + 'px' + window.opts.shad_colour);
+      $('#preview').css('font-family', window.opts.font);
     }
 
     function set_opt_controls(){
@@ -195,6 +214,8 @@
       };
       $('#font_size_range').val(window.opts.font_size);
       $('#bg_opacity_range').val(window.opts.bg_opacity);
+      $('#out_size_range').val(window.opts.out_size);
+      $('#shad_off_range').val(window.opts.shad_off);
     }
 
     function openTab(evt, tabName) {
@@ -311,15 +332,14 @@
         wrap = 2; // For workaround to enable full-width box
         var char = 'G';
         var num = Math.floor($('#vid')[0].videoWidth / (window.opts.font_size * 2));
-        console.log(num);
         spacer = '{\\1a&HFF&}{\\bord0}{\\shad0}'+char.repeat(num)+'{\\r}{\\1a&H00&}';
       }
       var res=false;
       var res_text = '';
       if(res) res_text = 'PlayResX: '+$('#vid')[0].videoWidth+'\nPlayResY: '+$('#vid')[0].videoHeight+'\n';
       var file = '[Script Info]\nScriptType: V4.00+\n'+res_text+'WrapStyle: '+wrap+'\n\n';
-      file += '[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV\n';
-      file += 'Style: Default,Arial,'+window.opts.font_size+','+rgb_to_bgr(window.opts.text_colour)+','+rgb_to_bgr(window.opts.bg_colour, window.opts.bg_opacity)+',0,0,4,0,0,2,0,0,0\n\n'; // TODO update with variables
+      file += '[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, BackColour, OutlineColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV\n';
+      file += 'Style: Default,Arial,'+window.opts.font_size+','+rgb_to_bgr(window.opts.text_colour)+','+rgb_to_bgr(window.opts.bg_colour, window.opts.bg_opacity)+','+rgb_to_bgr(window.opts.out_colour, 1)+',0,0,4,'+window.opts.out_size+','+window.opts.shad_off+',2,0,0,0\n\n'; // TODO update with variables
       file += '[Events]\nFormat: Start, End, Style, Text\n';
       for(var i = 0; i < window.timecodes.length; i++){
         var num = i+1;
@@ -534,6 +554,70 @@
       //console.log('selected line is '+id);
     }
 
+  function storageAvailable(type) {
+    var storage;
+    try {
+        storage = window[type];
+        var x = '__storage_test__';
+        storage.setItem(x, x);
+        storage.removeItem(x);
+        return true;
+    }
+    catch(e) {
+        return e instanceof DOMException && (
+            // everything except Firefox
+            e.code === 22 ||
+            // Firefox
+            e.code === 1014 ||
+            // test name field too, because code might not be present
+            // everything except Firefox
+            e.name === 'QuotaExceededError' ||
+            // Firefox
+            e.name === 'NS_ERROR_DOM_QUOTA_REACHED') &&
+            // acknowledge QuotaExceededError only if there's something already stored
+            (storage && storage.length !== 0);
+    }
+}
+
+    function save_opts(){
+      for(setting in window.opts){
+        localStorage.setItem('format_options_'+setting, window.opts[setting]);
+      }
+      localStorage.setItem('format_saved', true);
+    }
+
+    function load_opts(){
+      if(!localStorage.getItem('format_saved')){
+        window.opts = {
+          text_colour: "#000000",
+          bg_colour: "#ffffff", // Alpha needed too
+          font_size: 30, // pixels
+          font: 'Sans',
+          bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
+          bg_border: 0,
+          bg_opacity: 0.5,
+          out_colour: "#000000",
+          out_size: 0,
+          shad_colour: "#000000",
+          shad_off: 0
+        };
+        return;
+      }
+      for(setting in window.opts){
+        window.opts[setting] = localStorage.getItem('format_options_'+setting);
+      }
+      display_opts();
+      set_opt_controls();
+    }
+
+    function wipe_opts(){
+      if(!confirm('Are you sure you want to reset formatting?')) return;
+      localStorage.clear();
+      load_opts();
+      display_opts();
+      set_opt_controls();
+    }
+
     function click_line_old(){
       var id = $(this).attr('id').substring(11);
       if(window.selected_line == id){
@@ -555,20 +639,34 @@
       }
     }
 
+    function adjust_range(){
+      var range_id = $(this).attr('id');
+      var id = range_id.slice(0, -6); // To remove '_range' bit
+      $('#'+id).val($('#'+range_id).val());
+      window.opts[id] = $('#'+id).val();
+      display_opts();
+    }
+
     function process_video(){
-      var ffmpeg_command = 'ffmpeg -i '+$('#input_video').val()+' -vf ';
+      var in_name = $('#input_video').val();
+      if(in_name === ''){
+        alert('You haven\'t entered an input filename yet! Enter a filename, or drag the file to the textbox to get its path.');
+        return;
+      }
+      var ffmpeg_command = 'ffmpeg -i "'+in_name+'" -vf ';
       var filtergraph = '';
       window.timecodes.forEach(function(line){
         var bgcol = window.opts.bg_colour+'@'+window.opts.bg_opacity;
         var col = window.opts.text_colour;
-        var size = window.opts.font_size; //pixels, I think
+        var size = window.opts.font_size; // pixels, I think
         var x_offset = "w / 2 - tw / 2";
         var y_offset = "h - "+size+" * 1.5";  //(max_glyph_h / 2)" //  + ascent";
         var box_edge = '20'; //$('#vid')[0].videoWidth / 2;
+        var font = window.opts.font;
         if(!line.end) line.end = $('#vid')[0].duration;
         //console.log('font color='+col);
         var db = 'drawbox="y=ih-'+size*2+':h='+size*2+':t=fill:color='+bgcol+':enable=\'between(t,'+line.start+','+line.end+')\'"';
-        var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+        var dt = 'drawtext="text='+escape_filter_option(line.text)+':font='+font+':x='+x_offset+':y='+y_offset+':fontcolor='+col+':fontsize='+size+':borderw='+window.opts.out_size+':bordercolor='+window.opts.out_colour+':shadowcolor='+window.opts.shad_colour+':shadowx='+window.opts.shad_off+':shadowy='+window.opts.shad_off+':enable=\'between(t,'+line.start+','+line.end+')\'"';
         //var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':box=1:boxcolor='+bgcol+':boxborderw='+box_edge+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
 
         if(filtergraph !== '') filtergraph += ',';
@@ -576,7 +674,7 @@
         //filtergraph += escape_filter_description(dt);
       });
       ffmpeg_command += escape_filtergraph_for_shell(filtergraph);
-      ffmpeg_command += ' '+$('#output_video').val();
+      ffmpeg_command += ' "'+$('#output_video').val()+'"';
       //$('#ffmpeg').text(ffmpeg_command);
       //$('#ffmpeg')[0].select();
       //$('#ffmpeg')[0].setSelectionRange(0,99999);
@@ -587,9 +685,9 @@
       $('#ffmpeg_command')[0].setSelectionRange(0,99999);
       if(document.execCommand("copy")){
         $('#ffmpeg').hide();
-        alert('FFMPEG command has been copied to clipboard: paste into a command line window to make the video');
+        $('#confirmation').text('FFMPEG command has been copied to clipboard: paste into a command line window to make the video');
       }else{
-        alert('FFMPEG command is in textbox at bottom of page – copy and paste into a command line window to make the video');
+        $('#confirmation').text('FFMPEG command is in textbox at bottom of page – copy and paste into a command line window to make the video');
       }
 
     }
@@ -639,25 +737,44 @@
 <h2>Format subtitles</h2>
 <p>
 Text colour: <input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
-Text size: <input type='range' min='1' max='100' value='30' class='slider' id='font_size_range' oninput="font_size.value = font_size_range.value; window.opts.font_size = font_size.value; display_opts();"/>
+Text size: <input type='range' min='1' max='100' value='30' class='slider' id='font_size_range' />
 <input id="font_size" class="opt_control" value="30" size="3"/>
+</p><p>
+Font: <input id="font" class="opt_control" type="text" value='Sans' />  (you should be able to type any on your system, or the standard families 'Sans', 'Serif' or 'Monospace')
+</p>
+<p>
+Outline colour: <input class="opt_control" type='color' id='out_colour' value='#000000'/>
+Outline thickness: <input type='range' min='0' max='5' value='0' class='slider' id='out_size_range' />
+<input id="out_size" class="opt_control" value="0" size="3"/>
+</p>
+<p>
+Shadow colour: <input class="opt_control" type='color' id='shad_colour' value='#000000'/>
+Shadow offset: <input type='range' min='0' max='5' value='0' class='slider' id='shad_off_range' />
+<input id="shad_off" class="opt_control" value="0" size="3"/>
 </p>
 <p>
 Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
-Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' oninput="bg_opacity.value = bg_opacity_range.value; window.opts.bg_opacity = bg_opacity.value; display_opts();"/>
+Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' />
 <input id="bg_opacity" class="opt_control" value="0.5" size="3"/>
 </p>
+<div id="saving">
+<button id="reset_opts" type="button">Reset to defaults</button>
+<button id="save_opts" type="button">Save as new defaults</button>
+<p>
+<button id="wipe_opts" type="button">Factory reset (wipe defaults)</button>
+</div>
 </div>
 <div id="export" class="tab_option" style="display: none;">
   <h2>Export your file</h2>
   You can export the subtitle file ready to 'Burn in' using Handbrake, or you can get the (complicated) command you could use to add these subtitles with exact formatting in FFMPEG. Make sure you enter the full pathnames of the input and output video here if you want to run the FFMPEG command.
-  <p>Input video: <input type="text" id="input_video" value="input.mov" /></p>
-  <p>Output video: <input type="text" id="output_video" value="output.mov" /></p>
+  <p>Input video: <input type="text" id="input_video" value="" /></p>
+  <p>Output video: <input type="text" id="output_video" value="output.mp4" /></p>
     <button type=button id="export_srt">Export lyrics as SRT file</button> (SRT files are widely accepted, but don't contain any formatting information)
     <p />
-    <button type=button id="export_ass">Export lyrics as ASS file</button> (ASS files contain full formatting information, but not all readers can use this information – FFMPEG can though)
+    <button type=button id="export_ass">Export lyrics as ASS file</button> (ASS files contain most formatting information, but not all readers can use this information – FFMPEG can though)
     <p />
-    <button type=button id="make_video">Create FFMPEG command!</button>
+    <button type=button id="make_video">Create FFMPEG command! (This will probably give you the best formatting.)</button>
+    <div id="confirmation" style="color: red;"></div>
     <p>(note: this will copy to the clipboard a command you can run to make your video. You need to have installed FFMPEG first.)</p>
   <div id="ffmpeg">FFMPEG command: <input type="text" id="ffmpeg_command" /></div>
 </div>
