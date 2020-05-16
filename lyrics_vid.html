@@ -653,9 +653,9 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
   You can export the subtitle file ready to 'Burn in' using Handbrake, or you can get the (complicated) command you could use to add these subtitles with exact formatting in FFMPEG. Make sure you enter the full pathnames of the input and output video here if you want to run the FFMPEG command.
   <p>Input video: <input type="text" id="input_video" value="input.mov" /></p>
   <p>Output video: <input type="text" id="output_video" value="output.mov" /></p>
-    <button type=button id="export_srt">Export lyrics as SRT file</button>
+    <button type=button id="export_srt">Export lyrics as SRT file</button> (SRT files are widely accepted, but don't contain any formatting information)
     <p />
-    <button type=button id="export_ass">Export lyrics as ASS file</button>
+    <button type=button id="export_ass">Export lyrics as ASS file</button> (ASS files contain full formatting information, but not all readers can use this information – FFMPEG can though)
     <p />
     <button type=button id="make_video">Create FFMPEG command!</button>
     <p>(note: this will copy to the clipboard a command you can run to make your video. You need to have installed FFMPEG first.)</p>
