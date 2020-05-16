@@ -4,6 +4,7 @@
   <title>Make a lyrics video</title>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
   <style>
   .line_text {
     cursor: pointer;
@@ -17,7 +18,7 @@
   }
   .lyrics_array {
     height:200px;
-    width: 500px;
+    width: 100%;
     border:1px solid #ccc;
     overflow: scroll;
   }
@@ -74,10 +75,23 @@
       $('#vid').on('timeupdate', sync_lyrics);
       $('#make_video').on('click', process_video);
       $('#export_srt').on('click', export_srt);
+      $('#export_ass').on('click', export_ass);
       $('.instructions').hide();
       $('.options').hide();
       $('.opt_control').on('change', change_opt);
       $('.opt_control').on('input', change_opt);
+      $('#lyrics').on('keyup', function(e){
+        if(e.keyCode === 13 && e.shiftKey){
+          e.preventDefault();
+          process_lyrics();
+        }
+      });
+      $('#single_line').on('keyup', function(e){
+        if(e.keyCode === 13){
+          e.preventDefault();
+          add_line();
+        }
+      });
       $('#add').on('click', add_line);
       $('#opts').on('click', function(){
         $('.options').toggle();
@@ -143,6 +157,17 @@
     }
        prev_lyric();
       });
+      $('#lyrics').focus();
+
+          Mousetrap.prototype.stopCallback = function(e, element, combo) {
+            if ((' ' + element.className + ' ').indexOf(' mousetrap ') > -1) {
+              if(combo != 'space') return false;
+          }
+
+          // stop for input, select, and textarea
+          return element.tagName == 'INPUT' || element.tagName == 'SELECT' || element.tagName == 'TEXTAREA' || (element.contentEditable && element.contentEditable == 'true');
+
+          }
     });
 
     function set_os(){
@@ -171,6 +196,21 @@
       $('#font_size_range').val(window.opts.font_size);
       $('#bg_opacity_range').val(window.opts.bg_opacity);
     }
+
+    function openTab(evt, tabName) {
+      var i;
+      var x = document.getElementsByClassName("tab_option");
+      for (i = 0; i < x.length; i++) {
+        x[i].style.display = "none";
+      }
+      tablinks = document.getElementsByClassName("tablink");
+      for (i = 0; i < x.length; i++) {
+        tablinks[i].className = tablinks[i].className.replace(" w3-blue", "");
+      }
+      document.getElementById(tabName).style.display = "block";
+      evt.currentTarget.className += " w3-blue";
+    }
+
 
     function goto_time(id){
       if(id.match(/start/)){
@@ -234,6 +274,15 @@
       return date.toISOString().substr(11, 12).replace(/\./, ',');
     }
 
+    function time_to_ass(time){
+      if(!time) return time_to_ass($('#vid')[0].duration);
+      var s = Math.floor(time);
+      var hs = Math.floor ((time - s)*100);
+      var date = new Date(null);
+      date.setSeconds(s, hs*10);
+      return date.toISOString().substr(12, 10);
+    }
+
     function export_srt(){
       var file = '';
       for(var i = 0; i < window.timecodes.length; i++){
@@ -244,6 +293,39 @@
 
       }
       download(file, "lyrics.srt", 'text/srt');
+    }
+
+    function rgb_to_bgr(col, alpha = 1){
+      // Can presume 7-digit hex notation
+      var r = col[1]+col[2];
+      var g = col[3]+col[4];
+      var b = col[5]+col[6];
+      var a = Math.round(alpha * 255).toString(16);
+      return '&H'+a.toUpperCase()+b.toUpperCase()+g.toUpperCase()+r.toUpperCase()+'&';
+    }
+
+    function export_ass(){
+      var wrap = 0;
+      var spacer = '';
+      if(window.opts.bg_type == "full"){
+        wrap = 2; // For workaround to enable full-width box
+        var char = 'G';
+        var num = Math.floor($('#vid')[0].videoWidth / (window.opts.font_size * 2));
+        console.log(num);
+        spacer = '{\\1a&HFF&}{\\bord0}{\\shad0}'+char.repeat(num)+'{\\r}{\\1a&H00&}';
+      }
+      var res=false;
+      var res_text = '';
+      if(res) res_text = 'PlayResX: '+$('#vid')[0].videoWidth+'\nPlayResY: '+$('#vid')[0].videoHeight+'\n';
+      var file = '[Script Info]\nScriptType: V4.00+\n'+res_text+'WrapStyle: '+wrap+'\n\n';
+      file += '[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV\n';
+      file += 'Style: Default,Arial,'+window.opts.font_size+','+rgb_to_bgr(window.opts.text_colour)+','+rgb_to_bgr(window.opts.bg_colour, window.opts.bg_opacity)+',0,0,4,0,0,2,0,0,0\n\n'; // TODO update with variables
+      file += '[Events]\nFormat: Start, End, Style, Text\n';
+      for(var i = 0; i < window.timecodes.length; i++){
+        var num = i+1;
+        file += 'Dialogue: '+time_to_ass(window.timecodes[i].start) + ',' + time_to_ass(window.timecodes[i].end) + ',Default,'+spacer+window.timecodes[i].text+spacer+'\n';
+      }
+      download(file, "lyrics.ass", 'text/ass');
     }
 
     function playpause(){
@@ -295,28 +377,36 @@
 
     function process_lyrics(){
       var lyrics = $.trim($('#lyrics').val());
+      $('#lyrics').val('');
+      $('#lyrics').blur();
       if(lyrics === '') return;
-      window.timecodes = []; // Reset everything
+      //window.timecodes = []; // Reset everything
       var lines = lyrics.match(/[^\r\n]+/g);
       var inside = '';
       lines.forEach(function(line){
         inside += '<div id="lyric_line_'+window.ids+'"></div><span class="line_text" id="lyric_text_'+window.ids+'">'+line+'</span>' // from <span id="lyric_start_'+ln+'">0</span> seconds to <span id="lyric_end_'+ln+'">0</span> seconds</div>';
         window.ids++;
       });
-      $('#lyrics_array').html(inside);
+      existing = $('#lyrics_array').html();
+      $('#lyrics_array').html(existing+inside);
       $('.line_text').on('click', click_line);
-      $('.instructions').show();
+      var evt = new MouseEvent('click', {view: window, bubbles: true, cancelable: true});
+      $('#place_tab')[0].dispatchEvent(evt);
     }
 
     function add_line(){
       var h = $('#lyrics_array').html();
       var line = $('#single_line').val();
+      $('#single_line').val('');
+      //$('#single_line').blur();
       if(line === '') return;
       h += '<div id="lyric_line_'+window.ids+'"></div><span class="line_text" id="lyric_text_'+window.ids+'">'+line+'</span>';
       window.ids++;
       $('#lyrics_array').html(h);
       $('.line_text').on('click', click_line);
-      $('.instructions').show();
+      // Auto-click line
+      var id = window.ids - 1;
+      $('#lyric_text_'+id).trigger('click');
     }
 
     function sync_lyrics(){
@@ -506,22 +596,10 @@
   </script>
 </head>
 <body>
-  <h1>Make your own lyrics video!</h1>
-    <h2>Choosing a video file</h2>
-  <p><input type="file" id="vid_file"/></p>
-  <button id="opts" type="button">Show/hide formatting options</button>
-  <div class="options">
-  <p>
-  Text colour: <input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
-  Text size: <input type='range' min='1' max='100' value='30' class='slider' id='font_size_range' oninput="font_size.value = font_size_range.value; window.opts.font_size = font_size.value; display_opts();"/>
-  <input id="font_size" class="opt_control" value="30" size="3"/>
-  </p>
-  <p>
-  Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
-  Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' oninput="bg_opacity.value = bg_opacity_range.value; window.opts.bg_opacity = bg_opacity.value; display_opts();"/>
-  <input id="bg_opacity" class="opt_control" value="0.5" size="3"/>
-  </p>
-</div>
+  <div id="header" class="w3-container w3-blue">
+    <h1>Make your own lyrics video!</h1>
+  </div>
+  <p>Choose a video file to work with: <input type="file" id="vid_file"/></p>
   <div id="video_container">
     <video id="vid" controls="true">
       <source src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" id="video_here">
@@ -531,32 +609,55 @@
       <div id="preview"></div>
     </div>
   </div>
-  <div id="controls"></div>
-  <div class="instructions">
-  <h2>Making subtitles</h2>
-  <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
-  <p>Created subtitles will appear in the list to the right, where you can revisit or delete them if needed.</p>
-  <table><tr><td><b>Available lyrics (click on lyrics to make them appear)<b><div id="lyrics_array" class="lyrics_array"></div>
-  </td><td><b>List of created subtitles. Click on times to jump to them, shift-click to set to current time. Click on text to edit</b>
-      <div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;">
-      </div>
-</td></tr></table>
-</div>
+  <div class="w3-bar w3-black">
+    <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Add</button>
+    <button class="w3-bar-item w3-button tablink" id="place_tab" onclick="openTab(event, 'place_lyrics')">Place</button>
+    <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'edit_lyrics')">Edit</button>
+    <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'options')">Format</button>
+    <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'export')">Export</button>
+  </div>
+<div id="add_lyrics" class="tab_option">
   <h2>Adding lyrics</h2>
-  <p>Before you can start adding subtitles, you will need to add some lyrics. If you want to add a single lyric line, type it below and press 'add':</p>
-  <input type="text" id="single_line" /><button type="button" id="add">Add line</button>
-  <p>You can also add lots of lyrics at once. Copy them here, then press 'Process lyrics!' to split into lines:</p>
-  <p><textarea id="lyrics" rows="10" cols="50"></textarea></p>
+  <p>Copy your lyrics here, then press 'Process lyrics!' (or hit shift-return) to split into lines:</p>
+  <p><textarea id="lyrics" class="lyrics_array"></textarea></p>
   <button type="button" id="clear">Clear</button>
   <button type="button" id="process">Process lyrics!</button>
-  <div>
+</div>
+<div id="place_lyrics" class="tab_option" style="display: none;">
+  <h2>Place subtitles</h2>
+  <p>If you want to add and display another lyric quickly, you can type it here and press enter:</p>
+  <input type="text" id="single_line" class="mousetrap"/><button type="button" id="add">Display</button>
+  <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
+  <div id="lyrics_array" class="lyrics_array"></div>
+</div>
+<div id="edit_lyrics" class="tab_option" style="display: none;">
+<p>Click on times to jump to them in the video. Shift-click to set to current time. Click on subtitle text to edit it.
+<div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
+</div>
+<div id="options" class="tab_option" style="display: none;">
+<p>
+Text colour: <input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
+Text size: <input type='range' min='1' max='100' value='30' class='slider' id='font_size_range' oninput="font_size.value = font_size_range.value; window.opts.font_size = font_size.value; display_opts();"/>
+<input id="font_size" class="opt_control" value="30" size="3"/>
+</p>
+<p>
+Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
+Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' oninput="bg_opacity.value = bg_opacity_range.value; window.opts.bg_opacity = bg_opacity.value; display_opts();"/>
+<input id="bg_opacity" class="opt_control" value="0.5" size="3"/>
+</p>
+</div>
+<div id="export" class="tab_option" style="display: none;">
   <h2>Exporting your file</h2>
   You can export the subtitle file ready to 'Burn in' using Handbrake, or you can get the (complicated) command you could use to add these subtitles with exact formatting in FFMPEG. Make sure you enter the full pathnames of the input and output video here if you want to run the FFMPEG command.
   <p>Input video: <input type="text" id="input_video" value="input.mov" /></p>
   <p>Output video: <input type="text" id="output_video" value="output.mov" /></p>
     <button type=button id="export_srt">Export lyrics as SRT file</button>
-    <button type=button id="make_video">Create FFMPEG command!</button> (note: this will copy to the clipboard a command you can run to make your video. You need to have installed FFMPEG first.)
-  </div>
+    <p />
+    <button type=button id="export_ass">Export lyrics as ASS file</button>
+    <p />
+    <button type=button id="make_video">Create FFMPEG command!</button>
+    <p>(note: this will copy to the clipboard a command you can run to make your video. You need to have installed FFMPEG first.)</p>
   <div id="ffmpeg">FFMPEG command: <input type="text" id="ffmpeg_command" /></div>
+</div>
  </body>
 </html>
