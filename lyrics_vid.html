@@ -60,6 +60,8 @@
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
   <script src="mousetrap.min.js"></script>
+  <script src="ffmpeg-webm.min.js"></script>
+  <!-- <script src="ffmpeg-all-codecs.js"></script> -->
   <script>
     $(document).ready(function() {
       $('#process').on('click', process_lyrics);
@@ -104,6 +106,7 @@
       $('.opt_control').on('change', change_opt);
       $('.opt_control').on('input', change_opt);
       $('.slider').on('input', adjust_range);
+      $('#in_browser').on('click', browser_video);
       $('#lyrics').on('keyup', function(e){
         if(e.keyCode === 13 && e.shiftKey){
           e.preventDefault();
@@ -168,6 +171,11 @@
       set_os();
       set_opt_controls();
       display_opts();
+      window.isWorkerLoaded = false;
+      window.worker = null;
+      window.ffmpeg_running = false;
+      $('#ffmpeg_log').hide();
+      init_worker();
       Mousetrap.bind('space', function(e){
         if (e.preventDefault) {
         e.preventDefault();
@@ -319,6 +327,22 @@
       var date = new Date(null);
       date.setSeconds(s, ms);
       return date.toISOString().substr(11, 12).replace(/\./, ',');
+    }
+
+    function ffmpeg_ready(){
+      return !window.ffmpeg_running && window.isWorkerLoaded && window.timecodes.length;
+    }
+
+    function ffmpeg_start(){
+      window.ffmpeg_running = true;
+      $('#ffmpeg_log').show();
+      $('#in_browser').hide();
+    }
+
+    function ffmpeg_stop(){
+      window.ffmpeg_running = false;
+      $('#ffmpeg_log').hide();
+      $('#in_browser').show();
     }
 
     function time_to_ass(time){
@@ -677,6 +701,104 @@
       }
     }
 
+    function canvasBlob(callback){
+      var canvas = document.createElement('CANVAS');
+      var ctx = canvas.getContext('2d');
+      var blob;
+      canvas.height = 100;
+      canvas.width = 1920;
+      ctx.fillStyle = "#FF0000";
+      ctx.fillRect(0, 0, 150, 75);
+      blob = canvas.toBlob(callback, 'image/png');
+    }
+
+    function init_worker(){
+      // Adapted from videoconverter.js - https://github.com/bgrins/videoconverter.js/blob/master/demo/terminal.js
+      window.worker = new Worker("./lyrics_worker.js");
+      worker.onmessage = function (event) {
+        var message = event.data;
+        if (message.type == "ready") {
+          window.isWorkerLoaded = true;
+          // Probs remove below
+          worker.postMessage({
+            type: "command",
+            arguments: ["-help"]
+          });
+        } else if (message.type == "stdout") {
+          $('#ffmpeg_log').append(document.createTextNode(message.data + "\n"));
+        } else if (message.type == "start") {
+          $('#ffmpeg_log').text("Worker has received command\n");
+        } else if (message.type == "done") {
+          stopRunning();
+          var buffers = message.data;
+          buffers.forEach(function(file) {
+            console.log("File recieved", file.name, file.data);
+            download(file.data, file.name, "video/quicktime");
+          });
+        }
+      };
+    }
+
+    function browser_video(){
+      canvasBlob(function(blob) {
+        //console.log('Blobbed');
+        blob.arrayBuffer().then(function(ab){
+            //console.log('Promise resolved');
+            //var args = '-formats';
+            var data = new Uint8Array(ab);
+            //console.log(data);
+            var avi_args =  '-nostdin -loop 1 -i img.png -c:v huffyuv -t 15 out.avi';
+            var prores_args =  '-nostdin -loop 1 -i img.png -c:v prores_ks -profile:v 4444 -qscale:v 9 -vendor ap10 -pix_fmt yuva444p10le -t 15 out.mov';
+            var args = avi_args;
+            /*res = call_ffmpeg(
+            [{name: 'img.webp', data: data}],
+            args.split(' '));
+            console.log(res.MEMFS[0].data);
+            download(res.MEMFS[0].data, "out.webm", "video/webm");*/
+            /*
+            var results = ffmpeg_run({
+              arguments: args.split(' '),
+              files: [
+                {
+                  name: 'img.png',
+                  data: data
+                }
+              ]
+            });
+            results.forEach(function(file) {
+                console.log("File recieved", file.name, file.data);
+                download(file.data, file.name, "video/quicktime");
+            });*/
+            if(ffmpeg_ready()){
+              ffmpeg_start();
+              console.log('Launching ffmpeg with args '+args);
+              window.worker.postMessage({
+                type: 'command',
+                arguments: args.split(' '),
+                files: [
+                  {
+                    name: 'img.png',
+                    data: data
+                  }
+                ]
+              });
+            }
+        });
+      })
+    }
+
+    function call_ffmpeg(memfs, args){
+      const result = window.ffmpeg({
+        MEMFS: memfs, //[{name: "img.png", }],
+        arguments: args, // ["-codecs"],
+        print: function(data) {console.log(data)},
+        onExit: function(code){
+          console.log('Done: '+code);
+        }
+      });
+      return result;
+    }
+
     function adjust_range(){
       var range_id = $(this).attr('id');
       var id = range_id.slice(0, -6); // To remove '_range' bit
@@ -816,6 +938,8 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
     <div id="confirmation" style="color: red;"></div>
     <p>(note: this will copy to the clipboard a command you can run to make your video. You need to have installed FFMPEG first.)</p>
   <div id="ffmpeg">FFMPEG command: <input type="text" id="ffmpeg_command" /></div>
+  <button id="in_browser" type="button">Experimental in-browser FFMPEG</button>
+  <div id="ffmpeg_log" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
 </div>
  </body>
 </html>
