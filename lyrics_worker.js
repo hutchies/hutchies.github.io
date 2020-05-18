@@ -23,7 +23,7 @@ onmessage = function(event) {
       arguments: message.arguments || [],
       TOTAL_MEMORY: message.TOTAL_MEMORY || false
       // Can play around with this option - must be a power of 2
-      // TOTAL_MEMORY: 268435456
+      //TOTAL_MEMORY: 268435456
     };
 
     postMessage({
