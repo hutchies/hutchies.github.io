@@ -67,8 +67,6 @@
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
   <script src="mousetrap.min.js"></script>
-  <!-- <script src="ffmpeg-webm.min.js"></script>-->
-  <script src="ffmpeg-all-codecs.js"></script>
   <script>
     $(document).ready(function() {
       $('#process').on('click', process_lyrics);
@@ -139,7 +137,7 @@
       window.selected_line = -1;
       window.timecodes = [];
       window.ids = 0;
-      window.running_locally = false;
+      //window.running_locally = false;
       window.vid_name = '';
 
       if(storageAvailable('localStorage')){
@@ -861,7 +859,7 @@
 
     function init_worker(){
       // Adapted from videoconverter.js - https://github.com/bgrins/videoconverter.js/blob/master/demo/terminal.js
-      if(window.running_locally) return;
+      //if(window.running_locally) return;
       window.worker = new Worker("lyrics_worker.js");
       worker.onmessage = function (event) {
         var message = event.data;
@@ -1069,7 +1067,7 @@
     console.log("File recieved", file.name, file.data);
     download(file.data, file.name, "video/quicktime");
   });*/
-  if(!running_locally){
+  /*if(!running_locally){*/
     if(ffmpeg_ready()){
       ffmpeg_start();
       // TODO check whether memory amounts below are needed!
@@ -1081,7 +1079,7 @@
         files: files
       });
     }
-  }else{
+  /*}else{
     // Don't use Web Workers cos of stoopid Chrome restrictions
     console.log('here');
     $('#ffmpeg_log').show({complete: function(){
@@ -1100,6 +1098,7 @@
     }});
 
   }
+  */
 });
 
 });
