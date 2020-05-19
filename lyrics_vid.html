@@ -116,6 +116,7 @@
       $('#browser_overlay').hide();
       $('#browser_full').on('click', export_full);
       $('#browser_full').hide();
+      //console.log(window.devicePixelRatio);
       $('#lyrics').on('keyup', function(e){
         if(e.keyCode === 13 && e.shiftKey){
           e.preventDefault();
@@ -149,25 +150,6 @@
         $('#saving').hide();
         init_opts();
       }
-      //window.font_options = ["Arial", "Times New Roman", "Verdana", "Courier New"];
-      window.os_specific = {
-        "Mac": {
-          script_ext: 'command',
-          script: '#!/bin/bash\necho "Enter the name of the input video (you can probably just drag and drop it on this window):"\nread -r name\nffmpeg -i ${name} ',
-          script_mime: 'application/x-shellscript'
-        },
-        "*nix": {
-          script_ext: 'sh',
-          script: '#!/bin/bash\necho "Enter the name of the input video (you can probably just drag and drop it on this window):"\nread -r name\nffmpeg -i ${name} ',
-          script_mime: 'application/x-shellscript'
-        },
-        "Windows":{
-          script_ext: 'bat',
-          script: '@ECHO OFF\nset /P name="Enter the path of the input video: "\nffmpeg -i %name% ',
-          script_mime: 'application/x-bat'
-        }
-      }
-      set_os();
       set_opt_controls();
       display_opts();
       window.isWorkerLoaded = false;
@@ -214,17 +196,6 @@
 
           }
     });
-
-    function set_os(){
-      if (navigator.userAgent.indexOf("Win")!=-1) window.osname="Windows";
-      if (navigator.userAgent.indexOf("Mac")!=-1) window.osname="Mac";
-      if (navigator.userAgent.indexOf("X11")!=-1) window.osname="*nix";
-      if (navigator.userAgent.indexOf("Linux")!=-1) window.osname="*nix";
-    }
-
-    function textcol(){
-      $('#preview').css('color', $('#text_colour').val());
-    }
 
     function display_opts(){
       var video_proportion = 0.5; // TODO make consistent
@@ -334,10 +305,6 @@
       update_list();
     }
 
-    function bgcol(){
-      $('#preview_container').css('background', $('#bg_colour').val()+'88');
-    }
-
     function vid_ready(){
       $('#video_container').width($('#vid')[0].videoWidth/2);
       $('#vid').width($('#video_container').width());
@@ -438,7 +405,7 @@
       if(window.opts.bg_type == "full"){
         wrap = 2; // For workaround to enable full-width box
         var char = 'G';
-        var num = Math.floor($('#vid')[0].videoWidth / (fs_in_px() * window.devicePixelRatio * 2));
+        var num = Math.floor($('#vid')[0].videoWidth / (fs_in_px() * 2));
         spacer = '{\\1a&HFF&}{\\bord0}{\\shad0}'+char.repeat(num)+'{\\r}{\\1a&H00&}';
       }
       var res=false;
@@ -446,7 +413,7 @@
       if(res) res_text = 'PlayResX: '+$('#vid')[0].videoWidth+'\nPlayResY: '+$('#vid')[0].videoHeight+'\n';
       var file = '[Script Info]\nScriptType: V4.00+\n'+res_text+'WrapStyle: '+wrap+'\n\n';
       file += '[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, BackColour, OutlineColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV\n';
-      file += 'Style: Default,Arial,'+ (fs_in_px() * window.devicePixelRatio) +','+rgb_to_bgr(window.opts.text_colour)+','+rgb_to_bgr(window.opts.bg_colour, window.opts.bg_opacity)+','+rgb_to_bgr(window.opts.out_colour, 1)+',0,0,4,'+window.opts.out_size+','+window.opts.shad_off+',2,0,0,0\n\n'; // TODO update with variables
+      file += 'Style: Default,Arial,'+ fs_in_px() +','+rgb_to_bgr(window.opts.text_colour)+','+rgb_to_bgr(window.opts.bg_colour, window.opts.bg_opacity)+','+rgb_to_bgr(window.opts.out_colour, 1)+',0,0,4,'+window.opts.out_size+','+window.opts.shad_off+',2,0,0,0\n\n'; // TODO update with variables
       file += '[Events]\nFormat: Start, End, Style, Text\n';
       for(var i = 0; i < window.timecodes.length; i++){
         var num = i+1;
@@ -776,10 +743,10 @@
 
     function fs_in_px(){
       if($('#vid')[0].videoWidth){
-        return (window.opts.font_size / 100) * $('#vid')[0].videoWidth / window.devicePixelRatio;
+        return (window.opts.font_size / 100) * $('#vid')[0].videoWidth // / window.devicePixelRatio;
       }
       //console.log("no width");
-      return (window.opts.font_size / 100) * 1920 / window.devicePixelRatio; // presume HD, optimistically
+      return (window.opts.font_size / 100) * 1920 // / window.devicePixelRatio; // presume HD, optimistically
     }
 
     function isEven(n) {
@@ -901,7 +868,7 @@
       return d;
     }
 
-    function  browser_video(just_overlay){
+    function browser_video(just_overlay){
 
       if(window.timecodes.length < 1){
         alert('Nothing to export yet – add some subtitles!');
@@ -975,7 +942,7 @@
             // TODO how to handle joined/split ones? If I implement that?
             //console.log('resolved '+blob.line.start+' - '+blob.line.end+', text '+blob.line.text);
             var data = new Uint8Array(blob.img);
-            //download(data, 'img'+i+'.png', 'image/png');
+            download(data, 'img'+i+'.png', 'image/png');
             if(blob.main_vid){
               files.push({
                 name: main_name,
@@ -1009,6 +976,8 @@
             concat_file += "file '"+fn+"'\nduration "+dur+'\n';
             //sources.push({num: i+1, start: blob.line.start, end: blob.line.end});
           });
+
+          return;
 
           if(window.opts.bg_visible && position < $('#vid')[0].duration){
             // Pad to end
@@ -1161,7 +1130,7 @@
       window.timecodes.forEach(function(line){
         var bgcol = window.opts.bg_colour+'@'+window.opts.bg_opacity;
         var col = window.opts.text_colour;
-        var size = fs_in_px() * window.devicePixelRatio; // pixels, I think
+        var size = fs_in_px(); //* window.devicePixelRatio; // pixels, I think
         var x_offset = "w / 2 - tw / 2";
         var y_offset = "h - "+size+" * 1.5";  //(max_glyph_h / 2)" //  + ascent";
         var box_edge = '20'; //$('#vid')[0].videoWidth / 2;
