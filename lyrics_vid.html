@@ -452,7 +452,7 @@
     }
 
     function export_srt(){
-      var file =
+      var file = '';
       close_all_lines();
       for(var i = 0; i < window.timecodes.length; i++){
         var num = i+1;
@@ -492,7 +492,8 @@
       file += '[Events]\nFormat: Start, End, Style, Text\n';
       for(var i = 0; i < window.timecodes.length; i++){
         var num = i+1;
-        file += 'Dialogue: '+time_to_ass(window.timecodes[i].start) + ',' + time_to_ass(window.timecodes[i].end) + ',Default,'+spacer+window.timecodes[i].text+spacer+'\n';
+        var txt = window.timecodes[i].text.replace(/\n/g, '\\n');
+        file += 'Dialogue: '+time_to_ass(window.timecodes[i].start) + ',' + time_to_ass(window.timecodes[i].end) + ',Default,'+spacer+txt+spacer+'\n';
       }
       download(file, "lyrics.ass", 'text/ass');
     }
