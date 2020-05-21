@@ -372,6 +372,7 @@
 
     function delete_sub(){
       var id = $(this).attr('id').substring(7);
+      if(current_lyric() == id) deselect();
       window.timecodes.splice(id, 1);
       update_list();
     }
