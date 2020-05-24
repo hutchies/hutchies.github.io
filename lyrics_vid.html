@@ -43,17 +43,7 @@
     align-items: center;
     width: 100%;
     bottom: 0;
-    background: rgba(255,255,255,0.5);
     pointer-events: none;
-  }
-  #preview {
-    font-family: sans-serif;
-    font-size: 50px;
-    text-align: center;
-    vertical-align: middle;
-    color: black;
-    pointer-events: none;
-    white-space: pre-wrap;
   }
   .time {
     cursor: pointer;
@@ -102,6 +92,7 @@
       window.isWorkerLoaded = false;
       window.worker = null;
       window.ffmpeg_running = false;
+      window.preview_line = {start: 0, end: 0, text: ''};
       $('#process').on('click', process_lyrics);
       $('#clear').on('click', function(){
         $('#lyrics').val('');
@@ -130,7 +121,7 @@
           if(f.type.match('video.*')){
             source[0].src = URL.createObjectURL(f);
           }else if(f.type.match('audio.*')){
-            $('#video_container').html('<p style="padding-bottom:100px;"/><audio id="vid" controls="true"><source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/WFMU/Broke_For_Free/Directionless_EP/Broke_For_Free_-_01_-_Night_Owl.mp3" id="video_here" />Your browser does not support HTML5 audio.</audio><div id="preview_container"><div id="preview"></div></div>');
+            $('#video_container').html('<p style="padding-bottom:100px;"/><audio id="vid" controls="true"><source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/WFMU/Broke_For_Free/Directionless_EP/Broke_For_Free_-_01_-_Night_Owl.mp3" id="video_here" />Your browser does not support HTML5 audio.</audio><div id="preview_container"><div id="preview"></div><canvas id="canvas"></canvas></div>');
             $('#video_here').src = URL.createObjectURL(f);
             $('#vid').videoWidth = 640; // Placeholder to stop breakage
             $('#vid').videoHeight = 480; // Placeholder to stop breakage
@@ -232,7 +223,7 @@
           }
     });
 
-    function display_opts(){
+    /*function preview_html(){
       var video_proportion = 0.5; // TODO make consistent
       $('#preview').css('color', window.opts.text_colour);
       var bg_colour = "rgba(" + window.opts.bg_colour.match(/[A-Za-z0-9]{2}/g).map(function(v) { return parseInt(v, 16) }).join(",") + ","+window.opts.bg_opacity+")";
@@ -247,7 +238,7 @@
       /*var margin = +window.opts.v_margin + canvasTextHeight(window.opts.font, window.opts.font_size).height * window.opts.line_spacing * 1.2 * window.opts.subtitle_lines;
       console.log(margin);
       $('#preview_container').css('padding-top', margin/2 + 'px');
-      $('#preview_container').css('padding-bottom', margin/2 + 'px');*/
+      $('#preview_container').css('padding-bottom', margin/2 + 'px');
       var os = window.opts.out_size / window.devicePixelRatio;
       $('#preview').css('-webkit-text-stroke', os + 'px '+ window.opts.out_colour);
       //console.log(window.opts.out_colour);
@@ -257,8 +248,26 @@
 
       // Handle different lines
       $('#single_line').attr('rows', window.opts.subtitle_lines);
-
       check_text_width();
+    }*/
+
+    function video_size_mult(){
+      return window.opts.video_size / 100;
+    }
+
+    function preview_canvas(){
+      //$('#preview').hide();
+      //console.log(canvas);
+      $('#canvas').css('height', (overlay_height() + window.opts.v_offset) * video_size_mult() );
+      $('#v_offset_range').attr('max', $('#vid')[0].videoHeight - overlay_height());
+      $('#v_offset').attr('max', $('#vid')[0].videoHeight - overlay_height());
+      draw_subtitle(window.preview_line, $('#canvas')[0]);
+      check_text_width();
+    }
+
+    function display_opts(){
+      size_video();
+      preview_canvas();
     }
 
     function fit_to_screen(){
@@ -378,9 +387,19 @@
     }
 
     function vid_ready(){
-      $('#video_container').width($('#vid')[0].videoWidth/2);
-      $('#vid').width($('#video_container').width());
       display_opts(); // Update for font size
+    }
+
+    function size_video(){
+      if($('#vid')[0].videoWidth == 0)  return; // Not ready yet
+      $('#video_container').width($('#vid')[0].videoWidth * video_size_mult());
+      $('#vid').width($('#video_container').width());
+      $('#canvas').css('width', $('#vid').width());
+      if(window.opts.v_offset > ($('#vid')[0].videoHeight - overlay_height())){
+        console.log(window.opts.v_offset, $('#vid')[0].videoHeight, overlay_height());
+        window.opts.v_offset = video_size_mult() - overlay_height();
+      }
+      $('#canvas').css('height', (overlay_height() + window.opts.v_offset) * video_size_mult());
     }
 
     function change_opt(){
@@ -393,7 +412,11 @@
           $(this).attr('value', 'false');
         }
       }
-      window.opts[opt] = $(this).val();
+      if($(this).attr('type') == 'number'){
+        window.opts[opt] = parseFloat($(this).val());
+      }else{
+        window.opts[opt] = $(this).val();
+      }
       $('#'+opt+'_range').val($(this).val());
       display_opts();
     }
@@ -602,7 +625,9 @@
     function sync_lyrics(){
       //console.log(window.timecodes);
       if(window.timecodes.length < 1){
-        $('#preview').text('');
+        //$('#preview').text('');
+        window.preview_line = { start: 0, end: 0, text: ''};
+        display_opts();
         return;
       }
       //console.log(window.timecodes);
@@ -617,10 +642,14 @@
         }
       });
       if(lyric_line){
-        $('#preview').text(lyric_line.text);
+        //$('#preview').text(lyric_line.text);
+        window.preview_line = lyric_line;
+        display_opts();
       }else{
         // No lyrics here
-        $('#preview').text('');
+        //$('#preview').text('');
+        window.preview_line = {start: 0, end: 0, text: ''};
+        display_opts();
       }
     }
 
@@ -792,6 +821,7 @@
         font: 'sans-serif',
         line_spacing: 1,
         v_margin: 10,
+        v_offset: 0,
         bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
         bg_border: 0,
         bg_opacity: 0.5,
@@ -801,7 +831,8 @@
         shad_colour: "#000000",
         shad_off: 0,
         text_align: 'center',
-        subtitle_lines: 1
+        subtitle_lines: 1,
+        video_size: 50,
       };
     }
 
@@ -945,14 +976,15 @@
       return h;
     }
 
-    function canvas_to_ab_promise(line){
-      var canvas = document.createElement('CANVAS');
+    function draw_subtitle(line, canvas){
+
+      //if(!line || !canvas) return; // why is this needed?
       var ctx = canvas.getContext('2d');
-      //console.log(h);
-      canvas.height = overlay_height();
+
+      canvas.height = overlay_height() + window.opts.v_offset;
       var txt = line.text.split(/[\r\n]/); // For multi-line text
       var spare_lines = window.opts.subtitle_lines - txt.length;
-      var resultant_height = canvas.height - (window.opts.v_margin * 2);
+      var resultant_height = overlay_height() - (window.opts.v_margin * 2);
       var unit = resultant_height / window.opts.subtitle_lines; //txt.length;
       //resultant_height +=
       //console.log(spare_lines, txt);
@@ -960,11 +992,14 @@
       var translate = + window.opts.v_margin + spare_lines * unit / 2;
       canvas.width = $('#vid')[0].videoWidth;
       //console.log(canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      if(line.text == '' && !window.opts.bg_visible) return; // No need to do any drawing
       // Draw background
+
       ctx.globalAlpha = window.opts.bg_opacity;
       ctx.fillStyle = window.opts.bg_colour;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, canvas.width, overlay_height());
       ctx.globalAlpha = 1;
 
       //ctx.translate(0, translate);
@@ -997,7 +1032,7 @@
       if(window.opts.out_size > 0){
         ctx.restore();
         ctx.strokeStyle = window.opts.out_colour;
-        ctx.lineWidth = out_size;
+        ctx.lineWidth = window.opts.out_size;
         txt.forEach(function(t, i){
           //var y = canvas.height/(txt.length * 2) + i * (canvas.height / txt.length);
           var y = unit * i + unit / 2;
@@ -1005,6 +1040,13 @@
           ctx.strokeText(t, canvas.width/2, y+translate); // Fix the x thing for different alignments
         });
       }
+
+    }
+
+    function canvas_to_ab_promise(line){
+      var canvas = document.createElement('CANVAS');
+
+      draw_subtitle(line, canvas);
 
       return canvas_to_blob_promise(canvas).then((blob) => {
         return blob.arrayBuffer().then((ab) => {
@@ -1020,7 +1062,7 @@
       var canvas = document.createElement('CANVAS');
       var ctx = canvas.getContext('2d');
       //console.log(h);
-      canvas.height = overlay_height();
+      canvas.height = overlay_height() + window.opts.v_offset;
       canvas.width = $('#vid')[0].videoWidth;
       //console.log(canvas.height);
       if(window.opts.bg_visible){
@@ -1099,6 +1141,7 @@
     }
 
     function browser_video(just_overlay){
+      var method = 'concat'; // Could also be overlay?
 
       if(window.timecodes.length < 1){
         alert('Nothing to export yet – add some subtitles!');
@@ -1169,6 +1212,7 @@
           var args = [];
           var args_opening = '-nostdin -debug_ts'
           var output_type = 'quicktime';
+          var duration_list = [];
           args.push(...args_opening.split(' '));
 
           blobs.sort(function(a,b){a.line.start - b.line.start}); // Just in case they are disordered by the Promise
@@ -1176,7 +1220,7 @@
           var position = 0;
 
           if(!just_overlay){
-            args.push('-i',main_name); // Make sure it is the final one
+            args.push('-i',main_name); // First one
             output_type = 'h264';
           }
 
@@ -1209,13 +1253,17 @@
             blob.line.start = round_to_frame(blob.line.start, fps)
 
             if(blob.line.start > position){
-              var gap = blob.line.start - position - single_frame;
+              var gap = blob.line.start - position;
+              duration_list.push({file:'blank.png', dur:gap.toFixed(3)});
+              gap -= single_frame;
               concat_file += "file 'blank.png'\nduration "+gap.toFixed(3)+'\n';
               concat_file += "file 'blank.png'\nduration "+single_frame.toFixed(3)+'\n';
               position = blob.line.start;
             }
 
-            var dur = blob.line.end - blob.line.start - single_frame;
+            var dur = blob.line.end - blob.line.start;
+            if(dur > 0) duration_list.push({file: fn, dur: dur.toFixed(3)});
+            dur -= single_frame;
             position = blob.line.end;
             if(dur.toFixed(3) >  0){
               concat_file += "file '"+fn+"'\nduration "+dur.toFixed(3)+'\n';
@@ -1226,7 +1274,9 @@
 
           if(window.opts.bg_visible && position < $('#vid')[0].duration){
             // Pad to end
-            var gap = $('#vid')[0].duration - position - single_frame;
+            var gap = $('#vid')[0].duration - position;
+            duration_list.push({file:'blank.png', dur:dur.toFixed(3)});
+            gap -= single_frame;
             if(gap.toFixed(3) > 0){
               concat_file += "file 'blank.png'\nduration "+gap.toFixed(3)+'\n';
               position += gap;
@@ -1234,27 +1284,82 @@
             concat_file += "file 'blank.png'\nduration "+single_frame.toFixed(3)+'\n';
           }
 
-          var concat_data = new Uint8Array(concat_file);
-          //download(concat_file,"concat.txt","text/text");
-          files.push({name: 'concat.txt', data: concat_file});
+          //console.log(duration_list);
 
-          var concat_args = '-f concat -i concat.txt';
-          args.push(...concat_args.split(' '));
+          if(method == 'concat'){
+            var concat_data = new Uint8Array(concat_file);
+            //download(concat_file,"concat.txt","text/text");
+            files.push({name: 'concat.txt', data: concat_file});
+            var concat_args = '-f concat -i concat.txt';
+            args.push(...concat_args.split(' '));
+            if(!just_overlay){
+              var y_offset = $('#vid')[0].videoHeight - overlay_height() - window.opts.v_offset; // TODO make formatting option
+              args.push('-filter_complex','[0][1] overlay=0:'+y_offset+'');
+            }
+          }else if(method == 'overlay'){
 
+            var current = 1;
+            if(!just_overlay) current = 2;
+            var overlay_args = '';
+            var filter_args = '';
+            var join_args = '';
+            var last_dur = parseFloat(duration_list[0].dur);
+            duration_list.forEach(function(e, i){
+              overlay_args += '-loop 1 -t '+e.dur+' -i '+e.file+' ';
+              if(i == 0) return; // Don't alter timestamp/fade of first one
+              var fade = true;
+              if(fade){
+                // TODO change timings
+                var fadetime = 1;
+                if(last_dur < fadetime) fadetime = last_dur;
+                //took out format=yuva444p, to see
+                var adjusted_time = last_dur - fadetime;
+                filter_args += '['+current+']fade=d='+fadetime+':t=in:alpha=1,setpts=PTS-STARTPTS+'+adjusted_time.toFixed(3)+'/TB[f'+current+'];';
+              }else{
+                filter_args += '['+current+']setpts=PTS-STARTPTS+'+last_dur.toFixed(3)+'/TB[f'+current+'];';
+              }
+              if(i < duration_list.length - 1){
+                var join = current - 1;
+                join = 'bg'+join;
+                if(i == 1){
+                  join = '0';
+                }
+                join_args += '['+join+'][f'+current+']overlay[bg'+current+'];';
+              }else{
+                // Last one, so make format appropriate too
+                if(!just_overlay){
+                  var f = current - 1;
+                  '[0][bg'+f+']overlay[v]';
+                }else{
+                  var f = current-1;
+                  join_args += '[bg'+f+'][f'+current+']overlay[v]'; //yuv420p? / argb
+                }
+              }
+
+              current++;
+              last_dur += parseFloat(e.dur);
+            });
+
+            // Now assemble
+            filter_args += join_args
+            args.push(...overlay_args.trim().split(' '));
+            args.push('-filter_complex', filter_args);
+            args.push('-map','[v]');
+
+          }
           //return;
 
           //console.log(data);
           //var avi_args =  '-nostdin -loop 1 -i img.png -c:v huffyuv -t 15 out.avi';
-
-          if(!just_overlay){
-            var y_offset = $('#vid')[0].videoHeight - overlay_height(); // TODO make formatting option
-            args.push('-filter_complex','[0][1] overlay=0:'+y_offset+'');
+          var rate = '';
+          if(method == 'concat'){
+            rate = '-r 25 ';
           }
 
           var output_formats = {
             prores: '-c:a copy -c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le -alpha_bits 16 out.mov',
             h264: '-c:a copy -c:v libx264 -preset ultrafast -pix_fmt yuv420p out.mp4',
-            quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb -r 25 overlay.mov',
+            quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
             jpeg: '-strict -2 -c:a copy -c:v mjpeg -q:v 1 -vendor ap10 -pix_fmt yuvj422p out.mov'
           }
 
@@ -1331,8 +1436,6 @@
     }
 
     function log_it(text) {
-      var res = text.match(/pkt_pts_time:(\S+)\s/);
-      if(res && res.length > 0) return; // Discard packet data for speed
       res = text.match(/frame_pts_time:(\S+)\s/);
       if(res && res.length > 0){
         var so_far = res[1];
@@ -1343,6 +1446,8 @@
         $('#ffmpeg_bar').width(progress);
         $('#ffmpeg_bar').text(progress);
       }else{
+        var res = text.match(/pts_time:(\S+)\s/);
+        if(res && res.length > 0) return; // Discard any other pts_time stuff
         $('#ffmpeg_log').append(document.createTextNode(text+"\n"));
         $("#ffmpeg_log").scrollTop($("#ffmpeg_log")[0].scrollHeight);
       }
@@ -1364,7 +1469,7 @@
       var range_id = $(this).attr('id');
       var id = range_id.slice(0, -6); // To remove '_range' bit
       $('#'+id).val($(this).val());
-      window.opts[id] = $('#'+id).val();
+      window.opts[id] = parseFloat($('#'+id).val());
       display_opts();
     }
 
@@ -1420,10 +1525,12 @@
   </div>
   <p>Choose a video file to work with: <input type="file" id="vid_file"/></p>
   <button class="w3-btn w3-blue" id="save_subs">Save work in progress </button> Or load from a previous save: <input type="file" id="sub_file" accept=".json"/>
+  <p>Show video at <input type='range' min='1' max='100' value='50' class='slider' id='video_size_range'/>
+  <input id="video_size" class="opt_control" type="number" min="1" max="100" value="50" size="3"/> % of original size</p>
   <div id="video_container"><video id="vid" controls="true">
       <source src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" id="video_here" />
        Your browser does not support HTML5 video.
-    </video><div id="preview_container"><div id="preview"></div></div></div>
+    </video><div id="preview_container"><canvas id="canvas">Your browser does not support HTML canvas.</canvas></div></div>
   <p />
   <div class="w3-bar w3-black">
     <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Import</button>
@@ -1456,28 +1563,34 @@
 </div>
 <div id="options" class="tab_option" style="display: none;">
 <h2>Format subtitles</h2>
-<p>
-Text colour: <input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
-Text size: <input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
+<div class="w3-panel w3-cell">
+  <div class="w3-container w3-blue"><h3>Text</h3></div>
+<div id="text_opts">
+<label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
+<label>Text size:</label><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
 <input id="font_size" class="opt_control" type="number" value="5" size="1"/> % of width of video
-<span id="size_warning"></span>
+<div id="size_warning"></div>
 </p><p>
-Font: <input id="font" class="opt_control" type="text" value='sans-serif' size="10"/>  (you should be able to type any on your system, or the standard families 'sans-serif', 'serif' or 'monospace')
-</p>
-<p>
-Line spacing: <input type='range' min='0.5' max='2' step="0.1" value='1' class='slider' id='line_spacing_range'/><input id="line_spacing" class="opt_control" value="1" size="3" />
-Vertical margin: <input type='range' min='0' max='100' value='10' class='slider' id='v_margin_range'/>
-<input id="v_margin" type="number" class="opt_control" value="0" size="3" />
+Font: <input id="font" class="opt_control" type="text" value='sans-serif' size="20"/> (You can type any on your system)
 </p>
 <p>
 Outline colour: <input class="opt_control" type='color' id='out_colour' value='#000000'/>
-Outline thickness: <input type='range' min='0' max='5' value='0' class='slider' id='out_size_range' />
+Outline thickness: <input type='range' min='0' max='10' value='0' class='slider' id='out_size_range' />
 <input id="out_size" class="opt_control" type="number" value="0" size="3"/> pixel(s)
 </p>
 <p>
 Shadow colour: <input class="opt_control" type='color' id='shad_colour' value='#000000'/>
-Shadow offset: <input type='range' min='0' max='10' value='0' class='slider' id='shad_off_range' />
+Shadow offset: <input type='range' min='0' max='20' value='0' class='slider' id='shad_off_range' />
 <input id="shad_off" class="opt_control" type="number" alue="0" size="3"/> pixel(s)
+</div>
+</div><div class="w3-panel w3-cell">
+  <div class="w3-container w3-blue"><h3>Layout</h3></div>
+<div id="layout_opts">
+<p>Line spacing: <input type='range' min='0.5' max='2' step="0.1" value='1' class='slider' id='line_spacing_range'/><input id="line_spacing" class="opt_control" value="1" size="3" />
+</p><p>Vertical margin: <input type='range' min='0' max='100' value='10' class='slider' id='v_margin_range'/>
+<input id="v_margin" type="number" class="opt_control" value="0" size="3" />
+</p><p>Offset from bottom of screen: <input type='range' min='0' max='100' value='10' class='slider' id='v_offset_range'/>
+<input id="v_offset" type="number" class="opt_control" value="0" size="4" /> pixel(s)
 </p>
 <p>
 Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
@@ -1486,12 +1599,23 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
 </p>
 <p>
 <input id="bg_visible" class="w3-check opt_control" type="checkbox" value="false"/><label>Keep background visible even where there is no lyric text?</label>
+</div>
+</div>
+<div id="styles" style="display: none;">
+<h3>Styles</h3>
+<div id="named_styles">
+<input id="ind_style" class="w3-check" type="checkbox" value="false" /><label>Changes only apply to this subtitle</label>
+</p><p>Available styles: [Here] <button class="w3-button w3-blue">Load style</button><button class="w3-button w3-red">Delete style</button>
+</p><p>
+Save changes as new style with name: <input type="text" /><button class="w3-button w3-blue">Make new style</button>
 </p>
+</div>
+</div>
 <div id="saving">
-<button class="w3-btn w3-black" id="reset_opts" type="button">Reset to defaults</button>
-<button class="w3-btn w3-blue" id="save_opts" type="button">Save as new defaults</button>
+<button class="w3-btn w3-black" id="reset_opts" type="button">Reset to default style</button>
+<button class="w3-btn w3-blue" id="save_opts" type="button">Save as new default style</button>
 <p>
-<button class="w3-btn w3-red" id="wipe_opts" type="button">Factory reset (wipe defaults)</button>
+<button class="w3-btn w3-red" id="wipe_opts" type="button">Factory reset (wipe all saved styles)</button>
 </div>
 </div>
 <div id="export" class="tab_option" style="display: none;">
