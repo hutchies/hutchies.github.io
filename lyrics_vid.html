@@ -794,11 +794,26 @@
     }
 
   function save_subs(){
-    download(JSON.stringify(window.timecodes), "lyrics.json", "application/json");
+    var tc = {
+      opts: window.opts,
+      timecodes: window.timecodes
+    }
+    download(JSON.stringify(tc), "lyrics.json", "application/json");
   }
 
   function load_subs(file){
-    window.timecodes = JSON.parse(file);
+    var f = JSON.parse(file);
+    console.log(f.length);
+    if(f.length > 0){
+      // Backwards-compatibility: pure subtitles
+      window.timecodes = f;
+    }else{
+      // Contains style information //
+      window.opts = f.opts; // TODO make this go through and import relevant styles
+      window.timecodes = f.timecodes;
+      display_opts();
+      set_opt_controls();
+    }
     update_list();
   }
 
