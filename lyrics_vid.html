@@ -26,7 +26,7 @@
     resize: both;
   }
   .floating_vid {
-    position: absolute;
+    position: fixed;
     top: 0;
     right: 0;
   }
@@ -851,6 +851,8 @@
         out_size: 0,
         shad_colour: "#000000",
         shad_off: 0,
+        shad_op: 0.5,
+        shad_blur: 0,
         text_align: 'center',
         subtitle_lines: 1,
         video_size: 50,
@@ -1033,10 +1035,12 @@
       ctx.textBaseline = 'middle';
       ctx.save();
       ctx.fillStyle = window.opts.text_colour;
-      if(window.opts.shad_off > 0){
+      if(window.opts.shad_off > 0 || window.opts.shad_blur > 0){
         ctx.shadowOffsetX = window.opts.shad_off;
         ctx.shadowOffsetY = window.opts.shad_off;
-        ctx.shadowColor = window.opts.shad_colour;
+        ctx.shadowColor = "rgba(" + window.opts.shad_colour.match(/[A-Za-z0-9]{2}/g).map(function(v) { return parseInt(v, 16) }).join(",") + ","+window.opts.shad_op+")";
+
+        ctx.shadowBlur = window.opts.shad_blur;
       }
 
       //console.log(canvas.height, window.opts.v_margin, resultant_height, spare_lines, unit, translate);
@@ -1607,6 +1611,13 @@ Outline thickness: <input type='range' min='0' max='10' value='0' class='slider'
 Shadow colour: <input class="opt_control" type='color' id='shad_colour' value='#000000'/>
 Shadow offset: <input type='range' min='0' max='20' value='0' class='slider' id='shad_off_range' />
 <input id="shad_off" class="opt_control" type="number" alue="0" size="3"/> pixel(s)
+</p>
+<p>
+Shadow opacity: <input type='range' min='0' max='1' value='0.5' step='0.1' class='slider' id='shad_op_range' />
+<input id="shad_op" class="opt_control" type="number" value="0.5" size="3"/>
+Shadow blur: <input type='range' min='0' max='50' value='0' class='slider' id='shad_blur_range' />
+<input id="shad_blur" class="opt_control" type="number" value="0" size="3"/>
+</p>
 </div>
 </div><div class="w3-panel w3-cell">
   <div class="w3-container w3-blue"><h3>Layout</h3></div>
