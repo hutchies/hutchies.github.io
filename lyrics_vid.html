@@ -25,6 +25,11 @@
     overflow: scroll;
     resize: both;
   }
+  .floating_vid {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
   #video_container {
     position: relative;
   }
@@ -138,6 +143,7 @@
       $('#export_ass').on('click', export_ass);
       $('.instructions').hide();
       $('.options').hide();
+      $('#float').on('click', float_video);
       $('.opt_control').on('change', change_opt);
       $('.opt_control').on('input', change_opt);
       $('.slider').on('input', adjust_range);
@@ -384,6 +390,21 @@
       if(current_lyric() == id) deselect();
       window.timecodes.splice(id, 1);
       update_list();
+    }
+
+    function float_video(){
+      if($('#vc_container').hasClass('floating_vid')){
+        // Reset
+        $('#vc_container').removeClass('floating_vid');
+        $('#float').text('Float video to right');
+        $('#float').removeClass('w3-black');
+        $('#float').addClass('w3-blue');
+      }else{
+        $('#vc_container').addClass('floating_vid');
+        $('#float').text('Restore video');
+        $('#float').removeClass('w3-blue');
+        $('#float').addClass('w3-black');
+      }
     }
 
     function vid_ready(){
@@ -1526,11 +1547,15 @@
   <p>Choose a video file to work with: <input type="file" id="vid_file"/></p>
   <button class="w3-btn w3-blue" id="save_subs">Save work in progress </button> Or load from a previous save: <input type="file" id="sub_file" accept=".json"/>
   <p>Show video at <input type='range' min='1' max='100' value='50' class='slider' id='video_size_range'/>
-  <input id="video_size" class="opt_control" type="number" min="1" max="100" value="50" size="3"/> % of original size</p>
+  <input id="video_size" class="opt_control" type="number" min="1" max="100" value="50" size="3"/> % of original size
+  <button id="float" class="w3-btn w3-blue">Float video to right</button>
+  </p>
+  <div id="vc_container">
   <div id="video_container"><video id="vid" controls="true">
       <source src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" id="video_here" />
        Your browser does not support HTML5 video.
     </video><div id="preview_container"><canvas id="canvas">Your browser does not support HTML canvas.</canvas></div></div>
+  </div>
   <p />
   <div class="w3-bar w3-black">
     <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Import</button>
