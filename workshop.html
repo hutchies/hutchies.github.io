@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Workshop helper!</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/7.13.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/7.13.2/firebase-firestore.js"></script>
+  <script src="pako.js"></script>
+  <script>
+  $(document).ready(function() {
+    var firebaseConfig = {
+    apiKey: "AIzaSyDJz4s1AktoO9kHHVAWHq0PzUmF6FkWogY",
+    authDomain: "group-games-9ea0c.firebaseapp.com",
+    databaseURL: "https://group-games-9ea0c.firebaseio.com",
+    projectId: "group-games-9ea0c",
+    storageBucket: "group-games-9ea0c.appspot.com",
+    messagingSenderId: "405219687766",
+    appId: "1:405219687766:web:a3fce4ad2d2bac70e56af7",
+    measurementId: "G-HNKGPJ76ZQ"
+  };
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    window.db = firebase.firestore();
+
+    window.host = false;
+
+    setup_canvas();
+
+    var docRef = db.collection('workshop').doc('drawing');
+    docRef.get().then(function(doc){
+      if(doc.exists){
+        console.log(doc);
+        load_drawings(doc.data());
+      }
+    }).catch(function(error){
+      console.log("Error getting document:", error);
+    });
+    register_for_updates();
+
+    $('#host').on('click', make_host);
+  });
+
+  function load_drawings(data){
+        if(!data) return;
+        context.clearRect(0,0,canvas.width,canvas.height);
+        window.draw_log = JSON.parse(pako.inflateRaw(data.zipped, {to: 'string'}));
+        console.log(draw_log);
+        window.draw_log.forEach(function(pts,j){
+          //if(j % 2 != 0) return;
+          context.strokeStyle = 'black';
+          context.lineCap = 'round';
+          context.lineJoin = 'round';
+          context.lineWidth = pts[0].lineWidth;
+          context.beginPath();
+          context.moveTo(pts[0].x, pts[0].y);
+          if(pts.length >= 3){
+              for (i = 1; i < pts.length - 2; i ++){
+                  var xc = (pts[i].x + pts[i + 1].x) / 2;
+                  var yc = (pts[i].y + pts[i + 1].y) / 2;
+                  context.lineWidth = pts[i].lineWidth;
+                  context.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+              }
+              context.lineWidth = pts[i+1].lineWidth;
+              context.quadraticCurveTo(pts[i].x, pts[i].y, pts[i+1].x,pts[i+1].y);
+
+          }
+          context.stroke();
+        })
+
+  }
+
+  function add_listeners(){
+
+        for (const ev of ["touchstart", "mousedown"]) {
+          canvas.addEventListener(ev, function (e) {
+            let pressure = 0.1;
+            let x, y;
+            if (e.touches && e.touches[0] && typeof e.touches[0]["force"] !== "undefined") {
+              if (e.touches[0]["force"] > 0) {
+                pressure = e.touches[0]["force"]
+              }
+              x = e.touches[0].pageX * 2
+              y = e.touches[0].pageY * 2
+            } else {
+              pressure = 1.0
+              x = e.pageX * 2
+              y = e.pageY * 2
+            }
+
+            isMousedown = true
+
+            lineWidth = Math.log(pressure + 1) * 40
+            context.lineWidth = lineWidth// pressure * 50;
+            context.strokeStyle = 'black'
+            context.lineCap = 'round'
+            context.lineJoin = 'round'
+            context.beginPath()
+            context.moveTo(x, y)
+
+            points = [];
+
+            points.push({ x, y, lineWidth })
+            draw_log.push(points)
+          })
+        }
+
+        for (const ev of ['touchmove', 'mousemove']) {
+          canvas.addEventListener(ev, function (e) {
+            if (!isMousedown) return
+            e.preventDefault()
+
+            let pressure = 0.1
+            let x, y
+            if (e.touches && e.touches[0] && typeof e.touches[0]["force"] !== "undefined") {
+              if (e.touches[0]["force"] > 0) {
+                pressure = e.touches[0]["force"]
+              }
+              x = e.touches[0].pageX * 2
+              y = e.touches[0].pageY * 2
+            } else {
+              pressure = 1.0
+              x = e.pageX * 2
+              y = e.pageY * 2
+            }
+
+            // smoothen line width
+            lineWidth = (Math.log(pressure + 1) * 40 * 0.2 + lineWidth * 0.8)
+            points.push({ x, y, lineWidth })
+            draw_log[draw_log.length - 1].push({ x, y, lineWidth });
+
+            context.strokeStyle = 'black'
+            context.lineCap = 'round'
+            context.lineJoin = 'round'
+            // context.lineWidth   = lineWidth// pressure * 50;
+            // context.lineTo(x, y);
+            // context.moveTo(x, y);
+
+            if (points.length >= 3) {
+              const l = points.length - 1
+              const xc = (points[l].x + points[l - 1].x) / 2
+              const yc = (points[l].y + points[l - 1].y) / 2
+              context.lineWidth = points[l - 1].lineWidth
+              context.quadraticCurveTo(points[l - 1].x, points[l - 1].y, xc, yc)
+              context.stroke()
+              context.beginPath()
+              context.moveTo(xc, yc)
+            }
+
+            requestIdleCallback(() => {
+              $force.textContent = 'force = ' + pressure
+
+              const touch = e.touches ? e.touches[0] : null
+              if (touch) {
+                $touches.innerHTML = `
+                  touchType = ${touch.touchType} ${touch.touchType === 'direct' ? '👆' : '✍️'} <br/>
+                  radiusX = ${touch.radiusX} <br/>
+                  radiusY = ${touch.radiusY} <br/>
+                  rotationAngle = ${touch.rotationAngle} <br/>
+                  altitudeAngle = ${touch.altitudeAngle} <br/>
+                  azimuthAngle = ${touch.azimuthAngle} <br/>
+                `
+
+                // 'touchev = ' + (e.touches ? JSON.stringify(
+                //   ['force', 'radiusX', 'radiusY', 'rotationAngle', 'altitudeAngle', 'azimuthAngle', 'touchType'].reduce((o, key) => {
+                //     o[key] = e.touches[0][key]
+                //     return o
+                //   }, {})
+                // , null, 2) : '')
+              }
+            })
+          })
+        }
+
+        for (const ev of ['touchend', 'touchleave', 'mouseup']) {
+          canvas.addEventListener(ev, function (e) {
+            let pressure = 0.1;
+            let x, y;
+
+            //console.log('last');
+
+            if (e.touches && e.touches[0] && typeof e.touches[0]["force"] !== "undefined") {
+              if (e.touches[0]["force"] > 0) {
+                pressure = e.touches[0]["force"]
+              }
+              x = e.touches[0].pageX * 2
+              y = e.touches[0].pageY * 2
+            } else {
+              pressure = 1.0
+              x = e.pageX * 2
+              y = e.pageY * 2
+            }
+
+
+
+            isMousedown = false
+
+            context.strokeStyle = 'black'
+            context.lineCap = 'round'
+            context.lineJoin = 'round'
+
+            if (points.length >= 3) {
+              const l = points.length - 1
+              context.quadraticCurveTo(points[l].x, points[l].y, x, y)
+              context.stroke()
+            }
+
+            //console.log(x,y,lineWidth);
+
+            draw_log[draw_log.length - 1].push({ x, y, lineWidth });
+
+
+            //console.log(points);
+            //TODO presuming I'm host here
+            console.log(draw_log);
+            var zipped = pako.deflateRaw(JSON.stringify(draw_log), {to: 'string'});
+            db.collection('workshop').doc('drawing').set({zipped: zipped}).then().catch(function(error){
+              console.error("Error writing document: ", error);
+            });
+
+            points = []
+            lineWidth = 0
+          })
+        };
+  }
+
+  function setup_canvas(){
+    window.$force = document.querySelectorAll('#force')[0]
+    window.$touches = document.querySelectorAll('#touches')[0]
+    window.canvas = document.querySelectorAll('canvas')[0]
+    window.context = canvas.getContext('2d')
+    window.lineWidth = 0
+    window.isMousedown = false
+    window.points = []
+    window.draw_log = []
+
+    window.canvas.width = window.innerWidth * 2
+    window.canvas.height = window.innerHeight * 2
+
+    window.requestIdleCallback = window.requestIdleCallback || function (fn) { setTimeout(fn, 1) };
+  }
+
+  function register_for_updates(){
+    window.unsub = db.collection("workshop").doc('drawing').onSnapshot(function(doc){ load_drawings(doc.data());});
+  }
+
+  function unregister_for_updates(){
+    window.unsub();
+  }
+
+  function reset(){
+    context.clearRect(0,0,canvas.width,canvas.height);
+    window.draw_log = [];
+    window.points = [];
+  }
+
+  function make_host(){
+    $('#host').hide();
+    window.host = true;
+    reset();
+    unregister_for_updates();
+    // TODO multiple pages
+    add_listeners();
+    db.collection("workshop").doc('drawing').set({});
+  }
+  </script>
+</head>
+<body>
+  <div id="force"></div>
+  <div id="touches"></div>
+  <canvas>Sorry, your browser is too old for this demo.</canvas>
+  <button type="button" class="w3-btn w3-green" id="host">Be the host</button>
+</body>
+</html>
