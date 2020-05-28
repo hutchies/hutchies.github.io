@@ -228,34 +228,6 @@
           }
     });
 
-    /*function preview_html(){
-      var video_proportion = 0.5; // TODO make consistent
-      $('#preview').css('color', window.opts.text_colour);
-      var bg_colour = "rgba(" + window.opts.bg_colour.match(/[A-Za-z0-9]{2}/g).map(function(v) { return parseInt(v, 16) }).join(",") + ","+window.opts.bg_opacity+")";
-
-      $('#preview_container').css('background', bg_colour);
-      var height = overlay_height() * video_proportion;
-      var fs = fs_in_px() * video_proportion;
-      //console.log(height);
-      $('#preview_container').css('height', height);
-      $('#preview').css('font-size', fs +'px');
-      $('#preview').css('line-height', window.opts.line_spacing * 120 + '%');
-      /*var margin = +window.opts.v_margin + canvasTextHeight(window.opts.font, window.opts.font_size).height * window.opts.line_spacing * 1.2 * window.opts.subtitle_lines;
-      console.log(margin);
-      $('#preview_container').css('padding-top', margin/2 + 'px');
-      $('#preview_container').css('padding-bottom', margin/2 + 'px');
-      var os = window.opts.out_size / window.devicePixelRatio;
-      $('#preview').css('-webkit-text-stroke', os + 'px '+ window.opts.out_colour);
-      //console.log(window.opts.out_colour);
-      var so = window.opts.shad_off / window.devicePixelRatio;
-      $('#preview').css('text-shadow', so + 'px ' + so + 'px' + window.opts.shad_colour);
-      $('#preview').css('font-family', window.opts.font);
-
-      // Handle different lines
-      $('#single_line').attr('rows', window.opts.subtitle_lines);
-      check_text_width();
-    }*/
-
     function video_size_mult(){
       return window.opts.video_size / 100;
     }
@@ -423,7 +395,6 @@
     }
 
     function change_opt(){
-
       var opt = $(this).attr('id');
       if($(this).attr('type') == 'checkbox'){
         if ($(this).is(':checked')) {
@@ -438,6 +409,9 @@
         window.opts[opt] = $(this).val();
       }
       $('#'+opt+'_range').val($(this).val());
+      if(opt == 'bg_visible'){ // TODO keep on top of any other booleans
+        window.opts.bg_visible = (window.opts.bg_visible == 'true');
+      }
       display_opts();
     }
 
@@ -800,13 +774,14 @@
 
   function load_subs(file){
     var f = JSON.parse(file);
-    console.log(f.length);
+    //console.log(f);
     if(f.length > 0){
       // Backwards-compatibility: pure subtitles
       window.timecodes = f;
     }else{
       // Contains style information //
       window.opts = f.opts; // TODO make this go through and import relevant styles, AND TODO check that they don't mind overwriting
+      window.opts.bg_visible = (window.opts.bg_visible == 'true');
       window.timecodes = f.timecodes;
       display_opts();
       set_opt_controls();
@@ -1029,8 +1004,12 @@
       //console.log(canvas.height);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if(line.text == '' && !window.opts.bg_visible) return; // No need to do any drawing
+      if(line.text == '' && !window.opts.bg_visible){
+        //console.log('here!')
+        return; // No need to do any drawing
+      }
       // Draw background
+      //console.log(line.text=='', window.opts.bg_visible);
 
       ctx.globalAlpha = window.opts.bg_opacity;
       ctx.fillStyle = window.opts.bg_colour;
@@ -1610,8 +1589,8 @@
 Make new style with name: <input type="text" id="new_style_name"/><button class="w3-button w3-blue">Make style</button>
 </p>
 </div>
-<div class="w3-panel">
-  <div class="w3-container w3-blue w3-cell"><h3>Text</h3></div>
+<div class="w3-panel w3-cell">
+  <div class="w3-container w3-blue "><h3>Text</h3></div>
 <div id="text_opts">
 <label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
 <label>Text size:</label><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
