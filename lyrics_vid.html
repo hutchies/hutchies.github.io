@@ -20,9 +20,8 @@
     background-color: pink;
   }
   .lyrics_array {
-    height:200px;
+    min-height:200px;
     border:1px solid #ccc;
-    overflow: scroll;
     resize: both;
   }
   .floating_vid {
@@ -736,8 +735,6 @@
       check_text_width();
     }
 
-
-
     function edit_lyric(){
       //console.log($(this));
       //$(this).off('click'); // To stop it refiring when you do stuff with the edit box
@@ -809,7 +806,7 @@
       window.timecodes = f;
     }else{
       // Contains style information //
-      window.opts = f.opts; // TODO make this go through and import relevant styles
+      window.opts = f.opts; // TODO make this go through and import relevant styles, AND TODO check that they don't mind overwriting
       window.timecodes = f.timecodes;
       display_opts();
       set_opt_controls();
@@ -1509,8 +1506,7 @@
       var range_id = $(this).attr('id');
       var id = range_id.slice(0, -6); // To remove '_range' bit
       $('#'+id).val($(this).val());
-      window.opts[id] = parseFloat($('#'+id).val());
-      display_opts();
+      $('#'+id).trigger('change');
     }
 
     function process_video(){
@@ -1597,8 +1593,9 @@
   <p>If you want to add and display another lyric quickly, you can type it here and press enter:</p>
   <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea><button class="w3-btn w3-blue" type="button" id="add">Display</button></div>
   <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
-  <div id="lyrics_array" class="lyrics_array"></div>
   <button class="w3-btn w3-black" type="button" id="clear_board">Clear lyrics board</button>
+  <div id="lyrics_array" class="lyrics_array"></div>
+
 </div>
 <div id="edit_lyrics" class="tab_option" style="display: none;">
 <h2>Edit subtitles</h2>
@@ -1607,7 +1604,13 @@
 </div>
 <div id="options" class="tab_option" style="display: none;">
 <h2>Format subtitles</h2>
-<div class="w3-panel w3-cell">
+<div class="w3-panel w3-cell" id="named_styles" style="display: none;">
+</p><p>Current style: <select id="styles_list"></select><button class="w3-button w3-red">Delete style</button>
+</p><p>
+Make new style with name: <input type="text" id="new_style_name"/><button class="w3-button w3-blue">Make style</button>
+</p>
+</div>
+<div class="w3-panel">
   <div class="w3-container w3-blue"><h3>Text</h3></div>
 <div id="text_opts">
 <label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
@@ -1650,16 +1653,6 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
 </p>
 <p>
 <input id="bg_visible" class="w3-check opt_control" type="checkbox" value="false"/><label>Keep background visible even where there is no lyric text?</label>
-</div>
-</div>
-<div id="styles" style="display: none;">
-<h3>Styles</h3>
-<div id="named_styles">
-<input id="ind_style" class="w3-check" type="checkbox" value="false" /><label>Changes only apply to this subtitle</label>
-</p><p>Available styles: [Here] <button class="w3-button w3-blue">Load style</button><button class="w3-button w3-red">Delete style</button>
-</p><p>
-Save changes as new style with name: <input type="text" /><button class="w3-button w3-blue">Make new style</button>
-</p>
 </div>
 </div>
 <div id="saving">
