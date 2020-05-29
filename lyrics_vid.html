@@ -85,6 +85,7 @@
 
   details{
     background-color: lightgrey;
+    padding: 4px;
   }
 
   details > p {
@@ -1704,8 +1705,9 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
   <select id="codec">
     <option value="quicktime" selected>QuickTime animation (fast export, fairly widely supported)</option>
     <option value="prores">ProRes 4444 (slower export, may be supported where QuickTime is not)</option>
-    <option value="ayuv">AYUV (very fast, apparently quite compatible on Windows but not Mac)</option>
     <option value="png">PNG video (should be fast, less compatible)</option>
+    <option value="ayuv">AYUV (very fast, apparently quite compatible on Windows but not Mac)</option>
+    <option value="v408">V408 (like AYUV but for Mac)</option>
     <option value="h264">H.264 (fast and very compatible, small file, no transparency)</option>
   </select>
 </p><p>
@@ -1715,6 +1717,8 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
       <option value="cfr" >Constant framerate: slower, should be more compatible, but on long videos you may run out of memory</option>
       <option value="rate">Don't specify: leave choice to the codec (probably a bad idea)</option>
     </select>
+  </p><p>
+  Note: variable frame-rate changes the framerate for each subtitle – this means that if a subtitle is displaying for a long time you can end up with absurdly low framerates like 0.01fps, which some video editors will reject (I'm looking at you, Final Cut Pro). If this happens, change to constant framerate instead – but be warned that memory usage will go up and the processing will slow down a lot.
   </p><p>
   <button class="w3-btn w3-green" id="save_codec" type="button">Save as default settings</button>
 </p>
