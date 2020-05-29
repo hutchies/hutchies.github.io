@@ -1019,7 +1019,7 @@
 
       canvas.height = overlay_height() + window.opts.v_offset;
       if(!isEven(canvas.height)){
-        canvas_height++;
+        canvas.height++;
         oh++; // so it pushes it down slightly
       }
       var txt = line.text.split(/[\r\n]/); // For multi-line text
@@ -1413,7 +1413,7 @@
 
           var rate = '';
           if(method == 'concat'){
-            console.log($('#rate').val());
+            //console.log($('#rate').val());
             rate = rate_settings[$('#rate').val()];
           }
 
@@ -1426,7 +1426,7 @@
             hevc: '-c:a copy -c:v libx265 -crf 0 -preset ultrafast '+rate+'overlay.mp4',
             ayuv: '-c:a copy -c:v ayuv '+rate+'overlay.avi',
             v408: '-c:a copy -c:v v408 '+rate+'overlay.mov'
-          }
+          };
 
           var chosen_format = output_formats[output_type];
 
@@ -1458,7 +1458,7 @@
       window.worker.postMessage({
         type: 'command',
         arguments: args,
-        TOTAL_MEMORY: 1073741824, // TODO check if needed, was 268435456
+        TOTAL_MEMORY: 1073741824, // TODO check if needed with vbr, was 268435456
         files: files
       });
     }
