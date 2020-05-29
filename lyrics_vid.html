@@ -550,23 +550,16 @@
 
 
     function download(data, filename, type) {
-      console.log('download 1');
     var file = new Blob([data], {type: type});
-    console.log('download 2');
     if (window.navigator.msSaveOrOpenBlob){// IE10+
         window.navigator.msSaveOrOpenBlob(file, filename);
     } else { // Others
-      console.log('download 3');
         var a = document.createElement("a"),
                 url = URL.createObjectURL(file);
-                console.log('download 4');
         a.href = url;
         a.download = filename;
-        console.log('download 5');
         document.body.appendChild(a);
-        console.log('download 6');
         a.click();
-        console.log('download 7');
         setTimeout(function() {
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
@@ -1440,7 +1433,7 @@
       window.worker.postMessage({
         type: 'command',
         arguments: args,
-        TOTAL_MEMORY: 1073741824 * 2, // TODO check if needed, was 268435456
+        TOTAL_MEMORY: 1073741824 * 4, // TODO check if needed, was 268435456
         files: files
       });
     }
@@ -1686,7 +1679,7 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
     <option value="prores">ProRes 4444 (slower export, may be supported where QuickTime is not)</option>
     <option value="ayuv">AYUV (very fast, apparently quite compatible on Windows but not Mac)</option>
         <option value="v408">V408 (as AYUV but for Mac)</option>
-    <option value="png">PNG video (very fast, less compatible)</option>
+    <option value="png">PNG video (should be fast, less compatible)</option>
     <option value="h264">H.264 (fast and very compatible, small file, no transparency)</option>
   </select>
   <button class="w3-btn w3-green" id="save_codec" type="button">Save as default codec</button>
