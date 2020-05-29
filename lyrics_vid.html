@@ -1108,14 +1108,20 @@
       var canvas = document.createElement('CANVAS');
       var ctx = canvas.getContext('2d');
       //console.log(h);
+      var oh = overlay_height();
       canvas.height = overlay_height() + window.opts.v_offset;
+      if(!isEven(canvas.height)){
+        canvas.height++;
+        oh++; // so it pushes it down slightly
+      }
+
       canvas.width = $('#vid')[0].videoWidth;
       //console.log(canvas.height);
       if(window.opts.bg_visible){
         // Draw overlay background on blank canvas
         ctx.globalAlpha = window.opts.bg_opacity;
         ctx.fillStyle = window.opts.bg_colour;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, canvas.width, oh);
         ctx.globalAlpha = 1;
       }
 
