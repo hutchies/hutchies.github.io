@@ -83,6 +83,14 @@
     border: 1px solid black;
   }
 
+  details{
+    background-color: lightgrey;
+  }
+
+  details > p {
+    margin: 10px;
+  }
+
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
   <script src="mousetrap.min.js"></script>
@@ -827,6 +835,7 @@
 
     function save_codec(){
       localStorage.setItem('saved_codec', $('#codec').val());
+      localStorage.setItem('saved_rate', $('#rate').val());
     }
 
     function init_opts(){
@@ -872,6 +881,8 @@
     function load_codec(){
       var codec = localStorage.getItem('saved_codec');
       if(codec) $('#codec').val(codec);
+      var rate = localStorage.getItem('saved_rate');
+      if(rate) $('#rate').val(rate);
     }
 
     function wipe_opts(){
@@ -1139,6 +1150,9 @@
           });
         }
       };
+      worker.onerror = function(event){
+        alert('Error from video processor: '+event.message);
+      }
     }
 
     function export_overlay(){
@@ -1387,9 +1401,19 @@
 
           //console.log(data);
           //var avi_args =  '-nostdin -loop 1 -i img.png -c:v huffyuv -t 15 out.avi';
+
+          var rate_settings = {
+            rate: '-r '+fps+' ',
+            cfr: '-r '+fps+' -vsync cfr ',
+            vfr: '-r '+fps+' -vsync vfr ',
+            drop: '-r '+fps+' -vsync drop ',
+            none: ' '
+          }
+
           var rate = '';
           if(method == 'concat'){
-            rate = '-r 25 ';
+            console.log($('#rate').val());
+            rate = rate_settings[$('#rate').val()];
           }
 
           var output_formats = {
@@ -1673,7 +1697,10 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
   <p>There are various ways to export your lyrics. In order of simplicity:</p>
   <h3>Recommended: export as video overlay</h3>
   <p>
-  Select codec:
+  <details>
+    <summary>Advanced options (try changing these if something doesn't work)</summary>
+    <p>
+  Codec to use:
   <select id="codec">
     <option value="quicktime" selected>QuickTime animation (fast export, fairly widely supported)</option>
     <option value="prores">ProRes 4444 (slower export, may be supported where QuickTime is not)</option>
@@ -1681,7 +1708,18 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
     <option value="png">PNG video (should be fast, less compatible)</option>
     <option value="h264">H.264 (fast and very compatible, small file, no transparency)</option>
   </select>
-  <button class="w3-btn w3-green" id="save_codec" type="button">Save as default codec</button>
+</p><p>
+  Frame-rate handling:
+    <select id="rate">
+      <option value="vfr" selected>Variable framerate: fast output and small filesize, but possible compatibity issues</option>
+      <option value="cfr" >Constant framerate: slower, should be more compatible, but on long videos you may run out of memory</option>
+      <option value="rate">Don't specify: leave choice to the codec (probably a bad idea)</option>
+    </select>
+  </p><p>
+  <button class="w3-btn w3-green" id="save_codec" type="button">Save as default settings</button>
+</p>
+</details>
+
 </p><p><button class="w3-btn w3-blue" id="browser_overlay" type="button">Export video overlay from browser</button><div id="ffmpeg_loading" style="color: red;">Recommended: export as video overlay (still loading, please be patient...)</div></p>
   <div id="ffmpeg_info">
     Progress of export: <div class="w3-border"><div id="ffmpeg_bar" class="w3-blue" style="height: 24px; width: 0%"></div></div>
