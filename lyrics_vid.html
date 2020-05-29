@@ -1003,11 +1003,13 @@
 
       //if(!line || !canvas) return; // why is this needed?
       var ctx = canvas.getContext('2d');
-      var v_offset = window.opts.v_offset;
-      if(!isEven(v_offset)) v_offset++;
-      console.log(v_offset, overlay_height());
+      var oh = overlay_height();
 
-      canvas.height = overlay_height() + v_offset;
+      canvas.height = overlay_height() + window.opts.v_offset;
+      if(!isEven(canvas.height)){
+        canvas_height++;
+        oh++; // so it pushes it down slightly
+      }
       var txt = line.text.split(/[\r\n]/); // For multi-line text
       var spare_lines = window.opts.subtitle_lines - txt.length;
       var resultant_height = overlay_height() - (window.opts.v_margin * 2);
@@ -1029,7 +1031,7 @@
 
       ctx.globalAlpha = window.opts.bg_opacity;
       ctx.fillStyle = window.opts.bg_colour;
-      ctx.fillRect(0, 0, canvas.width, overlay_height());
+      ctx.fillRect(0, 0, canvas.width, oh);
       ctx.globalAlpha = 1;
 
       //ctx.translate(0, translate);
@@ -1431,7 +1433,7 @@
       window.worker.postMessage({
         type: 'command',
         arguments: args,
-        TOTAL_MEMORY: 268435456, // TODO check if needed
+        TOTAL_MEMORY: 2147483648, // TODO check if needed
         files: files
       });
     }
