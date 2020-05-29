@@ -550,16 +550,23 @@
 
 
     function download(data, filename, type) {
+      console.log('download 1');
     var file = new Blob([data], {type: type});
-    if (window.navigator.msSaveOrOpenBlob) // IE10+
+    console.log('download 2');
+    if (window.navigator.msSaveOrOpenBlob){// IE10+
         window.navigator.msSaveOrOpenBlob(file, filename);
-    else { // Others
+    } else { // Others
+      console.log('download 3');
         var a = document.createElement("a"),
                 url = URL.createObjectURL(file);
+                console.log('download 4');
         a.href = url;
         a.download = filename;
+        console.log('download 5');
         document.body.appendChild(a);
+        console.log('download 6');
         a.click();
+        console.log('download 7');
         setTimeout(function() {
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
