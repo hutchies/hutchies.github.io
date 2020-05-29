@@ -1433,7 +1433,7 @@
       window.worker.postMessage({
         type: 'command',
         arguments: args,
-        TOTAL_MEMORY: 1073741824 * 2, // TODO check if needed, was 268435456
+        TOTAL_MEMORY: 1073741824, // TODO check if needed, was 268435456
         files: files
       });
     }
