@@ -445,6 +445,7 @@
     function ffmpeg_start(){
       window.ffmpeg_running = true;
       $('#ffmpeg_bar').width(0);
+      $('#ffmpeg_bar').text('0%');
       $('#ffmpeg_info').show();
       $('#browser_overlay').hide();
       $('#browser_full').hide();
@@ -1238,6 +1239,8 @@
           if(!just_overlay){
             args.push('-i',main_name); // First one
             output_type = 'h264';
+          }else{
+            output_type = $('#codec').val();
           }
 
           blobs.forEach(function(blob, i){
@@ -1373,10 +1376,10 @@
           }
 
           var output_formats = {
-            prores: '-c:a copy -c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le -alpha_bits 16 out.mov',
-            h264: '-c:a copy -c:v libx264 -preset ultrafast -pix_fmt yuv420p out.mp4',
+            prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -qscale 4 -alpha_bits 8 '+rate+'out.mov',
+            h264: '-c:a copy -c:v libx264 -preset ultrafast -crf 1 -profile:v main -pix_fmt yuv420p '+rate+'out.mp4',
             quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
-            jpeg: '-strict -2 -c:a copy -c:v mjpeg -q:v 1 -vendor ap10 -pix_fmt yuvj422p out.mov'
+            png: '-c:a copy -c:v png '+rate+'overlay.mov'
           }
 
           var chosen_format = output_formats[output_type];
@@ -1459,8 +1462,11 @@
         if(window.opts.bg_visible) final_duration = $('#vid')[0].duration;
         //console.log(so_far, final_duration, so_far / final_duration);
         var progress = Math.round(so_far / final_duration * 100).toString()+'%'; // Judge by length of overlay not video
-        $('#ffmpeg_bar').width(progress);
-        $('#ffmpeg_bar').text(progress);
+        var current_text = $('#ffmpeg_bar').text();
+        if(parseInt(progress) > parseInt(current_text)){
+          $('#ffmpeg_bar').width(progress);
+          $('#ffmpeg_bar').text(progress);
+        }
       }else{
         var res = text.match(/pts_time:(\S+)\s/);
         if(res && res.length > 0) return; // Discard any other pts_time stuff
@@ -1645,7 +1651,9 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
   <h2>Export your file</h2>
   <p>There are various ways to export your lyrics. In order of simplicity:</p>
   <h3>Recommended: export as video overlay</h3>
-  <p><button class="w3-btn w3-blue" id="browser_overlay" type="button">Export video overlay from browser</button><div id="ffmpeg_loading" style="color: red;">Recommended: export as video overlay (still loading, please be patient...)</div></p>
+  <p><button class="w3-btn w3-blue" id="browser_overlay" type="button">Export video overlay from browser</button><div id="ffmpeg_loading" style="color: red;">Recommended: export as video overlay (still loading, please be patient...)</div>
+  Select codec: <select id="codec"><option value="quicktime" selected>QuickTime animation (default, fast export)</option><option value="prores">ProRes 4444 (slower export, wider compatibility)</option><option value="png">PNG video (very fast, less compatible)</option><option value="h264">H.264 (fast and very compatible, small file, no transparency)</option></select>
+  </p>
   <div id="ffmpeg_info">
     Progress of export: <div class="w3-border"><div id="ffmpeg_bar" class="w3-blue" style="height: 24px; width: 0%"></div></div>
     <input id="show_log" class="w3-check opt_control" type="checkbox" />Show export log: <div id="ffmpeg_log" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
