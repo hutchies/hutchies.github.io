@@ -1416,14 +1416,14 @@
           //var avi_args =  '-nostdin -loop 1 -i img.png -c:v huffyuv -t 15 out.avi';
 
           var output_formats = {
-            prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 11 -alpha_bits 8 '+rate+'out.mov',
-            h264: '-c:a copy -c:v libx264 -preset ultrafast -crf 1 -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
-            quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
-            png: '-c:a copy -c:v png '+rate+'overlay.mov',
-            vp8: '-c:a copy -c:v libvpx -pix_fmt yuva420p -crf 0 -metadata:s:v:0 alphamode="1" '+rate+'overlay.webm',
-            hevc: '-c:a copy -c:v libx265 -crf 0 -preset ultrafast '+rate+'overlay.mp4',
-            ayuv: '-c:a copy -c:v ayuv '+rate+'overlay.avi',
-            v408: '-c:a copy -c:v v408 '+rate+'overlay.mov'
+            prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 11 -alpha_bits 8 out.mov',
+            h264: '-c:a copy -c:v libx264 -preset ultrafast -crf 1 -profile:v main -pix_fmt yuv420p overlay.mp4',
+            quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb overlay.mov',
+            png: '-c:a copy -c:v png overlay.mov',
+            vp8: '-c:a copy -c:v libvpx -pix_fmt yuva420p -crf 0 -metadata:s:v:0 alphamode="1" overlay.webm',
+            hevc: '-c:a copy -c:v libx265 -crf 0 -preset ultrafast overlay.mp4',
+            ayuv: '-c:a copy -c:v ayuv overlay.avi',
+            v408: '-c:a copy -c:v v408 overlay.mov'
           }
 
           var chosen_format = output_formats[output_type];
