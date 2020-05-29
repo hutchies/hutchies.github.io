@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Make a lyrics video</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+  <style>
+  .line_text {
+    display: inline-block;
+    cursor: pointer;
+    border-style: solid;
+    border-width: 1px;
+    border-color: blue;
+    background-color: lightblue;
+    font-size: 1em;
+    white-space: pre-wrap;
+  }
+  .selected {
+    background-color: pink;
+  }
+  .lyrics_array {
+    height:200px;
+    width: 100%;
+    border:1px solid #ccc;
+    overflow: scroll;
+  }
+  #video_container {
+    position: relative;
+  }
+
+  input[type="number"]{
+    width: 4em;
+  }
+
+  #vid {
+    margin-bottom: -5px;
+  }
+  #preview_container {
+    position: absolute;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    bottom: 0;
+    pointer-events: none;
+  }
+  .time {
+    cursor: pointer;
+    color:blue;
+    text-decoration: underline;
+  }
+  .delete {
+    cursor: pointer;
+    color:red;
+    text-decoration: underline;
+  }
+  .lyrics_text {
+    cursor: pointer;
+    white-space: pre-wrap;
+  }
+
+  .single_line_container {
+    vertical-align: top;
+  }
+
+  table, td {
+    border: 1px solid grey;
+    border-collapse: collapse;
+  }
+
+
+  #size_warning {
+    color: red;
+    font-style: bold;
+  }
+
+  hr {
+    border: 1px solid black;
+  }
+
+  </style>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="mousetrap.min.js"></script>
+  <script>
+    $(document).ready(function() {
+      window.selected_line = -1;
+      window.timecodes = [];
+      window.ids = 0;
+      //window.running_locally = false;
+      window.vid_name = '';
+      window.isWorkerLoaded = false;
+      window.worker = null;
+      window.ffmpeg_running = false;
+      window.preview_line = {start: 0, end: 0, text: ''};
+      $('#process').on('click', process_lyrics);
+      $('#clear').on('click', function(){
+        $('#lyrics').val('');
+      });
+      $('#clear_board').on('click', function(){
+        $('#lyrics_array').html('');
+        deselect();
+        end_lyric();
+      });
+      $('#sub_file').on('change', function(evt){
+        if(window.timecodes.length > 0){
+          if(!confirm('Are you sure you want to load a new set of subs and wipe existing timings?')) return;
+        }
+        var f = this.files[0];
+        const reader = new FileReader();
+        reader.addEventListener('load', (event) => {
+          load_subs(event.target.result);
+        });
+        reader.readAsText(f);
+      });
+      $('#save_subs').on('click', save_subs);
+      $('#vid_file').on('change', function(evt){
+          var source = $('#video_here');
+          var f = this.files[0];
+          window.vid_name = f.name;
+          if(f.type.match('video.*')){
+            source[0].src = URL.createObjectURL(f);
+          }else if(f.type.match('audio.*')){
+            $('#video_container').html('<p style="padding-bottom:100px;"/><audio id="vid" controls="true"><source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/WFMU/Broke_For_Free/Directionless_EP/Broke_For_Free_-_01_-_Night_Owl.mp3" id="video_here" />Your browser does not support HTML5 audio.</audio><div id="preview_container"><div id="preview"></div><canvas id="canvas"></canvas></div>');
+            $('#video_here').src = URL.createObjectURL(f);
+            $('#vid').videoWidth = 640; // Placeholder to stop breakage
+            $('#vid').videoHeight = 480; // Placeholder to stop breakage
+            $('#vid').on('canplay', vid_ready); // Reinstate events
+            $('#vid').on('timeupdate', sync_lyrics); // Reinstate events
+          }
+
+          source.parent()[0].load();
+      });
+      $('#vid').on('canplay', vid_ready);
+      $('#vid').on('timeupdate', sync_lyrics);
+      $('#make_video').on('click', process_video);
+      $('#export_srt').on('click', export_srt);
+      $('#export_ass').on('click', export_ass);
+      $('.instructions').hide();
+      $('.options').hide();
+      $('.opt_control').on('change', change_opt);
+      $('.opt_control').on('input', change_opt);
+      $('.slider').on('input', adjust_range);
+      $('#browser_overlay').on('click', export_overlay);
+      $('#browser_overlay').hide();
+      $('#browser_full').on('click', export_full);
+      $('#browser_full').hide();
+      $('#show_log').on('click', function(){
+        if($('#show_log').is(':checked')){
+          $('#ffmpeg_log').show();
+        }else{
+          $('#ffmpeg_log').hide();
+        }
+      });
+      $('#ffmpeg_log').hide();
+      if(storageAvailable('localStorage')){
+        $('#save_opts').on('click', save_opts);
+        $('#reset_opts').on('click', load_opts);
+        $('#wipe_opts').on('click', wipe_opts);
+        $('#save_codec').on('click', save_codec);
+        load_opts();
+        load_codec();
+      }else{
+        $('#saving').hide();
+        $('#save_codec').hide();
+        init_opts();
+      }
+      set_opt_controls();
+      display_opts();
+      //console.log(window.devicePixelRatio);
+      $('#lyrics').on('keydown', function(e){
+        if(e.which === 13 && e.ctrlKey){
+          process_lyrics();
+          return false;
+        }
+      });
+      $('#single_line').on('keydown', function(e){
+        //console.log(count_occ($('#single_line').val(), '\n'));
+        if(e.which === 13 && count_occ($('#single_line').val(), '\n') >= window.opts.subtitle_lines - 1){
+          add_line();
+          return false;
+        }
+      });
+      $('#add').on('click', add_line);
+      $('#ffmpeg').hide();
+      //$('#list_div').hide();
+      $('#ffmpeg_info').hide();
+      init_worker();
+      Mousetrap.bind('space', function(e){
+        if (e.preventDefault) {
+        e.preventDefault();
+    } else {
+        // internet explorer
+        e.returnValue = false;
+    }
+        playpause();
+      });
+      Mousetrap.bind('down', function(e){
+        if (e.preventDefault) {
+        e.preventDefault();
+    } else {
+        // internet explorer
+        e.returnValue = false;
+    }
+        next_lyric();
+      });
+      Mousetrap.bind('up', function(e){
+        if (e.preventDefault) {
+        e.preventDefault();
+    } else {
+        // internet explorer
+        e.returnValue = false;
+    }
+       prev_lyric();
+      });
+      $('#lyrics').focus();
+
+          Mousetrap.prototype.stopCallback = function(e, element, combo) {
+            if ((' ' + element.className + ' ').indexOf(' mousetrap ') > -1) {
+              if(combo != 'space') return false;
+          }
+
+          // stop for input, select, and textarea
+          return element.tagName == 'INPUT' || element.tagName == 'SELECT' || element.tagName == 'TEXTAREA' || (element.contentEditable && element.contentEditable == 'true');
+
+          }
+    });
+
+    /*function preview_html(){
+      var video_proportion = 0.5; // TODO make consistent
+      $('#preview').css('color', window.opts.text_colour);
+      var bg_colour = "rgba(" + window.opts.bg_colour.match(/[A-Za-z0-9]{2}/g).map(function(v) { return parseInt(v, 16) }).join(",") + ","+window.opts.bg_opacity+")";
+
+      $('#preview_container').css('background', bg_colour);
+      var height = overlay_height() * video_proportion;
+      var fs = fs_in_px() * video_proportion;
+      //console.log(height);
+      $('#preview_container').css('height', height);
+      $('#preview').css('font-size', fs +'px');
+      $('#preview').css('line-height', window.opts.line_spacing * 120 + '%');
+      /*var margin = +window.opts.v_margin + canvasTextHeight(window.opts.font, window.opts.font_size).height * window.opts.line_spacing * 1.2 * window.opts.subtitle_lines;
+      console.log(margin);
+      $('#preview_container').css('padding-top', margin/2 + 'px');
+      $('#preview_container').css('padding-bottom', margin/2 + 'px');
+      var os = window.opts.out_size / window.devicePixelRatio;
+      $('#preview').css('-webkit-text-stroke', os + 'px '+ window.opts.out_colour);
+      //console.log(window.opts.out_colour);
+      var so = window.opts.shad_off / window.devicePixelRatio;
+      $('#preview').css('text-shadow', so + 'px ' + so + 'px' + window.opts.shad_colour);
+      $('#preview').css('font-family', window.opts.font);
+
+      // Handle different lines
+      $('#single_line').attr('rows', window.opts.subtitle_lines);
+      check_text_width();
+    }*/
+
+    function video_size_mult(){
+      return window.opts.video_size / 100;
+    }
+
+    function preview_canvas(){
+      //$('#preview').hide();
+      //console.log(canvas);
+      $('#canvas').css('height', (overlay_height() + window.opts.v_offset) * video_size_mult() );
+      $('#v_offset_range').attr('max', $('#vid')[0].videoHeight - overlay_height());
+      $('#v_offset').attr('max', $('#vid')[0].videoHeight - overlay_height());
+      draw_subtitle(window.preview_line, $('#canvas')[0]);
+      check_text_width();
+    }
+
+    function display_opts(){
+      size_video();
+      preview_canvas();
+    }
+
+    function fit_to_screen(){
+
+    }
+
+    function set_opt_controls(){
+      for(o in window.opts){
+        $('#'+o).val(window.opts[o]);
+        if($('#'+o+'_range').length > 0){
+          $('#'+o+'_range').val(window.opts[o]);
+        }
+      };
+    }
+
+    function openTab(evt, tabName) {
+      var i;
+      var x = document.getElementsByClassName("tab_option");
+      for (i = 0; i < x.length; i++) {
+        x[i].style.display = "none";
+      }
+      tablinks = document.getElementsByClassName("tablink");
+      for (i = 0; i < x.length; i++) {
+        tablinks[i].className = tablinks[i].className.replace(" w3-blue", "");
+      }
+
+      // Move lines control around
+
+
+      document.getElementById(tabName).style.display = "block";
+      evt.currentTarget.className += " w3-blue";
+    }
+
+
+    function goto_time(id){
+      if(id.match(/start/)){
+        var num = id.substring(6);
+        $('#vid')[0].currentTime = window.timecodes[num].start;
+      }else if(id.match(/end/)){
+        var num = id.substring(4);
+        $('#vid')[0].currentTime = window.timecodes[num].end;
+      }
+    }
+
+    (function () {
+        Blob.prototype.arrayBuffer = Blob.prototype.arrayBuffer || myArrayBuffer;
+
+      function myArrayBuffer() {
+        // this: File or Blob
+        return new Promise((resolve) => {
+          let fr = new FileReader();
+          fr.onload = () => {
+            resolve(fr.result);
+          };
+          fr.readAsArrayBuffer(this);
+        })
+      }
+    })();
+
+    function count_occ(str, sub){
+      var i = -1, count = -1;
+      do{
+        i = str.indexOf(sub, i+1);
+        count++;
+      }while(i != -1);
+      return count;
+    }
+
+    function set_time(id){
+      if(id.match(/start/)){
+        var num = id.substring(6);
+        window.timecodes[num].start = $('#vid')[0].currentTime;
+        check_overlap(num);
+      }else if(id.match(/end/)){
+        var num = id.substring(4);
+        window.timecodes[num].end = $('#vid')[0].currentTime;
+        check_overlap(num);
+      }
+      update_list();
+    }
+
+    function check_overlap(i){
+      //console.log('checking '+i,window.timecodes[i]);
+      var intermediate = window.timecodes.filter(function(tc, tc_i){
+        //console.log('filter: '+tc_i,tc);
+        // Filter out impossibles or zero-length ones
+        if(tc.end <= tc.start){
+          if(current_lyric() == tc_i) deselect();
+          return false;
+        }
+        if(tc_i == i) return true; // Make sure we keep the one we are checking!
+        if(tc.start >= window.timecodes[i].start && tc.end <= window.timecodes[i].end){
+          if(current_lyric() == tc_i) deselect();
+          return false;
+        }
+        return true;
+      }).map(function(tc){
+        // Overlapping with start
+        if(tc.start == window.timecodes[i].start && tc.end == window.timecodes[i].end) return tc; // Only possible if they are the same!
+        if(tc.start <= window.timecodes[i].start && tc.end > window.timecodes[i].start){
+          tc.end = window.timecodes[i].start;
+        }
+        // Overlapping with end
+        if(tc.start < window.timecodes[i].end && tc.end >= window.timecodes[i].end){
+          tc.start = window.timecodes[i].end;
+        }
+        return tc;
+      });
+      window.timecodes = intermediate;
+    }
+
+    function delete_sub(){
+      var id = $(this).attr('id').substring(7);
+      if(current_lyric() == id) deselect();
+      window.timecodes.splice(id, 1);
+      update_list();
+    }
+
+    function vid_ready(){
+      display_opts(); // Update for font size
+    }
+
+    function size_video(){
+      if($('#vid')[0].videoWidth == 0)  return; // Not ready yet
+      $('#video_container').width($('#vid')[0].videoWidth * video_size_mult());
+      $('#vid').width($('#video_container').width());
+      $('#canvas').css('width', $('#vid').width());
+      if(window.opts.v_offset > ($('#vid')[0].videoHeight - overlay_height())){
+        console.log(window.opts.v_offset, $('#vid')[0].videoHeight, overlay_height());
+        window.opts.v_offset = video_size_mult() - overlay_height();
+      }
+      $('#canvas').css('height', (overlay_height() + window.opts.v_offset) * video_size_mult());
+    }
+
+    function change_opt(){
+
+      var opt = $(this).attr('id');
+      if($(this).attr('type') == 'checkbox'){
+        if ($(this).is(':checked')) {
+          $(this).attr('value', 'true');
+        } else {
+          $(this).attr('value', 'false');
+        }
+      }
+      if($(this).attr('type') == 'number'){
+        window.opts[opt] = parseFloat($(this).val());
+      }else{
+        window.opts[opt] = $(this).val();
+      }
+      $('#'+opt+'_range').val($(this).val());
+      display_opts();
+    }
+
+    function escape_filter_option(text){
+      return text.replace(/([:'])/g, "\\$1");
+    }
+    function escape_filter_description(text){
+      return text.replace(/([\[\]\\\',;])/g, "\\$1");
+    }
+
+    function escape_filtergraph_for_shell(text){
+      return text.replace(/\\/g, '\\\\');
+    }
+
+    function time_to_hms(time){
+      if(!time){
+        //if($('#vid')[0].duration) return time_to_hms($('#vid')[0].duration);
+        return '00:00:00,000';
+      }
+      var s = Math.floor(time);
+      var ms = Math.floor ((time - s)*1000);
+      var date = new Date(null);
+      date.setSeconds(s, ms);
+      return date.toISOString().substr(11, 12).replace(/\./, ',');
+    }
+
+    function ffmpeg_ready(){
+      return !window.ffmpeg_running && window.isWorkerLoaded;
+    }
+
+    function ffmpeg_start(){
+      window.ffmpeg_running = true;
+      $('#ffmpeg_bar').width(0);
+      $('#ffmpeg_bar').text('0%');
+      $('#ffmpeg_info').show();
+      $('#browser_overlay').hide();
+      $('#browser_full').hide();
+    }
+
+    function ffmpeg_stop(){
+      window.ffmpeg_running = false;
+      //$('#ffmpeg_info').hide();
+      $('#browser_overlay').show();
+      $('#browser_full').show();
+    }
+
+    function time_to_ass(time){
+      if(!time){
+        //if($('#vid')[0].duration) return time_to_ass($('#vid')[0].duration);
+        return '0:00:00.00';
+      }
+      var s = Math.floor(time);
+      var hs = Math.floor ((time - s)*100);
+      var date = new Date(null);
+      date.setSeconds(s, hs*10);
+      return date.toISOString().substr(12, 10);
+    }
+
+    function export_srt(){
+      var file = '';
+      close_all_lines();
+      for(var i = 0; i < window.timecodes.length; i++){
+        var num = i+1;
+        file += '' + num + '\n';
+        file += time_to_hms(window.timecodes[i].start) + ' --> '+time_to_hms(window.timecodes[i].end) + '\n';
+        file += window.timecodes[i].text+'\n\n';
+
+      }
+      download(file, "lyrics.srt", 'text/srt');
+    }
+
+    function rgb_to_bgr(col, alpha = 1){
+      // Can presume 7-digit hex notation
+      var r = col[1]+col[2];
+      var g = col[3]+col[4];
+      var b = col[5]+col[6];
+      var a = Math.round(alpha * 255).toString(16);
+      return '&H'+a.toUpperCase()+b.toUpperCase()+g.toUpperCase()+r.toUpperCase()+'&';
+    }
+
+    function export_ass(){
+      var wrap = 0;
+      var spacer = '';
+      close_all_lines();
+      if(window.opts.bg_type == "full"){
+        wrap = 2; // For workaround to enable full-width box
+        var char = 'G';
+        var num = Math.floor($('#vid')[0].videoWidth / (fs_in_px() * 2));
+        spacer = '{\\1a&HFF&}{\\bord0}{\\shad0}'+char.repeat(num)+'{\\r}{\\1a&H00&}';
+      }
+      var res=false;
+      var res_text = '';
+      if(res) res_text = 'PlayResX: '+$('#vid')[0].videoWidth+'\nPlayResY: '+$('#vid')[0].videoHeight+'\n';
+      var file = '[Script Info]\nScriptType: V4.00+\n'+res_text+'WrapStyle: '+wrap+'\n\n';
+      file += '[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, BackColour, OutlineColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV\n';
+      file += 'Style: Default,Arial,'+ fs_in_px() +','+rgb_to_bgr(window.opts.text_colour)+','+rgb_to_bgr(window.opts.bg_colour, window.opts.bg_opacity)+','+rgb_to_bgr(window.opts.out_colour, 1)+',0,0,4,'+window.opts.out_size+','+window.opts.shad_off+',2,0,0,0\n\n'; // TODO update with variables
+      file += '[Events]\nFormat: Start, End, Style, Text\n';
+      for(var i = 0; i < window.timecodes.length; i++){
+        var num = i+1;
+        var txt = window.timecodes[i].text.replace(/\n/g, '\\n');
+        file += 'Dialogue: '+time_to_ass(window.timecodes[i].start) + ',' + time_to_ass(window.timecodes[i].end) + ',Default,'+spacer+txt+spacer+'\n';
+      }
+      download(file, "lyrics.ass", 'text/ass');
+    }
+
+    function playpause(){
+      if($('#vid')[0].paused) $('#vid')[0].play();
+      else $('#vid')[0].pause();
+    }
+
+    function next_lyric(){
+      if(window.selected_line == window.ids - 1){
+        $('#lyric_text_'+window.selected_line).trigger('click');
+        return; // To deselect last one
+      }
+      var new_id = +window.selected_line+1; // Means when nothing is selected it will move to the start
+      $('#lyric_text_'+new_id).trigger('click');
+    }
+
+    function prev_lyric(){
+      if(window.selected_line < 0){
+        var num = +window.ids - 1;
+        $('#lyric_text_'+num).trigger('click');
+        return;
+      }; // No prev ID
+      if(window.selected_line == 0){
+        $('#lyric_text_0').trigger('click');  // To deselect
+        return;
+      }
+      var new_id = window.selected_line-1;
+      $('#lyric_text_'+new_id).trigger('click');
+    }
+
+
+    function download(data, filename, type) {
+    var file = new Blob([data], {type: type});
+    if (window.navigator.msSaveOrOpenBlob) // IE10+
+        window.navigator.msSaveOrOpenBlob(file, filename);
+    else { // Others
+        var a = document.createElement("a"),
+                url = URL.createObjectURL(file);
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 0);
+    }
+}
+
+    function process_lyrics(){
+      var lyrics = $.trim($('#lyrics').val());
+      var max_lines = 1;
+      $('#lyrics').val('');
+      $('#lyrics').blur();
+      if(lyrics === '') return;
+      //window.timecodes = []; // Reset everything
+      //var lines = lyrics.match(/[^\r\n]+/g);
+      //console.log('(?:[^\\n\\r]+[\\n\\r]?){1,')
+      var splitter = new RegExp('(?:[^\\n\\r]+[\\n\\r]?){1,'+window.opts.subtitle_lines+'}', 'g');
+      var lines = lyrics.match(splitter);
+      //console.log(lines);
+      lines = lines.filter(a => {if(a === '') return false; return true;}); // Should (I hope!) allow for multi-line splitting
+      //console.log(lines);
+      var inside = '';
+      lines.forEach(function(line){
+        line = line.trim();
+        inside += '<div id="lyric_line_'+window.ids+'"></div><div class="line_text" id="lyric_text_'+window.ids+'">'+line+'</div>' // from <span id="lyric_start_'+ln+'">0</span> seconds to <span id="lyric_end_'+ln+'">0</span> seconds</div>';
+        window.ids++;
+        var no_lines = line.split(/[\n\r]/).length;
+        if(no_lines > max_lines) max_lines = no_lines;
+      });
+      existing = $('#lyrics_array').html();
+      $('#subtitle_lines_range').attr('min', max_lines);
+      $('#subtitle_lines').attr('min', max_lines);
+      $('#lyrics_array').html(existing+inside);
+      $('.line_text').on('click', click_line);
+      var evt = new MouseEvent('click', {view: window, bubbles: true, cancelable: true});
+      $('#place_tab')[0].dispatchEvent(evt);
+    }
+
+    function add_line(){
+      var h = $('#lyrics_array').html();
+      var line = $('#single_line').val().trim();
+      $('#single_line').val('');
+      //$('#single_line').blur();
+      if(line === '') return;
+      //onsole.log(line);
+      h += '<div id="lyric_line_'+window.ids+'"></div><div class="line_text" id="lyric_text_'+window.ids+'">'+line+'</div>';
+      window.ids++;
+      var no_lines = line.split(/[\n\r]/).length;
+      var current_min = $('#subtitle_lines_range').attr('min');
+      if(no_lines > current_min){
+        $('#subtitle_lines_range').attr('min', no_lines);
+        $('#subtitle_lines').attr('min', no_lines);
+      }
+      $('#lyrics_array').html(h);
+      $('.line_text').on('click', click_line);
+      // Auto-click line
+      var id = window.ids - 1;
+      $('#lyric_text_'+id).trigger('click');
+    }
+
+    function sync_lyrics(){
+      //console.log(window.timecodes);
+      if(window.timecodes.length < 1){
+        //$('#preview').text('');
+        window.preview_line = { start: 0, end: 0, text: ''};
+        display_opts();
+        return;
+      }
+      //console.log(window.timecodes);
+      // Presume if not that we have at least some timecodes to work with!
+      var time = timecode();
+      var lyric_line = window.timecodes.find(function(line, i){
+        if(!('start' in line)) return false;
+        if(line.start <= time){
+          if(!('end' in line)) return true; // Presume so as it's not finished yet!
+          if(line.end > time) return true;
+          return false;
+        }
+      });
+      if(lyric_line){
+        //$('#preview').text(lyric_line.text);
+        window.preview_line = lyric_line;
+        display_opts();
+      }else{
+        // No lyrics here
+        //$('#preview').text('');
+        window.preview_line = {start: 0, end: 0, text: ''};
+        display_opts();
+      }
+    }
+
+    function timecode(){
+      return $('#vid')[0].currentTime;
+    }
+
+    function deselect(){
+      $('.selected').removeClass('selected');
+      window.selected_line = -1;
+    }
+
+    function push_lyric(text, t){
+      if(t == -1) t = timecode();
+      var l = {};
+      l.start = t;
+      l.text = text;
+      window.timecodes.push(l);
+      check_overlap(window.timecodes.length - 1);
+      update_list();
+      return t;
+    }
+
+    function current_lyric(){
+      // Find the currently selected (i.e. unfinished) lyric
+      var i = window.timecodes.findIndex(tc => !tc.end);
+      //console.log(i);
+      return i;
+    }
+
+    function end_lyric(){
+      var t = timecode();
+      var i = current_lyric(); // Find the unfinished timecode
+      if(i == -1) return;
+      window.timecodes[i].end = t;
+      check_overlap(i);
+      update_list();
+      return t; //To abut subsequent lyrics exactly
+    }
+
+    function update_list(){
+      var html = '<table>';
+      window.timecodes.sort(function(a,b){return a.start - b.start;});
+      window.timecodes.forEach(function(line, index){
+        if(line.end){
+          html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - <span class="time" id="end_'+index+'">'+time_to_hms(line.end)+'</span>:</td><td width="100%"><div class="lyrics_text" id="text_'+index+'">'+line.text+'</div></td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
+        }else{
+          html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - (no end yet):</td><td width="100%"><div class="lyrics_text" id="text_'+index+'">'+line.text+'</div></td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
+        }
+      });
+      html += '</table>';
+      $('#list').html(html);
+      $('.delete').on('click', delete_sub);
+      $('.lyrics_text').on('click', edit_lyric);
+      $('.time').on('click', function(evt){
+        if(evt.shiftKey){
+          set_time($(this).attr('id'))
+        }else{
+          goto_time($(this).attr('id'));
+        }
+      });
+      sync_lyrics();
+      check_text_width();
+    }
+
+
+
+    function edit_lyric(){
+      //console.log($(this));
+      //$(this).off('click'); // To stop it refiring when you do stuff with the edit box
+      if($(this).html().match(/<textarea /)) return; // Don't bother if you've already got a textbox editing here
+      var id = $(this).attr('id').substring(5);
+      $(this).html('<textarea style="white-space: prewrap; width: 100%;" rows="'+window.opts.subtitle_lines+'" id="edit_'+id+'">'+window.timecodes[id].text+'</textarea>');
+      $('#edit_'+id).on('change blur', function() {
+          window.timecodes[id].text = $(this).val();
+          $(this).parent().text(window.timecodes[id].text);
+          update_list();
+      });
+      $('#edit_'+id).keydown(function(e){
+        if(e.which === 13 && count_occ($(this).val(), '\n') >= window.opts.subtitle_lines - 1){
+          window.timecodes[id].text = $(this).val();
+          update_list();
+        }
+      });
+
+      $('#edit_'+id).focus().val($('#edit_'+id).val());
+    }
+
+    function click_line(){
+      var id = $(this).attr('id').substring(11);
+      var t = -1; // Use existing timecode
+      //console.log(id+' is id');
+      if(window.selected_line == id){
+        //Deselect this line
+        //console.log(timecode()+' '+window.timecodes[id].start);
+        if(timecode() >= window.timecodes[current_lyric()].start){
+          // Normal operation – end a lyric we started, even if it is 0-length (in which case it will automatically be deleted)
+          end_lyric();
+          deselect();
+        }else{
+          // We've jumped back before the start of the lyric, so maybe we want it to start earlier?
+          //console.log('here');
+          window.timecodes[current_lyric()].start = timecode();
+          update_list();
+        }
+
+        // Either way, we've done our job
+        return;
+      }
+      if(window.selected_line != -1 ){
+          // There was a previous line, so deselect them and set their end_time
+          //$('#lyric_end_'+window.selected_line).text(timecode());
+          t = end_lyric();
+          deselect();
+      }
+      //$('#lyric_start_'+id).text(timecode());
+      push_lyric($(this).text(), t);
+      $(this).addClass('selected');
+      window.selected_line = id;
+      //console.log('selected line is '+id);
+    }
+
+  function save_subs(){
+    download(JSON.stringify(window.timecodes), "lyrics.json", "application/json");
+  }
+
+  function load_subs(file){
+    var f = JSON.parse(file);
+    console.log(f.length);
+    if(f.length > 0){
+      // Backwards-compatibility: pure subtitles
+      window.timecodes = f;
+    }else{
+      // Contains style information //
+      window.opts = f.opts; // TODO make this go through and import relevant styles, AND TODO check that they don't mind overwriting
+      window.opts.bg_visible = (window.opts.bg_visible == 'true');
+      window.timecodes = f.timecodes;
+      display_opts();
+      set_opt_controls();
+    }
+    update_list();
+  }
+
+  function storageAvailable(type) {
+    var storage;
+    try {
+        storage = window[type];
+        var x = '__storage_test__';
+        storage.setItem(x, x);
+        storage.removeItem(x);
+        return true;
+    }
+    catch(e) {
+        return e instanceof DOMException && (
+            // everything except Firefox
+            e.code === 22 ||
+            // Firefox
+            e.code === 1014 ||
+            // test name field too, because code might not be present
+            // everything except Firefox
+            e.name === 'QuotaExceededError' ||
+            // Firefox
+            e.name === 'NS_ERROR_DOM_QUOTA_REACHED') &&
+            // acknowledge QuotaExceededError only if there's something already stored
+            (storage && storage.length !== 0);
+    }
+}
+
+    function save_opts(){
+      for(setting in window.opts){
+        localStorage.setItem('format_options_'+setting, window.opts[setting]);
+      }
+      localStorage.setItem('format_saved', true);
+    }
+
+    function init_opts(){
+      window.opts = {
+        text_colour: "#000000",
+        bg_colour: "#ffffff", // Alpha needed too
+        font_size: 5, // percent of screen height
+        font: 'sans-serif',
+        line_spacing: 1,
+        v_margin: 10,
+        v_offset: 0,
+        bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
+        bg_border: 0,
+        bg_opacity: 0.5,
+        bg_visible: false,
+        out_colour: "#000000",
+        out_size: 0,
+        shad_colour: "#000000",
+        shad_off: 0,
+        text_align: 'center',
+        subtitle_lines: 1,
+        video_size: 50,
+      };
+    }
+
+    function load_opts(){
+      init_opts();
+      if(!localStorage.getItem('format_saved')){
+        display_opts();
+        set_opt_controls();
+        return;
+      }
+      for(setting in window.opts){
+        var temp = localStorage.getItem('format_options_'+setting);
+        if(temp) window.opts[setting] = temp; // For backwards compatibility (really I should have been using JSON, but hey...)
+      }
+      display_opts();
+      set_opt_controls();
+    }
+
+    function load_codec(){
+      var codec = localStorage.getItem('saved_codec');
+      if(codec) $('#codec').val(codec);
+    }
+
+    function save_codec(){
+      localStorage.setItem('saved_codec', $('#codec').val());
+    }
+
+    function wipe_opts(){
+      if(!confirm('Are you sure you want to reset formatting?')) return;
+      localStorage.clear();
+      load_opts();
+      display_opts();
+      set_opt_controls();
+    }
+
+    function canvas_to_blob_promise(canvas){
+      return new Promise(function(resolve, reject){
+        canvas.toBlob(function(blob){
+          resolve(blob);
+        });
+      });
+    }
+
+    function canvasTextHeight(font, size) {
+
+      const canvas = document.createElement('CANVAS');
+      const ctx = canvas.getContext('2d');
+      const text = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      ctx.font = size+'px'+' '+font;
+      const textMetrics = ctx.measureText(text);
+      //console.log(textMetrics);
+
+      var ascent = textMetrics.actualBoundingBoxAscent;
+      var descent = textMetrics.actualBoundingBoxDescent;
+
+      var height = ascent + descent;
+      var result = {
+        height: height,
+        ascent: ascent,
+        descent: descent
+      }
+      //console.log(result);
+      return result;
+    }
+
+    function check_text_width(){
+      const canvas = document.createElement('CANVAS');
+      const ctx = canvas.getContext('2d');
+      var biggest = 0;
+      window.timecodes.forEach(function(sub){
+        sub.text.split(/[\n\r]/).forEach(function(line){
+          const text = line;
+          //console.log(text);
+          ctx.font = fs_in_px()+'px '+window.opts.font;
+          const textMetrics = ctx.measureText(text);
+          var tw = Number.parseInt(textMetrics.width.toFixed(1));
+          var vw = Number.parseInt($('#vid')[0].videoWidth.toFixed(1));
+          if(tw > vw){
+            var ratio = tw / vw;
+            if(ratio > biggest) biggest = ratio;
+          }
+        });
+      });
+      //console.log(biggest);
+      if(biggest == 0){
+        $('#size_warning').html('');
+        return true;
+      }
+      $('#size_warning').html('Warning: font too large, some subtitles won\'t fit on screen!<button id="fit_to_screen" class="w3-btn w3-blue" type="button">Fix this</button>');
+      $('#fit_to_screen').on('click', function(){
+        window.opts.font_size = window.opts.font_size / biggest - 0.1;
+        window.opts.font_size = window.opts.font_size.toFixed(1);
+        $('#size_warning').html('');
+        set_opt_controls();
+        display_opts();
+      });
+      return false;
+    }
+
+    function getTextHeight(font, size) {
+      // Thanks to Daniel Earwicker https://stackoverflow.com/questions/1134586/how-can-you-find-the-height-of-text-on-an-html-canvas
+      //console.log('CTH:',canvasTextHeight(font,size))
+      var text = $('<span>abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789</span>').css({fontFamily: font, fontSize: size + 'px'});
+      var block = $('<div style="display: inline-block; width: 1px; height: 0px;"></div>');
+
+      var div = $('<div></div>');
+      div.append(text, block);
+
+      var body = $('body');
+      body.append(div);
+
+      try {
+
+        var result = {};
+
+        block.css({ verticalAlign: 'baseline' });
+        result.ascent = block.offset().top - text.offset().top;
+
+        block.css({ verticalAlign: 'bottom' });
+        result.height = block.offset().top - text.offset().top;
+
+        result.descent = result.height - result.ascent;
+
+      } finally {
+        div.remove();
+      }
+
+      //console.log(result);
+
+      return result;
+    };
+
+    function fs_in_px(){
+      if($('#vid')[0].videoWidth){
+        return (window.opts.font_size / 100) * $('#vid')[0].videoWidth // / window.devicePixelRatio;
+      }
+      //console.log("no width");
+      return (window.opts.font_size / 100) * 1920 // / window.devicePixelRatio; // presume HD, optimistically
+    }
+
+    function isEven(n) {
+        return n % 2 == 0;
+    }
+
+    function overlay_height(){
+      var h = canvasTextHeight(window.opts.font, fs_in_px()).height * window.opts.line_spacing * 1.2 * window.opts.subtitle_lines + (window.opts.v_margin * 2);
+      if(!isEven(h)){
+        return h+1;
+      }
+      return h;
+    }
+
+    function draw_subtitle(line, canvas){
+
+      //if(!line || !canvas) return; // why is this needed?
+      var ctx = canvas.getContext('2d');
+
+      canvas.height = overlay_height() + window.opts.v_offset;
+      var txt = line.text.split(/[\r\n]/); // For multi-line text
+      var spare_lines = window.opts.subtitle_lines - txt.length;
+      var resultant_height = overlay_height() - (window.opts.v_margin * 2);
+      var unit = resultant_height / window.opts.subtitle_lines; //txt.length;
+      //resultant_height +=
+      //console.log(spare_lines, txt);
+      //console.log(window.opts.v_margin);
+      var translate = + window.opts.v_margin + spare_lines * unit / 2;
+      canvas.width = $('#vid')[0].videoWidth;
+      //console.log(canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if(line.text == '' && !window.opts.bg_visible) return; // No need to do any drawing
+      // Draw background
+
+      ctx.globalAlpha = window.opts.bg_opacity;
+      ctx.fillStyle = window.opts.bg_colour;
+      ctx.fillRect(0, 0, canvas.width, overlay_height());
+      ctx.globalAlpha = 1;
+
+      //ctx.translate(0, translate);
+
+      // Draw text
+      ctx.font = fs_in_px() + 'px ' + window.opts.font;
+      ctx.textAlign = window.opts.text_align;
+      //ctx.fillStyle = window.opts.text_colour;
+      //ctx.fillText("asdas",0,0);
+      ctx.textBaseline = 'middle';
+      ctx.save();
+      ctx.fillStyle = window.opts.text_colour;
+      if(window.opts.shad_off > 0){
+        ctx.shadowOffsetX = window.opts.shad_off;
+        ctx.shadowOffsetY = window.opts.shad_off;
+        ctx.shadowColor = window.opts.shad_colour;
+      }
+
+      //console.log(canvas.height, window.opts.v_margin, resultant_height, spare_lines, unit, translate);
+
+      //var y_offset = 0;
+      txt.forEach(function(t, i){
+        //var y = canvas.height/(txt.length * 2) + i * (canvas.height / txt.length);
+        var y = unit * i + unit / 2;
+        //console.log(window.opts.v_margin, y);
+        ctx.fillText(t, canvas.width/2, y+translate); // Fix the x thing for different alignments
+      });
+
+      //ctx.fillText(line.text, canvas.width/2, canvas.height/2); // Fix height bit
+      if(window.opts.out_size > 0){
+        ctx.restore();
+        ctx.strokeStyle = window.opts.out_colour;
+        ctx.lineWidth = window.opts.out_size;
+        txt.forEach(function(t, i){
+          //var y = canvas.height/(txt.length * 2) + i * (canvas.height / txt.length);
+          var y = unit * i + unit / 2;
+          //console.log(window.opts.v_margin, y);
+          ctx.strokeText(t, canvas.width/2, y+translate); // Fix the x thing for different alignments
+        });
+      }
+
+    }
+
+    function canvas_to_ab_promise(line){
+      var canvas = document.createElement('CANVAS');
+
+      draw_subtitle(line, canvas);
+
+      return canvas_to_blob_promise(canvas).then((blob) => {
+        return blob.arrayBuffer().then((ab) => {
+          return {
+            img: ab,
+            line: line
+          };
+        });
+      });
+    }
+
+    function blank_canvas_promise(){
+      var canvas = document.createElement('CANVAS');
+      var ctx = canvas.getContext('2d');
+      //console.log(h);
+      canvas.height = overlay_height() + window.opts.v_offset;
+      canvas.width = $('#vid')[0].videoWidth;
+      //console.log(canvas.height);
+      if(window.opts.bg_visible){
+        // Draw overlay background on blank canvas
+        ctx.globalAlpha = window.opts.bg_opacity;
+        ctx.fillStyle = window.opts.bg_colour;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+      }
+
+      return canvas_to_blob_promise(canvas).then((blob) => {
+        return blob.arrayBuffer();
+      });
+    }
+
+    function init_worker(){
+      // Adapted from videoconverter.js - https://github.com/bgrins/videoconverter.js/blob/master/demo/terminal.js
+      //if(window.running_locally) return;
+      window.worker = new Worker("lyrics_worker.js");
+      worker.onmessage = function (event) {
+        var message = event.data;
+        if (message.type == "ready") {
+          window.isWorkerLoaded = true;
+          $('#browser_overlay').show();
+          $('#browser_full').show();
+          $('#ffmpeg_loading').hide();
+          // Probs remove below
+        } else if (message.type == "stdout") {
+          log_it(message.data);
+        } else if (message.type == "stderr") {
+          log_it(message.data);
+        } else if (message.type == "start") {
+          $('#ffmpeg_log').text("Worker has received command\n");
+        } else if (message.type == "done") {
+          ffmpeg_stop();
+          var buffers = message.data;
+          buffers.forEach(function(file) {
+            console.log("File recieved", file.name, file.data);
+            download(file.data, file.name, "video/quicktime");
+          });
+        }
+      };
+    }
+
+    function export_overlay(){
+      browser_video(true);
+    }
+
+    function export_full(){
+      browser_video(false);
+    }
+
+    function round_to_frame(d, fps){
+      //console.log('pre-round '+d);
+      d = d * fps;
+      d = Math.round(d);
+      d = d / fps;
+      //console.log('post-round '+d);
+      return d;
+    }
+
+
+    function close_all_lines(){
+      deselect();
+      window.timecodes.forEach(function(line, i){
+        if(!line.end){
+          if(i == window.timecodes.length - 1){
+            //console.log('ges');
+            line.end = $('#vid')[0].duration;
+          }else{
+            line.end = window.timecodes[i+1].start;
+          }
+        }
+      });
+      update_list();
+    }
+
+    function browser_video(just_overlay){
+      var method = 'overlay'; // Could also be overlay?
+
+      if(window.timecodes.length < 1){
+        alert('Nothing to export yet – add some subtitles!');
+        return;
+      }
+
+      //console.log(check_text_width());
+
+      if(!check_text_width()){
+        // Offer option to fix it
+        if(!confirm("Font size is too big! Some subtitles won't fit on screen. Click 'OK' to export anyway and 'Cancel' to go back and fix font size.")){
+          var evt = new MouseEvent('click', {view: window, bubbles: true, cancelable: true});
+          $('#opt_tab')[0].dispatchEvent(evt);
+          return;
+        };
+      }
+
+      // Don't do the whole encode
+      blank_canvas_promise().then(function(blank){
+        var png_promises = [];
+        var main_name = '';
+        var fps = 25;
+        var single_frame = (1/fps);
+        close_all_lines();
+        window.timecodes.forEach(function(line){
+          png_promises.push(canvas_to_ab_promise(line));
+          //console.log('added '+line.text);
+        });
+        if(!just_overlay){
+          if(!window.vid_name){
+            alert('No video loaded to overlay yet!');
+            return;
+          }
+          var fn = window.vid_name.match(/\.(.+)$/);
+          if(!fn){
+            alert("Video has no extension: ffmpeg cannot process it!");
+            return;
+          }
+          main_name = 'main.'+fn[1];
+          png_promises.push(fetch($('#video_here')[0].src).then(function(r){
+             return r.blob().then(function(b){
+              return b.arrayBuffer().then((ab) => {
+                return {
+                  img: ab,
+                  main_vid: true,
+                  line: {
+                    start: 0,
+                    end: 0
+                  }
+                }
+              });
+            });
+          }));
+        }
+
+        Promise.all(png_promises).then(function(blobs) {
+          //console.log('Blobbed');
+          //console.log('Promise resolved');
+          //var args = '-formats';
+          var blank_data = new Uint8Array(blank);
+          //download(blank_data, "blank.png", "image/png");
+          var files = [{
+            name: 'blank.png',
+            data: blank_data
+          }];
+          var concat_file = 'ffconcat version 1.0\n';
+          //var sources = [];
+          var args = [];
+          var args_opening = '-nostdin -debug_ts'
+          var output_type = 'quicktime';
+          var duration_list = [];
+          args.push(...args_opening.split(' '));
+
+          blobs.sort(function(a,b){a.line.start - b.line.start}); // Just in case they are disordered by the Promise
+
+          var position = 0;
+
+          if(!just_overlay){
+            args.push('-i',main_name); // First one
+            output_type = 'h264';
+          }else{
+            output_type = $('#codec').val();
+          }
+
+          blobs.forEach(function(blob, i){
+
+            // TODO how to handle joined/split ones? If I implement that?
+            //console.log('resolved '+blob.line.start+' - '+blob.line.end+', text '+blob.line.text);
+            var data = new Uint8Array(blob.img);
+            //download(data, 'img'+i+'.png', 'image/png');
+            if(blob.main_vid){
+              files.push({
+                name: main_name,
+                data: data
+              });
+              return;
+            }
+            var fn = 'img'+i+'.png';
+            files.push({name: fn, data: data});
+            //download(data,fn,'image/png');
+            /*if(!blob.line.end){
+              if(i == blobs.length - 1){
+                blob.line.end = $('#vid')[0].duration;
+              }else{
+                // In the middle so squish it to the next one
+                blob.line.end = blobs[i+1].line.start;
+              }
+            }*/
+
+            blob.line.end = round_to_frame(blob.line.end, fps);
+            blob.line.start = round_to_frame(blob.line.start, fps)
+
+            if(blob.line.start > position){
+              var gap = blob.line.start - position;
+              duration_list.push({file:'blank.png', dur:gap.toFixed(3)});
+              gap -= single_frame;
+              concat_file += "file 'blank.png'\nduration "+gap.toFixed(3)+'\n';
+              concat_file += "file 'blank.png'\nduration "+single_frame.toFixed(3)+'\n';
+              position = blob.line.start;
+            }
+
+            var dur = blob.line.end - blob.line.start;
+            if(dur > 0) duration_list.push({file: fn, dur: dur.toFixed(3)});
+            dur -= single_frame;
+            position = blob.line.end;
+            if(dur.toFixed(3) >  0){
+              concat_file += "file '"+fn+"'\nduration "+dur.toFixed(3)+'\n';
+            }
+            concat_file += "file '"+fn+"'\nduration "+single_frame.toFixed(3)+'\n';
+            //sources.push({num: i+1, start: blob.line.start, end: blob.line.end});
+          });
+
+          if(window.opts.bg_visible && position < $('#vid')[0].duration){
+            // Pad to end
+            var gap = $('#vid')[0].duration - position;
+            duration_list.push({file:'blank.png', dur:dur.toFixed(3)});
+            gap -= single_frame;
+            if(gap.toFixed(3) > 0){
+              concat_file += "file 'blank.png'\nduration "+gap.toFixed(3)+'\n';
+              position += gap;
+            }
+            concat_file += "file 'blank.png'\nduration "+single_frame.toFixed(3)+'\n';
+          }
+
+          console.log(duration_list);
+
+          if(method == 'concat'){
+            var concat_data = new Uint8Array(concat_file);
+            //download(concat_file,"concat.txt","text/text");
+            files.push({name: 'concat.txt', data: concat_file});
+            var concat_args = '-f concat -i concat.txt';
+            args.push(...concat_args.split(' '));
+            if(!just_overlay){
+              var y_offset = $('#vid')[0].videoHeight - overlay_height() - window.opts.v_offset; // TODO make formatting option
+              args.push('-filter_complex','[0][1] overlay=0:'+y_offset+'');
+            }
+          }else if(method == 'overlay'){
+            var current = 0;
+            if(!just_overlay) current = 1;
+            var overlay_args = '';
+            var filter_args = '';
+            var join_args = '';
+            var last_dur = 0;
+            var fade = false;
+            var fade_type = 'fade';
+            var fade_dur = 1;
+            if(!fade){
+              join_args = 'concat=n='+duration_list.length+' [v]'
+            }
+            // TODO make them handle small (below 3) lists well. Or at all.
+            duration_list.forEach(function(e, i){
+              overlay_args += '-loop 1 -t '+e.dur+' -i '+e.file+' ';
+              if(i == 0) return; // Don't alter timestamp/fade of first one
+
+              /*if(fade){
+                // TODO change timings
+                var fadetime = 1;
+                if(last_dur < fadetime) fadetime=last_dur;
+                //took out format=yuva444p, to see
+                var adjusted_time = last_dur - fadetime;
+                filter_args += '['+current+']fade=d='+fadetime+':t=in:alpha=1,setpts=PTS-STARTPTS+'+adjusted_time+'/TB[v'+current+'];';
+              }else{
+                filter_args += '['+current+']setpts=PTS-STARTPTS+'+last_dur+'/TB[f'+current+'];';
+              }*/
+              if(!fade){
+                filter_args += '['+current+']';
+              }else if(current > 0){ // No fade for first one
+                var prev = current - 1;
+                if(prev != 0) prev = 'f'+prev; // So they'll stack after the first
+                var offset = last_dur + e.dur - (fade_dur / 2);
+                var temp_dur = fade_dur;
+                if((fade_dur / 2) > e.dur){
+                  offset = last_dur; // Don't overlap
+                  temp_dur = e.dur * 2; // Don't overlap
+                }
+                var out = '[f'+current+'];';
+                if(current >= duration_list.length - 1){
+                  // last one
+                  out = '[v]';
+                }
+                filter_args += '['+prev+']['+current+']xfade=transition='+fade_type+':duration='+temp_dur+':offset='+offset+out;
+              }
+
+              current++;
+              last_dur += parseFloat(e.dur);
+
+              /*if(i < duration_list.length - 1){
+                var join = current - 1;
+                join = 'bg'+join;
+                if(i == 1){
+                  join = '0';
+                }
+                join_args += '['+join+'][f'+current+']overlay[bg'+current+'];';
+              }else{
+                // Last one, so make format appropriate too
+                if(!just_overlay){
+                  var f = current - 1;
+                  '[0][bg'+f+']overlay[v]';
+                }else{
+                  var f = current-1;
+                  join_args += '[bg'+f+'][f'+current+']overlay[v]'; //yuv420p? / argb
+                }
+              }*/
+
+
+            });
+
+            var out_stream = '[v]';
+
+            if(!just_overlay){
+              join_args += ';[0][v]overlay[out]';
+              out_stream = '[out]';
+            }else{
+              join_args = join_args.trim(); // To take off final semicolon
+            }
+
+            // Now assemble
+            filter_args += join_args;
+            args.push(...overlay_args.trim().split(' '));
+            args.push('-filter_complex', filter_args);
+            args.push('-map',out_stream);
+
+          }
+          //return;
+
+          //console.log(data);
+          //var avi_args =  '-nostdin -loop 1 -i img.png -c:v huffyuv -t 15 out.avi';
+
+          var output_formats = {
+            prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 11 -alpha_bits 8 '+rate+'out.mov',
+            h264: '-c:a copy -c:v libx264 -preset ultrafast -crf 1 -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
+            quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
+            png: '-c:a copy -c:v png '+rate+'overlay.mov',
+            vp8: '-c:a copy -c:v libvpx -pix_fmt yuva420p -crf 0 -metadata:s:v:0 alphamode="1" '+rate+'overlay.webm',
+            hevc: '-c:a copy -c:v libx265 -crf 0 -preset ultrafast '+rate+'overlay.mp4',
+            ayuv: '-c:a copy -c:v ayuv '+rate+'overlay.avi',
+            v408: '-c:a copy -c:v v408 '+rate+'overlay.mov'
+          }
+
+          var chosen_format = output_formats[output_type];
+
+          args.push(...chosen_format.split(' '));
+          /*res = call_ffmpeg(
+          [{name: 'img.webp', data: data}],
+          args.split(' '));
+          console.log(res.MEMFS[0].data);
+          download(res.MEMFS[0].data, "out.webm", "video/webm");*/
+          /*
+          var results = ffmpeg_run({
+          arguments: args.split(' '),
+          files: [
+          {
+          name: 'img.png',
+          data: data
+        }
+      ]
+    });
+    results.forEach(function(file) {
+    console.log("File recieved", file.name, file.data);
+    download(file.data, file.name, "video/quicktime");
+  });*/
+  /*if(!running_locally){*/
+    if(ffmpeg_ready()){
+      ffmpeg_start();
+      // TODO check whether memory amounts below are needed!
+      console.log('Launching ffmpeg with args '+args);
+      window.worker.postMessage({
+        type: 'command',
+        arguments: args,
+        TOTAL_MEMORY: 268435456, // TODO check if needed
+        files: files
+      });
+    }
+  /*}else{
+    // Don't use Web Workers cos of stoopid Chrome restrictions
+    console.log('here');
+    $('#ffmpeg_log').show({complete: function(){
+      var results = ffmpeg_run({
+        arguments: args,
+        files: files,
+        print: log_it,
+        printErr: log_it
+      });
+      results.forEach(function(file) {
+        console.log("File received: "+file.name);
+        var mime_type = "video/quicktime";
+        if(file.name.match(/\.mp4/)) mime_type = "video/h264";
+        download(file.data, file.name, mime_type);
+      });
+    }});
+
+  }
+  */
+});
+
+});
+}
+
+    function hms_to_secs(text){
+      const res = text.match(/([0-9]?[0-9]0):([0-9][0-9]):([0-9][0-9])[\.,]([0-9][0-9])/);
+      if(res.length > 0){
+        hrs = parseInt(res[1]);
+        mins = parseInt(res[2]);
+        secs = parseInt(res[3]);
+        hs = parseInt(res[4]);
+        return hrs * 3600 + mins * 60 + secs + hs / 100;
+      }else{
+        return 0;
+      }
+    }
+
+    function log_it(text) {
+      res = text.match(/frame_pts_time:(\S+)\s/);
+      if(res && res.length > 0){
+        var so_far = res[1];
+        var final_duration = window.timecodes[window.timecodes.length - 1].end;
+        if(window.opts.bg_visible) final_duration = $('#vid')[0].duration;
+        //console.log(so_far, final_duration, so_far / final_duration);
+        var progress = Math.round(so_far / final_duration * 100).toString()+'%'; // Judge by length of overlay not video
+        var current_text = $('#ffmpeg_bar').text();
+        if(parseInt(progress) > parseInt(current_text)){
+          $('#ffmpeg_bar').width(progress);
+          $('#ffmpeg_bar').text(progress);
+        }
+      }else{
+        var res = text.match(/pts_time:(\S+)\s/);
+        if(res && res.length > 0) return; // Discard any other pts_time stuff
+        $('#ffmpeg_log').append(document.createTextNode(text+"\n"));
+        $("#ffmpeg_log").scrollTop($("#ffmpeg_log")[0].scrollHeight);
+      }
+    }
+
+    /*function call_ffmpeg(memfs, args){
+      const result = window.ffmpeg({
+        MEMFS: memfs, //[{name: "img.png", }],
+        arguments: args, // ["-codecs"],
+        print: function(data) {console.log(data)},
+        onExit: function(code){
+          console.log('Done: '+code);
+        }
+      });
+      return result;
+    }*/
+
+    function adjust_range(){
+      var range_id = $(this).attr('id');
+      var id = range_id.slice(0, -6); // To remove '_range' bit
+      $('#'+id).val($(this).val());
+      window.opts[id] = parseFloat($('#'+id).val());
+      display_opts();
+    }
+
+    function process_video(){
+      var in_name = $('#input_video').val();
+      if(in_name === ''){
+        alert('You haven\'t entered an input filename yet! Enter a filename, or drag the file to the textbox to get its path.');
+        return;
+      }
+      var ffmpeg_command = 'ffmpeg -i "'+in_name+'" -vf ';
+      var filtergraph = '';
+      close_all_lines();
+      window.timecodes.forEach(function(line){
+        var bgcol = window.opts.bg_colour+'@'+window.opts.bg_opacity;
+        var col = window.opts.text_colour;
+        var size = fs_in_px(); //* window.devicePixelRatio; // pixels, I think
+        var x_offset = "w / 2 - tw / 2";
+        var y_offset = "h - "+size+" * 1.5";  //(max_glyph_h / 2)" //  + ascent";
+        var box_edge = '20'; //$('#vid')[0].videoWidth / 2;
+        var font = window.opts.font;
+        //console.log('font color='+col);
+        var db = 'drawbox="y=ih-'+size*2+':h='+size*2+':t=fill:color='+bgcol+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+        var dt = 'drawtext="text='+escape_filter_option(line.text)+':font='+font+':x='+x_offset+':y='+y_offset+':fontcolor='+col+':fontsize='+size+':borderw='+window.opts.out_size+':bordercolor='+window.opts.out_colour+':shadowcolor='+window.opts.shad_colour+':shadowx='+window.opts.shad_off+':shadowy='+window.opts.shad_off+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+        //var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':box=1:boxcolor='+bgcol+':boxborderw='+box_edge+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+
+        if(filtergraph !== '') filtergraph += ',';
+        filtergraph += escape_filter_description(db)+','+escape_filter_description(dt);
+        //filtergraph += escape_filter_description(dt);
+      });
+      ffmpeg_command += escape_filtergraph_for_shell(filtergraph);
+      ffmpeg_command += ' "'+$('#output_video').val()+'"';
+      //$('#ffmpeg').text(ffmpeg_command);
+      //$('#ffmpeg')[0].select();
+      //$('#ffmpeg')[0].setSelectionRange(0,99999);
+      //document.execCommand("copy");
+      $('#ffmpeg').show();
+      $('#ffmpeg_command').val(ffmpeg_command);
+      $('#ffmpeg_command')[0].select();
+      $('#ffmpeg_command')[0].setSelectionRange(0,99999);
+      if(document.execCommand("copy")){
+        $('#ffmpeg').hide();
+        $('#confirmation').text('FFMPEG command has been copied to clipboard: paste into a command line window to make the video');
+      }else{
+        $('#confirmation').text('FFMPEG command is in textbox at bottom of page – copy and paste into a command line window to make the video');
+      }
+
+    }
+  </script>
+</head>
+<body>
+  <div id="header" class="w3-container w3-blue">
+    <h1>Make your own lyrics video!</h1>
+  </div>
+  <p>Choose a video file to work with: <input type="file" id="vid_file"/></p>
+  <button class="w3-btn w3-blue" id="save_subs">Save work in progress </button> Or load from a previous save: <input type="file" id="sub_file" accept=".json"/>
+  <p>Show video at <input type='range' min='1' max='100' value='50' class='slider' id='video_size_range'/>
+  <input id="video_size" class="opt_control" type="number" min="1" max="100" value="50" size="3"/> % of original size</p>
+  <div id="video_container"><video id="vid" controls="true">
+      <source src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" id="video_here" />
+       Your browser does not support HTML5 video.
+    </video><div id="preview_container"><canvas id="canvas">Your browser does not support HTML canvas.</canvas></div></div>
+  <p />
+  <div class="w3-bar w3-black">
+    <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Import</button>
+    <button class="w3-bar-item w3-button tablink" id="place_tab" onclick="openTab(event, 'place_lyrics')">Place</button>
+    <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'edit_lyrics')">Edit</button>
+    <button class="w3-bar-item w3-button tablink" id="opt_tab" onclick="openTab(event, 'options')">Format</button>
+    <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'export')">Export</button>
+  </div>
+<div id="add_lyrics" class="tab_option">
+  <h2>Import lyrics</h2>
+  <p>Copy your lyrics here, then press 'Process lyrics!' (or hit ctrl-return) to split into subtitles:</p>
+  <p><span>Default lines per subtitle (empty lines will still split subtitles): <input id="subtitle_lines_range" type='range' min='1' max='5' value='1' class= 'slider'/>
+  <input id="subtitle_lines" type="number" class="opt_control" value="1" size="1"/></span></p>
+  <p><textarea id="lyrics" class="w3-input w3-border" rows=10></textarea></p>
+  <button class="w3-btn w3-black" type="button" id="clear">Clear</button>
+  <button class="w3-btn w3-blue" type="button" id="process">Process lyrics!</button>
+</div>
+<div id="place_lyrics" class="tab_option" style="display: none;">
+  <h2>Place subtitles</h2>
+  <p>If you want to add and display another lyric quickly, you can type it here and press enter:</p>
+  <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea><button class="w3-btn w3-blue" type="button" id="add">Display</button></div>
+  <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
+  <div id="lyrics_array" class="lyrics_array"></div>
+  <button class="w3-btn w3-black" type="button" id="clear_board">Clear lyrics board</button>
+</div>
+<div id="edit_lyrics" class="tab_option" style="display: none;">
+<h2>Edit subtitles</h2>
+<p>Click on times to jump to them in the video. Shift-click to set to current time. Click on subtitle text to edit it.
+<div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
+</div>
+<div id="options" class="tab_option" style="display: none;">
+<h2>Format subtitles</h2>
+<div class="w3-panel w3-cell">
+  <div class="w3-container w3-blue"><h3>Text</h3></div>
+<div id="text_opts">
+<label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
+<label>Text size:</label><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
+<input id="font_size" class="opt_control" type="number" value="5" size="1"/> % of width of video
+<div id="size_warning"></div>
+</p><p>
+Font: <input id="font" class="opt_control" type="text" value='sans-serif' size="20"/> (You can type any on your system)
+</p>
+<p>
+Outline colour: <input class="opt_control" type='color' id='out_colour' value='#000000'/>
+Outline thickness: <input type='range' min='0' max='10' value='0' class='slider' id='out_size_range' />
+<input id="out_size" class="opt_control" type="number" value="0" size="3"/> pixel(s)
+</p>
+<p>
+Shadow colour: <input class="opt_control" type='color' id='shad_colour' value='#000000'/>
+Shadow offset: <input type='range' min='0' max='20' value='0' class='slider' id='shad_off_range' />
+<input id="shad_off" class="opt_control" type="number" alue="0" size="3"/> pixel(s)
+</div>
+</div><div class="w3-panel w3-cell">
+  <div class="w3-container w3-blue"><h3>Layout</h3></div>
+<div id="layout_opts">
+<p>Line spacing: <input type='range' min='0.5' max='2' step="0.1" value='1' class='slider' id='line_spacing_range'/><input id="line_spacing" class="opt_control" value="1" size="3" />
+</p><p>Vertical margin: <input type='range' min='0' max='100' value='10' class='slider' id='v_margin_range'/>
+<input id="v_margin" type="number" class="opt_control" value="0" size="3" />
+</p><p>Offset from bottom of screen: <input type='range' min='0' max='100' value='10' class='slider' id='v_offset_range'/>
+<input id="v_offset" type="number" class="opt_control" value="0" size="4" /> pixel(s)
+</p>
+<p>
+Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
+Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' />
+<input id="bg_opacity" class="opt_control" type="number" value="0.5" size="3"/>
+</p>
+<p>
+<input id="bg_visible" class="w3-check opt_control" type="checkbox" value="false"/><label>Keep background visible even where there is no lyric text?</label>
+</div>
+</div>
+<div id="styles" style="display: none;">
+<h3>Styles</h3>
+<div id="named_styles">
+<input id="ind_style" class="w3-check" type="checkbox" value="false" /><label>Changes only apply to this subtitle</label>
+</p><p>Available styles: [Here] <button class="w3-button w3-blue">Load style</button><button class="w3-button w3-red">Delete style</button>
+</p><p>
+Save changes as new style with name: <input type="text" /><button class="w3-button w3-blue">Make new style</button>
+</p>
+</div>
+</div>
+<div id="saving">
+<button class="w3-btn w3-black" id="reset_opts" type="button">Reset to default style</button>
+<button class="w3-btn w3-blue" id="save_opts" type="button">Save as new default style</button>
+<p>
+<button class="w3-btn w3-red" id="wipe_opts" type="button">Factory reset (wipe all saved styles)</button>
+</div>
+</div>
+<div id="export" class="tab_option" style="display: none;">
+  <h2>Export your file</h2>
+  <p>There are various ways to export your lyrics. In order of simplicity:</p>
+  <h3>Recommended: export as video overlay</h3>
+  <p>
+  Select codec:
+  <select id="codec">
+    <option value="quicktime" selected>QuickTime animation (fast export, fairly widely supported)</option>
+    <option value="prores">ProRes 4444 (slower export, may be supported where QuickTime is not)</option>
+    <option value="ayuv">AYUV (very fast, apparently quite compatible on Windows but not Mac)</option>
+    <option value="png">PNG video (should be fast, less compatible)</option>
+    <option value="h264">H.264 (fast and very compatible, small file, no transparency)</option>
+  </select>
+  <button class="w3-btn w3-green" id="save_codec" type="button">Save as default codec</button>
+</p><p><button class="w3-btn w3-blue" id="browser_overlay" type="button">Export video overlay from browser</button><div id="ffmpeg_loading" style="color: red;">Recommended: export as video overlay (still loading, please be patient...)</div></p>
+  <div id="ffmpeg_info">
+    Progress of export: <div class="w3-border"><div id="ffmpeg_bar" class="w3-blue" style="height: 24px; width: 0%"></div></div>
+    <input id="show_log" class="w3-check opt_control" type="checkbox" />Show export log: <div id="ffmpeg_log" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
+  </div>
+  <p>This will use your browser to create an overlay of the lyrics. All formatting should be perfectly preserved (let me know if it isn't, and I'll try to fix it). You can then add this to the original video in your editor. It is exported in a format that supports transparency; this might not be viewable in your usual video player (it won't open in Apple QuickTime, for example), but the editor should be able to open it.</p>
+  <p>The fact that this is possible is thanks to the amazing efforts of <a href="https://bgrins.github.io/videoconverter.js/">Brian Grinstead</a>, who somehow (a number of years ago) managed to compile FFMPEG (a desktop video processor) to run on your browser using Javascript. What a guy.</p>
+  <h3>Subtitle file export options</h3>
+  <p>This is very quick, but will require you to assemble the result yourself using an editor or processor that supports subtitle files (most do, to varying extents). Some formatting information may be lost.</p>
+    <button class="w3-btn w3-blue" type=button id="export_srt">Export lyrics as SRT file</button> (SRT files are widely accepted, but don't contain any formatting information.)
+    <p />
+    <button class="w3-btn w3-blue" type=button id="export_ass">Export lyrics as ASS file</button> (ASS files contain most formatting information, but not all readers can use this information – FFMPEG can though, mostly.)
+    <p />
+  <!--<h3>Create FFMPEG command for local export</h3>
+  <p>If you know how to use FFMPEG and have it installed on your computer, you can use this to copy a command to the clipboard that will overlay the lyrics onto your video. You will need to enter the filenames of your input and output videos first.</p>
+    <p>Input video: <input type="text" id="input_video" value="" /></p>
+    <p>Output video: <input type="text" id="output_video" value="output.mp4" /></p>
+    <button class="w3-btn w3-blue" type=button id="make_video">Create FFMPEG command!</button>
+    <div id="confirmation" style="color: red;"></div>
+  <div id="ffmpeg">FFMPEG command: <input type="text" id="ffmpeg_command" /></div>-->
+  <h3>Experimental: Export full video from browser</h3>
+  <p>If you're very patient and have a fast computer (and lots of memory), you can try to process the whole video using your browser. I don't recommend this unless you don't have any other way of putting the video together.</p>
+  <button class="w3-btn w3-red" id="browser_full" type="button">Experimental in-browser FFMPEG: export full video</button>
+</div>
+ </body>
+</html>
