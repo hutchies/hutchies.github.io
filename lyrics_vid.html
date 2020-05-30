@@ -489,7 +489,7 @@
       $('#video_container').width($('#vid')[0].videoWidth * video_size_mult());
       $('#video_container').height($('#vid')[0].videoHeight * video_size_mult());
       $('#vid').width($('#video_container').width());
-      console.log($('#vid').width());
+      //console.log($('#vid').width());
       $('#canvas').css('width', $('#vid').width());
       if(window.opts[window.current_style].v_offset > ($('#vid')[0].videoHeight - overlay_height())){
         // Only runs from display_opts so we can presume it's the current style TODO handle changes elsewhere
