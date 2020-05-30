@@ -1775,7 +1775,7 @@
           if(window.opts._global.bg_visible && position < $('#vid')[0].duration){
             // Pad to end
             var gap = $('#vid')[0].duration - position;
-            duration_list.push({file:'blank.png', dur:dur.toFixed(3)});
+            duration_list.push({file:'blank.png', dur: gap.toFixed(3)});
             gap -= single_frame;
             if(gap.toFixed(3) > 0){
               concat_file += "file 'blank.png'\nduration "+gap.toFixed(3)+'\n';
