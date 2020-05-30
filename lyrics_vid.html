@@ -370,6 +370,18 @@
       $('#canvas').css('height', canvas_height() * video_size_mult() );
       $('#v_offset_range').prop('max', $('#vid')[0].videoHeight - overlay_height());
       $('#v_offset').prop('max', $('#vid')[0].videoHeight - overlay_height());
+      if($('#bg_type').val() == 'full'){
+        $('#bg_visible').prop('disabled', false);
+      }else{
+        $('#bg_visible').prop('disabled', true);
+      }
+      if($('#bg_type').val() == 'none'){
+        $('#bg_colour').prop('disabled', true);
+        $('#bg_opacity').prop('disabled', true);
+      }else{
+        $('#bg_colour').prop('disabled', false);
+        $('#bg_opacity').prop('disabled', false);
+      }
       draw_subtitle(window.preview_line, $('#canvas')[0]);
       check_text_width();
     }
@@ -834,7 +846,6 @@
         if(n > min) min = n;
       });
       $('#subtitle_lines_range').prop('min', min);
-      console.log(min);
       if(window.opts._global.subtitle_lines < min){
         window.opts._global.subtitle_lines = min;
         display_opts();
@@ -891,7 +902,6 @@
         if(ind == window.selected_line) select=" selected";
         h += '<div id="lyric_line_'+ind+'"></div><div class="line_text'+select+'" id="lyric_text_'+ind+'">'+line+'</div>';
       });
-      console.log(h,results);
       $('#lyrics_array').html(h);
       $('.line_text').on('click', click_line);
       update_list();
@@ -1129,7 +1139,6 @@
       $(this).addClass('selected');
       window.selected_line = id;
       if($(this).text().match(/\n/)) $('#split_lyric').show();
-      console.log(window.selected_line,window.ids);
       if(+window.selected_line + 1 < window.ids) $('#join_lyric').show();
     }
 
@@ -1225,6 +1234,7 @@
           bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
           bg_border: 0,
           bg_opacity: 0.5,
+          bg_type: 'full',
           out_colour: "#000000",
           out_size: 0,
           shad_colour: "#000000",
@@ -1347,6 +1357,20 @@
       return same;
     }
 
+    function get_max_width(sub){
+      const canvas = document.createElement('CANVAS');
+      const ctx = canvas.getContext('2d');
+      var max = 0;
+      sub.text.split(/[\n\r]/).forEach(function(line){
+        var style = sub.style || 'default';
+        ctx.font = get_font(sub.style);
+        const textMetrics = ctx.measureText(line);
+        var tw = Number.parseInt(textMetrics.width.toFixed(1));
+        if(tw > max) max = tw;
+      });
+      return max;
+    }
+
     function check_text_width(){
       const canvas = document.createElement('CANVAS');
       const ctx = canvas.getContext('2d');
@@ -1356,10 +1380,9 @@
       }));
       window.timecodes.forEach(function(sub){
         sub.text.split(/[\n\r]/).forEach(function(line){
-          const text = line;
           var style = sub.style || 'default';
           ctx.font = get_font(sub.style);
-          const textMetrics = ctx.measureText(text);
+          const textMetrics = ctx.measureText(line);
           var tw = Number.parseInt(textMetrics.width.toFixed(1)) + window.opts[style].h_margin * 2;
           var vw = Number.parseInt($('#vid')[0].videoWidth.toFixed(1));
           if(tw > vw){
@@ -1494,10 +1517,21 @@
       if(line.text == '' && !window.opts._global.bg_visible) return; // No need to do any drawing
       // Draw background
 
-      ctx.globalAlpha = opt(line, 'bg_opacity');
-      ctx.fillStyle = opt(line, 'bg_colour');
-      ctx.fillRect(0, y_orig, canvas.width, overlay_height(s));
-      ctx.globalAlpha = 1;
+      var bg_start = 0;
+      var bg_width = canvas.width;
+
+      if(opt(line,'bg_type') != 'none'){
+        if(opt(line, 'bg_type') == 'tight'){
+          bg_width = opt(line, 'h_margin') * 2 + get_max_width(line);
+          var bg_margin = (canvas.width - bg_width) / 2;
+          bg_start = bg_margin;
+        }
+        ctx.globalAlpha = opt(line, 'bg_opacity');
+        ctx.fillStyle = opt(line, 'bg_colour');
+        ctx.fillRect(bg_start, y_orig, bg_width, overlay_height(s));
+        ctx.globalAlpha = 1;
+      }
+
 
 
       // Draw text
@@ -1566,10 +1600,14 @@
       if(window.opts._global.bg_visible){
         var height = overlay_height() + window.opts.default.v_offset;
         // Draw overlay background on blank canvas
-        ctx.globalAlpha = window.opts.default.bg_opacity;
-        ctx.fillStyle = window.opts.default.bg_colour;
-        ctx.fillRect(0, y_orig, canvas.width, overlay_height());
-        ctx.globalAlpha = 1;
+        var bg_start = 0;
+        var bg_end = canvas.width;
+        if(window.opts.default.bg_type == 'full'){
+          ctx.globalAlpha = opt(line, 'bg_opacity');
+          ctx.fillStyle = opt(line, 'bg_colour');
+          ctx.fillRect(bg_start, y_orig, bg_end, overlay_height(s));
+          ctx.globalAlpha = 1;
+        }
       }
 
       return canvas_to_blob_promise(canvas).then((blob) => {
@@ -2140,6 +2178,13 @@ Shadow blur: <input type='range' min='0' max='50' value='0' class='slider' id='s
 <input id="v_offset" type="number" class="opt_control" value="0" size="4" /> pixel(s)
 </p>
 <p>
+Background type:
+<select id="bg_type" class="opt_control">
+  <option value="full">Full width of video</option>
+  <option value="tight">Tight around text</option>
+  <option value="none">No background</option>
+</select>
+</p><p>
 Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
 Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' />
 <input id="bg_opacity" class="opt_control" type="number" value="0.5" size="3"/>
