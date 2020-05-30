@@ -115,6 +115,8 @@
       window.selected_line = -1;
       window.timecodes = [];
       window.ids = 0;
+      window.undo_buffer = [];
+      window.redo_buffer = [];
       //window.running_locally = false;
       window.vid_name = '';
       window.is_audio = false;
@@ -256,6 +258,8 @@
     }
        prev_lyric();
       });
+      Mousetrap.bind('mod+z', undo);
+      Mousetrap.bind('mod+shift+z', redo);
       $('#lyrics').focus();
 
       Mousetrap.prototype.stopCallback = function(e, element, combo) {
@@ -270,11 +274,20 @@
       $('#styles_list').on('change', switch_style);
       $('#make_style').on('click', make_style);
       $('#delete_style').on('click', delete_style);
+      $('#delete_all').on('click', delete_all_subtitles);
       //console.log(tallest_height());
     });
 
     function video_size_mult(){
       return window.opts._global.video_size / 100;
+    }
+
+    function delete_all_subtitles(){
+      if(!confirm('This cannot be undone. Are you sure?')) return;
+      window.timecodes = [];
+      window.undo_buffer = [];
+      window.redo_buffer = [];
+      update_list();
     }
 
     function setup_styles(){
@@ -438,7 +451,36 @@
       return count;
     }
 
+    function add_undo(){
+      window.undo_buffer.push(JSON.stringify(window.timecodes));
+      window.redo_buffer = []; // Can't redo any more
+      console.log('undo buffer:', window.undo_buffer);
+    }
+
+    function undo(){
+      if(window.undo_buffer.length < 1) return;
+      window.redo_buffer.push(JSON.stringify(window.timecodes));
+      window.timecodes = JSON.parse(window.undo_buffer.pop());
+      console.log('timecodes:',window.timecodes);
+      console.log('undo buffer:', window.undo_buffer);
+      console.log('redo buffer:', window.redo_buffer);
+      update_list();
+    }
+
+    function redo(){
+      if(window.redo_buffer.length < 1) return;
+      window.undo_buffer.push(JSON.stringify(window.timecodes));
+      console.log('undo buffer:', window.undo_buffer);
+      console.log('redo buffer:', window.redo_buffer);
+      update_list();
+    }
+
+    function refresh(){
+
+    }
+
     function set_time(id){
+      add_undo();
       if(id.match(/start/)){
         var num = id.substring(6);
         window.timecodes[num].start = $('#vid')[0].currentTime;
@@ -451,11 +493,53 @@
       update_list();
     }
 
+    function num_round(num, places){
+      return +num.toFixed(places);
+    }
+
+    function shunt_time(id){
+      add_undo(); // Risky activity
+      if(id.match(/start/)){
+        var num = id.substring(6);
+        var diff = num_round($('#vid')[0].currentTime - window.timecodes[num].start, 3);
+        for (let i = 0; i < window.timecodes.length; i++){
+          // Move all of the timecodes by the same amount
+          if(i >= num){
+            window.timecodes[i].start = num_round(window.timecodes[i].start + diff, 3);
+            window.timecodes[i].end = num_round(window.timecodes[i].end + diff, 3);
+          }else if(diff < 0){
+            // Just in moving start back, there is a chance that you will overwrite previous ones
+            // So we need to check that
+            var new_start = window.timecodes[num].start + diff;
+            if(window.timecodes[i].start >= new_start){
+              window.timecodes[i].start = window.timecodes[i].end; // so it will be deleted
+            }
+          }
+        }
+
+        check_overlap(num);
+      }else if(id.match(/end/)){
+        var num = id.substring(4);
+        var diff = num_round($('#vid')[0].currentTime - window.timecodes[num].end, 3);
+        console.log(diff);
+        window.timecodes[num].end = $('#vid')[0].currentTime;
+        for (let i = num + 1; i < window.timecodes.length; i++){
+          // num + 1 because we only want to change the end of window.timecodes[num]
+          // Move all of the timecodes by the same amount
+          window.timecodes[i].start = num_round(window.timecodes[i].start + diff, 3);
+          window.timecodes[i].end = num_round(window.timecodes[i].end + diff, 3);
+        }
+        check_overlap(num);
+      }
+      update_list();
+    }
+
     function check_overlap(i){
       //console.log('checking '+i,window.timecodes[i]);
       var intermediate = window.timecodes.filter(function(tc, tc_i){
         //console.log('filter: '+tc_i,tc);
         // Filter out impossibles or zero-length ones
+        if(tc_i == 1) console.log(tc);
         if(tc.end <= tc.start){
           if(current_lyric() == tc_i) deselect();
           return false;
@@ -548,6 +632,10 @@
         window.opts[style][opt] = $(this).val();
       }
       $('#'+opt+'_range').val($(this).val());
+      if(opt == 'subtitle_lines'){
+        // Expand textarea to fit
+        $('#single_line').prop('rows', window.opts._global.subtitle_lines);
+      }
       display_opts();
     }
 
@@ -842,7 +930,11 @@
       $('.lyrics_style').on('change', change_lyric_style);
       $('.time').on('click', function(evt){
         if(evt.shiftKey){
-          set_time($(this).attr('id'))
+          if(evt.altKey){
+            shunt_time($(this).attr('id'));
+          }else{
+            set_time($(this).attr('id'));
+          }
         }else{
           goto_time($(this).attr('id'));
         }
@@ -862,12 +954,14 @@
       var id = $(this).attr('id').substring(5);
       $(this).html('<textarea style="white-space: prewrap; width: 100%;" rows="'+window.opts._global.subtitle_lines+'" id="edit_'+id+'">'+window.timecodes[id].text+'</textarea>');
       $('#edit_'+id).on('change blur', function() {
+          add_undo();
           window.timecodes[id].text = $(this).val();
           $(this).parent().text(window.timecodes[id].text);
           update_list();
       });
       $('#edit_'+id).keydown(function(e){
         if(e.which === 13 && count_occ($(this).val(), '\n') >= window.opts._global.subtitle_lines - 1){
+          add_undo();
           window.timecodes[id].text = $(this).val();
           update_list();
         }
@@ -878,6 +972,7 @@
 
     function change_lyric_style(){
       var id = $(this).attr('id').substring(6);
+      add_undo();
       if(window.selected_line != -1 && current_lyric() == id){
         window.timecodes[id].style = $(this).val();
         set_style($(this).val()); // This is the current one
@@ -887,9 +982,41 @@
       }
     }
 
-    function click_line(){
+    function edit_line(id, that){
+      //$(this).off('click'); // To stop it refiring when you do stuff with the edit box
+      if(that.html().match(/<textarea /)) return; // Don't bother if you've already got a textbox editing here
+      that.html('<textarea style="white-space: prewrap; width: 100%;" rows="'+window.opts._global.subtitle_lines+'" id="edit_line_'+id+'">'+that.text()+'</textarea>');
+      $('#edit_line_'+id).on('change blur', function() {
+          $(this).parent().text($(this).val());
+          if(window.selected_line == id){
+            window.timecodes[current_lyric()].text = $(this).val();
+            update_list();
+          }
+      });
+      $('#edit_line_'+id).keydown(function(e){
+        if(e.which === 13 && count_occ($(this).val(), '\n') >= window.opts._global.subtitle_lines - 1){
+          $(this).parent().text($(this).val());
+          if(window.selected_line == id){
+            window.timecodes[current_lyric()].text = $(this).val();
+            update_list();
+          }
+        }
+      });
+      $('#edit_line_'+id).click(function(e){
+        e.stopPropagation();
+      });
+
+      $('#edit_line_'+id).focus().val($('#edit_line_'+id).val());
+    }
+
+    function click_line(evt){
       var id = $(this).attr('id').substring(11);
       var t = -1; // Use existing timecode
+      if(evt.shiftKey){
+        edit_line(id, $(this));
+        evt.preventDefault();
+        return;
+      }
       if(window.selected_line == id){
         //Deselect this line
         if(timecode() >= window.timecodes[current_lyric()].start){
@@ -898,6 +1025,7 @@
           deselect();
         }else{
           // We've jumped back before the start of the lyric, so maybe we want it to start earlier?
+          add_undo();
           window.timecodes[current_lyric()].start = timecode();
           update_list();
         }
@@ -1838,14 +1966,24 @@
   <h2>Place subtitles</h2>
   <p>If you want to add and display another lyric quickly, you can type it here and press enter:</p>
   <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea><button class="w3-btn w3-blue" type="button" id="add">Display</button></div>
-  <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
+  <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down.
+  </p><p>Shift-click on a lyric to edit it. Press space to start/pause the video.</p>
   <button class="w3-btn w3-black" type="button" id="clear_board">Clear lyrics board</button>
   <div id="lyrics_array" class="lyrics_array"></div>
   </div>
 <div id="edit_lyrics" class="tab_option" style="display: none;">
 <h2>Edit subtitles</h2>
-<p>Click on times to jump to them in the video. Shift-click to set to current time. Click on subtitle text to edit it.
+<p>Here you can:
+  <ul>
+    <li>Click on times to jump to them in the video;</li>
+    <li>Click on subtitle text to edit it;</li>
+    <li>Shift-click to set to current time;</li>
+    <li>Shift-alt-click to 'shunt' all subsequent subtitles backwards or forwards to this time (useful if you've trimmed the start of your video or added a clip in the middle).</li>
+  </ul>
+You can undo changes by pressing ctrl/cmd-Z, and redo them with shift-ctrl/cmd-Z.
+</p>
 <div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
+<button class="w3-btn w3-red" id="delete_all" type="button">Delete all subtitles</button>
 </div>
 <div id="options" class="tab_option" style="display: none;">
 <h2>Format subtitles</h2>
