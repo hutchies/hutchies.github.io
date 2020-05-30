@@ -191,6 +191,10 @@
       $('#browser_overlay').hide();
       $('#browser_full').on('click', export_full);
       $('#browser_full').hide();
+      $('#split_lyric').on('click', split_selected);
+      $('#join_lyric').on('click', join_selected);
+      $('#split_lyric').hide();
+      $('#join_lyric').hide();
       $('#show_log').on('click', function(){
         if($('#show_log').is(':checked')){
           $('#ffmpeg_log').show();
@@ -260,6 +264,10 @@
       });
       Mousetrap.bind('mod+z', undo);
       Mousetrap.bind('mod+shift+z', redo);
+      $('#undo_button').click(undo);
+      $('#redo_button').click(redo);
+      $('#undo_button').hide();
+      $('#redo_button').hide();
       $('#lyrics').focus();
 
       Mousetrap.prototype.stopCallback = function(e, element, combo) {
@@ -360,8 +368,8 @@
       //$('#preview').hide();
       //console.log(canvas);
       $('#canvas').css('height', canvas_height() * video_size_mult() );
-      $('#v_offset_range').attr('max', $('#vid')[0].videoHeight - overlay_height());
-      $('#v_offset').attr('max', $('#vid')[0].videoHeight - overlay_height());
+      $('#v_offset_range').prop('max', $('#vid')[0].videoHeight - overlay_height());
+      $('#v_offset').prop('max', $('#vid')[0].videoHeight - overlay_height());
       draw_subtitle(window.preview_line, $('#canvas')[0]);
       check_text_width();
     }
@@ -453,25 +461,26 @@
 
     function add_undo(){
       window.undo_buffer.push(JSON.stringify(window.timecodes));
+      if(window.redo_buffer.length > 0) $('#redo_button').hide(); // About to hide it
       window.redo_buffer = []; // Can't redo any more
-      console.log('undo buffer:', window.undo_buffer);
+      if(window.undo_buffer.length == 1) $('#undo_button').show(); // First one
     }
 
     function undo(){
       if(window.undo_buffer.length < 1) return;
       window.redo_buffer.push(JSON.stringify(window.timecodes));
       window.timecodes = JSON.parse(window.undo_buffer.pop());
-      console.log('timecodes:',window.timecodes);
-      console.log('undo buffer:', window.undo_buffer);
-      console.log('redo buffer:', window.redo_buffer);
+      if(window.undo_buffer.length == 0) $('#undo_button').hide();
+      if(window.redo_buffer.length == 1) $('#redo_button').show(); // First one
       update_list();
     }
 
     function redo(){
       if(window.redo_buffer.length < 1) return;
       window.undo_buffer.push(JSON.stringify(window.timecodes));
-      console.log('undo buffer:', window.undo_buffer);
-      console.log('redo buffer:', window.redo_buffer);
+      window.timecodes = JSON.parse(window.redo_buffer.pop());
+      if(window.redo_buffer.length == 0) $('#redo_button').hide();
+      if(window.undo_buffer.length == 1) $('#undo_button').show(); // First one
       update_list();
     }
 
@@ -791,7 +800,6 @@
 
     function process_lyrics(){
       var lyrics = $.trim($('#lyrics').val());
-      var max_lines = 1;
       $('#lyrics').val('');
       $('#lyrics').blur();
       if(lyrics === '') return;
@@ -805,16 +813,87 @@
         line = line.trim();
         inside += '<div id="lyric_line_'+window.ids+'"></div><div class="line_text" id="lyric_text_'+window.ids+'">'+line+'</div>' // from <span id="lyric_start_'+ln+'">0</span> seconds to <span id="lyric_end_'+ln+'">0</span> seconds</div>';
         window.ids++;
-        var no_lines = line.split(/[\n\r]/).length;
-        if(no_lines > max_lines) max_lines = no_lines;
       });
       existing = $('#lyrics_array').html();
-      $('#subtitle_lines_range').attr('min', max_lines);
-      $('#subtitle_lines').attr('min', max_lines);
       $('#lyrics_array').html(existing+inside);
+      rescan_sub_lines();
       $('.line_text').on('click', click_line);
       var evt = new MouseEvent('click', {view: window, bubbles: true, cancelable: true});
       $('#place_tab')[0].dispatchEvent(evt);
+    }
+
+    function rescan_sub_lines(){
+      var min = 1;
+      $('.line_text').each(function(i){
+        var n = $(this).text().split(/[\n\r]/).length;
+        if(n > min) min = n;
+      });
+      $('#subtitle_lines_range').prop('min', min);
+      console.log(min);
+      if(window.opts._global.subtitle_lines < min){
+        window.opts._global.subtitle_lines = min;
+        display_opts();
+        set_opt_controls();
+      }
+    }
+
+    function split_selected(){
+      var split = $('#lyric_text_'+window.selected_line).text().split('\n');
+      //console.log(split);
+      var results = [];
+      for(let i = 0; i < window.ids; i++){
+        if(i == window.selected_line){
+          split.forEach(function(l){
+            results.push(l);
+          });
+        }else{
+          results.push($('#lyric_text_'+i).text());
+        }
+      }
+      window.ids = results.length;
+      var h = '';
+      results.forEach(function(line, ind){
+        var select = "";
+        if(ind == window.selected_line) select=" selected";
+        h += '<div id="lyric_line_'+ind+'"></div><div class="line_text'+select+'" id="lyric_text_'+ind+'">'+line+'</div>';
+      });
+      //console.log(h);
+      $('#lyrics_array').html(h);
+      $('.line_text').on('click', click_line);
+      window.timecodes[current_lyric()].text = split[0];
+      $('#join_lyric').show();
+      $('#split_lyric').hide();
+      rescan_sub_lines();
+      update_list();
+    }
+
+    function join_selected(){
+      var results = [];
+      for(let i = 0; i < window.ids; i++){
+        var text = $('#lyric_text_'+i).text();
+        //console.log(text, i);
+        if(i == window.selected_line){
+          i++;
+          text = text + '\n' + $('#lyric_text_'+i).text();
+          window.timecodes[current_lyric()].text = text;
+        }
+        results.push(text);
+      }
+      window.ids = results.length;
+      var h = '';
+      results.forEach(function(line, ind){
+        var select = "";
+        if(ind == window.selected_line) select=" selected";
+        h += '<div id="lyric_line_'+ind+'"></div><div class="line_text'+select+'" id="lyric_text_'+ind+'">'+line+'</div>';
+      });
+      console.log(h,results);
+      $('#lyrics_array').html(h);
+      $('.line_text').on('click', click_line);
+      update_list();
+      $('#split_lyric').show();
+      if(+window.selected_line + 1 >= window.ids) $('#join_lyric').hide();
+      // Make sure you adjust subtitle min range
+      rescan_sub_lines();
     }
 
     function add_line(){
@@ -826,13 +905,8 @@
       //onsole.log(line);
       h += '<div id="lyric_line_'+window.ids+'"></div><div class="line_text" id="lyric_text_'+window.ids+'">'+line+'</div>';
       window.ids++;
-      var no_lines = line.split(/[\n\r]/).length;
-      var current_min = $('#subtitle_lines_range').attr('min');
-      if(no_lines > current_min){
-        $('#subtitle_lines_range').attr('min', no_lines);
-        $('#subtitle_lines').attr('min', no_lines);
-      }
       $('#lyrics_array').html(h);
+      rescan_sub_lines();
       $('.line_text').on('click', click_line);
       // Auto-click line
       var id = window.ids - 1;
@@ -883,6 +957,8 @@
     function deselect(){
       $('.selected').removeClass('selected');
       window.selected_line = -1;
+      $('#split_lyric').hide();
+      $('#join_lyric').hide();
     }
 
     function push_lyric(text, t){
@@ -1027,6 +1103,7 @@
           // We've jumped back before the start of the lyric, so maybe we want it to start earlier?
           add_undo();
           window.timecodes[current_lyric()].start = timecode();
+          check_overlap(current_lyric());
           update_list();
         }
 
@@ -1043,6 +1120,9 @@
       push_lyric($(this).text(), t);
       $(this).addClass('selected');
       window.selected_line = id;
+      if($(this).text().match(/\n/)) $('#split_lyric').show();
+      console.log(window.selected_line,window.ids);
+      if(+window.selected_line + 1 < window.ids) $('#join_lyric').show();
     }
 
   function save_subs(){
@@ -1964,23 +2044,41 @@
 </div>
 <div id="place_lyrics" class="tab_option" style="display: none;">
   <h2>Place subtitles</h2>
-  <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Shift-click on a lyric to edit it. Press space to start/pause the video.</p>
+  <details><summary>Click here for information on controls</summary>
+  Here you can:
+  <ul>
+    <li>Click on a lyric to make it appear at this moment;</li>
+    <li>Click again to make it disappear (or click the next lyric);</li>
+    <li>Press the up and down arrows to select the next or previous lyric;</li>
+    <li>Press space to start and stop the video;</li>
+    <li>Shift-click on a lyric to edit its text in the board before you add it;</li>
+    <li>Press the 'split' and 'join' buttons when they appear to adjust how many lines appear in a lyric.</li>
+  </ul>
+</details>
   <p>If you want to add and display another lyric quickly, you can type it here and press enter:</p>
-  <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea><button class="w3-btn w3-blue" type="button" id="add">Display</button></div>
-  <button class="w3-btn w3-black" type="button" id="clear_board">Clear lyrics board</button>
+  <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea><button class="w3-btn w3-blue" type="button" id="add">Display</button>  <button class="w3-btn w3-blue" id="split_lyric">Split selected lyric</button>
+    <button class="w3-btn w3-blue" id="join_lyric">Join selected lyric</button></div>
   <div id="lyrics_array" class="lyrics_array"></div>
+  <button class="w3-btn w3-black" type="button" id="clear_board">Clear lyrics board</button>
   </div>
 <div id="edit_lyrics" class="tab_option" style="display: none;">
 <h2>Edit subtitles</h2>
-<p>Here you can:
+<p>
+<details><summary>Click here for information on controls</summary>
+Here you can:
   <ul>
     <li>Click on times to jump to them in the video;</li>
     <li>Click on subtitle text to edit it;</li>
     <li>Shift-click to set to current time;</li>
     <li>Shift-alt-click to 'shunt' all subsequent subtitles backwards or forwards to this time (useful if you've trimmed the start of your video or added a clip in the middle).</li>
   </ul>
-You can undo changes by pressing ctrl/cmd-Z, and redo them with shift-ctrl/cmd-Z.
+You can undo changes by pressing ctrl/cmd-Z, and redo them with shift-ctrl/cmd-Z. (Or press the buttons that appear!)
+</details>
 </p>
+<div>
+  <button class="w3-btn w3-blue" id="undo_button">Undo</button>
+  <button class="w3-btn w3-blue" id="redo_button">Redo</button>
+</div>
 <div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
 <button class="w3-btn w3-red" id="delete_all" type="button">Delete all subtitles</button>
 </div>
@@ -2089,7 +2187,7 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
 </p><p><button class="w3-btn w3-blue" id="browser_overlay" type="button">Export video overlay from browser</button><div id="ffmpeg_loading" style="color: red;">Recommended: export as video overlay (still loading, please be patient...)</div></p>
   <div id="ffmpeg_info">
     Progress of export: <div class="w3-border"><div id="ffmpeg_bar" class="w3-blue" style="height: 24px; width: 0%"></div></div>
-    <input id="show_log" class="w3-check opt_control" type="checkbox" />Show export log: <div id="ffmpeg_log" class="lyrics_array" style="font-family: monospace; white-space:pre; overflow: scroll;"></div>
+    <input id="show_log" class="w3-check opt_control" type="checkbox" />Show export log: <div id="ffmpeg_log" class="lyrics_array" style="height: 200px; font-family: monospace; white-space: pre; overflow: scroll;"></div>
   </div>
   <p>This will use your browser to create an overlay of the lyrics. All formatting should be perfectly preserved (let me know if it isn't, and I'll try to fix it). You can then add this to the original video in your editor. It is exported in a format that supports transparency; this might not be viewable in your usual video player (it won't open in Apple QuickTime, for example), but the editor should be able to open it.</p>
   <p>The fact that this is possible is thanks to the amazing efforts of <a href="https://bgrins.github.io/videoconverter.js/">Brian Grinstead</a>, who somehow (a number of years ago) managed to compile FFMPEG (a desktop video processor) to run on your browser using Javascript. What a guy.</p>
