@@ -489,13 +489,16 @@
     }
 
     function set_time(id){
-      add_undo();
       if(id.match(/start/)){
         var num = id.substring(6);
+        if(window.timecodes[num].start == $('#vid')[0].currentTime) return;
+        add_undo();
         window.timecodes[num].start = $('#vid')[0].currentTime;
         check_overlap(num);
       }else if(id.match(/end/)){
         var num = id.substring(4);
+        if(window.timecodes[num].end == $('#vid')[0].currentTime) return;
+        add_undo();
         window.timecodes[num].end = $('#vid')[0].currentTime;
         check_overlap(num);
       }
@@ -507,10 +510,11 @@
     }
 
     function shunt_time(id){
-      add_undo(); // Risky activity
       if(id.match(/start/)){
         var num = id.substring(6);
         var diff = num_round($('#vid')[0].currentTime - window.timecodes[num].start, 3);
+        if(diff == 0) return;
+        add_undo();
         for (let i = 0; i < window.timecodes.length; i++){
           // Move all of the timecodes by the same amount
           if(i >= num){
@@ -530,7 +534,8 @@
       }else if(id.match(/end/)){
         var num = id.substring(4);
         var diff = num_round($('#vid')[0].currentTime - window.timecodes[num].end, 3);
-        console.log(diff);
+        if(diff == 0) return;
+        add_undo();
         window.timecodes[num].end = $('#vid')[0].currentTime;
         for (let i = num + 1; i < window.timecodes.length; i++){
           // num + 1 because we only want to change the end of window.timecodes[num]
@@ -1030,15 +1035,18 @@
       var id = $(this).attr('id').substring(5);
       $(this).html('<textarea style="white-space: prewrap; width: 100%;" rows="'+window.opts._global.subtitle_lines+'" id="edit_'+id+'">'+window.timecodes[id].text+'</textarea>');
       $('#edit_'+id).on('change blur', function() {
-          add_undo();
-          window.timecodes[id].text = $(this).val();
-          $(this).parent().text(window.timecodes[id].text);
+          if(window.timecodes[id].text != $(this).val()){
+            add_undo();
+            window.timecodes[id].text = $(this).val();
+          }
           update_list();
       });
       $('#edit_'+id).keydown(function(e){
         if(e.which === 13 && count_occ($(this).val(), '\n') >= window.opts._global.subtitle_lines - 1){
-          add_undo();
-          window.timecodes[id].text = $(this).val();
+          if(window.timecodes[id].text != $(this).val()){
+            add_undo();
+            window.timecodes[id].text = $(this).val();
+          }
           update_list();
         }
       });
