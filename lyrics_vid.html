@@ -105,6 +105,7 @@
       window.isWorkerLoaded = false;
       window.worker = null;
       window.ffmpeg_running = false;
+      window.current_style = "default";
       window.preview_line = {start: 0, end: 0, text: ''};
       $('#process').on('click', process_lyrics);
       $('#clear').on('click', function(){
@@ -128,21 +129,27 @@
       });
       $('#save_subs').on('click', save_subs);
       $('#vid_file').on('change', function(evt){
-          var source = $('#video_here');
           var f = this.files[0];
           window.vid_name = f.name;
           if(f.type.match('video.*')){
-            source[0].src = URL.createObjectURL(f);
-          }else if(f.type.match('audio.*')){
-            $('#video_container').html('<p style="padding-bottom:100px;"/><audio id="vid" controls="true"><source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/WFMU/Broke_For_Free/Directionless_EP/Broke_For_Free_-_01_-_Night_Owl.mp3" id="video_here" />Your browser does not support HTML5 audio.</audio><div id="preview_container"><div id="preview"></div><canvas id="canvas"></canvas></div>');
-            $('#video_here').src = URL.createObjectURL(f);
-            $('#vid').videoWidth = 640; // Placeholder to stop breakage
-            $('#vid').videoHeight = 480; // Placeholder to stop breakage
+            $('#video_container').html('<video id="vid" controls="true"><source id="video_here" />Your browser does not support HTML5 video.</video><div id="preview_container"><canvas id="canvas">Your browser does not support HTML canvas.</canvas></div>');
+            $('#video_here')[0].src = URL.createObjectURL(f);
+            //$('#video_proportions').show();
             $('#vid').on('canplay', vid_ready); // Reinstate events
             $('#vid').on('timeupdate', sync_lyrics); // Reinstate events
+            $('#audio_settings').hide();
+          }else if(f.type.match('audio.*')){
+            $('#video_container').html('<audio id="vid" controls="true"><source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/WFMU/Broke_For_Free/Directionless_EP/Broke_For_Free_-_01_-_Night_Owl.mp3" id="video_here" />Your browser does not support HTML5 audio.</audio><div id="preview_container"><div id="preview"></div><canvas id="canvas"></canvas></div>');
+            $('#video_here')[0].src = URL.createObjectURL(f);
+            $('#vid')[0].videoWidth = 1024; // Placeholder to stop breakage
+            $('#vid')[0].videoHeight = 768; // Placeholder to stop breakage
+            $('#vid').on('canplay', vid_ready); // Reinstate events
+            $('#vid').on('timeupdate', sync_lyrics); // Reinstate events
+            $('#audio_settings').show();
+            $('.resize_vid').on('click', resize_vid_for_audio);
           }
 
-          source.parent()[0].load();
+          $('#video_here').parent()[0].load();
       });
       $('#vid').on('canplay', vid_ready);
       $('#vid').on('timeupdate', sync_lyrics);
@@ -150,6 +157,7 @@
       $('#export_srt').on('click', export_srt);
       $('#export_ass').on('click', export_ass);
       $('.instructions').hide();
+      $('#audio_settings').hide();
       $('.options').hide();
       $('#float').on('click', float_video);
       $('.opt_control').on('change', change_opt);
@@ -190,7 +198,7 @@
       });
       $('#single_line').on('keydown', function(e){
         //console.log(count_occ($('#single_line').val(), '\n'));
-        if(e.which === 13 && count_occ($('#single_line').val(), '\n') >= window.opts.subtitle_lines - 1){
+        if(e.which === 13 && count_occ($('#single_line').val(), '\n') >= window.opts._global.subtitle_lines - 1){
           add_line();
           return false;
         }
@@ -229,25 +237,93 @@
       });
       $('#lyrics').focus();
 
-          Mousetrap.prototype.stopCallback = function(e, element, combo) {
-            if ((' ' + element.className + ' ').indexOf(' mousetrap ') > -1) {
-              if(combo != 'space') return false;
-          }
+      Mousetrap.prototype.stopCallback = function(e, element, combo) {
+        if ((' ' + element.className + ' ').indexOf(' mousetrap ') > -1) {
+          if(combo != 'space') return false;
+      }
 
-          // stop for input, select, and textarea
-          return element.tagName == 'INPUT' || element.tagName == 'SELECT' || element.tagName == 'TEXTAREA' || (element.contentEditable && element.contentEditable == 'true');
+      // stop for input, select, and textarea
+      return element.tagName == 'INPUT' || element.tagName == 'SELECT' || element.tagName == 'TEXTAREA' || (element.contentEditable && element.contentEditable == 'true');
 
-          }
+      }
+      $('#styles_list').on('change', switch_style);
+      $('#make_style').on('click', make_style);
+      $('#delete_style').on('click', delete_style);
+      //console.log(tallest_height());
     });
 
     function video_size_mult(){
-      return window.opts.video_size / 100;
+      return window.opts._global.video_size / 100;
+    }
+
+    function setup_styles(){
+      $('#styles_list').html(style_options());
+      $('#styles_list').val(window.current_style);
+      if(window.current_style == 'default'){
+        $('#delete_style').prop('disabled', true);
+      }else{
+        $('#delete_style').prop('disabled', false);
+      }
+    }
+
+    function make_style(){
+      var name = $('#new_style_name').val();
+      $('#new_style_name').val('');
+      name = name.replace(/[^A-Za-z0-9]/g, '');
+      if(name === '') return;
+      if(name in window.opts) return; // Can't make a second style of same name; TODO make it make a copy?
+      var style_content = Object.assign({}, window.opts[window.current_style]);
+      //console.log(style_content);
+      window.opts[name] = style_content;
+      set_style(name);
+      update_list();
+    }
+
+    function resize_vid_for_audio(){
+      $('#vid')[0].videoWidth = Number.parseInt($('#vid_x').val());
+      $('#vid')[0].videoHeight = Number.parseInt($('#vid_y').val());
+      display_opts();
+    }
+
+    function delete_style(){
+      var style = $('#styles_list').val();
+      if(style == 'default'){
+        // TODO some error text
+        return; // Can't delete default style
+      }
+      window.timecodes.forEach(function(l){
+        if(l.style == style) l.style = 'default';
+        //console.log(l.style, style);
+      });
+      //console.log(window.timecodes);
+      delete window.opts[style];
+      setup_styles();
+      set_style('default');
+      update_list();
+    }
+
+    function set_style(style){
+      if(style != window.current_style){
+        window.current_style = style;
+        var l = lyric_at_time(timecode());
+        if(l){
+          l.style = style;
+          update_list();
+        }
+      }
+      display_opts();
+      set_opt_controls();
+    }
+
+    function switch_style(){
+      var style = $('#styles_list').val();
+      set_style(style);
     }
 
     function preview_canvas(){
       //$('#preview').hide();
       //console.log(canvas);
-      $('#canvas').css('height', (overlay_height() + window.opts.v_offset) * video_size_mult() );
+      $('#canvas').css('height', canvas_height() * video_size_mult() );
       $('#v_offset_range').attr('max', $('#vid')[0].videoHeight - overlay_height());
       $('#v_offset').attr('max', $('#vid')[0].videoHeight - overlay_height());
       draw_subtitle(window.preview_line, $('#canvas')[0]);
@@ -263,13 +339,27 @@
 
     }
 
-    function set_opt_controls(){
-      for(o in window.opts){
-        $('#'+o).val(window.opts[o]);
-        if($('#'+o+'_range').length > 0){
-          $('#'+o+'_range').val(window.opts[o]);
+    function opt_controls(style){
+      for(o in window.opts[style]){
+        if($('#'+o).attr('type') == 'checkbox'){
+          if(window.opts[style][o]){
+            $('#'+o).prop('checked', true);
+          }else{
+            $('#'+o).prop('checked', false);
+          }
+        }else{
+          $('#'+o).val(window.opts[style][o]);
+          if($('#'+o+'_range').length > 0){
+            $('#'+o+'_range').val(window.opts[style][o]);
+          }
         }
-      };
+      }
+    }
+
+    function set_opt_controls(){
+      opt_controls(window.current_style);
+      opt_controls('_global');
+      setup_styles();
     }
 
     function openTab(evt, tabName) {
@@ -397,33 +487,41 @@
     function size_video(){
       if($('#vid')[0].videoWidth == 0)  return; // Not ready yet
       $('#video_container').width($('#vid')[0].videoWidth * video_size_mult());
+      $('#video_container').height($('#vid')[0].videoHeight * video_size_mult());
       $('#vid').width($('#video_container').width());
+      console.log($('#vid').width());
       $('#canvas').css('width', $('#vid').width());
-      if(window.opts.v_offset > ($('#vid')[0].videoHeight - overlay_height())){
-        console.log(window.opts.v_offset, $('#vid')[0].videoHeight, overlay_height());
-        window.opts.v_offset = video_size_mult() - overlay_height();
+      if(window.opts[window.current_style].v_offset > ($('#vid')[0].videoHeight - overlay_height())){
+        // Only runs from display_opts so we can presume it's the current style TODO handle changes elsewhere
+        //console.log(window.opts[window.current_style].v_offset, $('#vid')[0].videoHeight, overlay_height());
+        window.opts[window.current_style].v_offset = video_size_mult() - overlay_height();
       }
-      $('#canvas').css('height', (overlay_height() + window.opts.v_offset) * video_size_mult());
+      $('#canvas').css('height', canvas_height() * video_size_mult());
     }
 
     function change_opt(){
       var opt = $(this).attr('id');
-      if($(this).attr('type') == 'checkbox'){
-        if ($(this).is(':checked')) {
-          $(this).attr('value', 'true');
-        } else {
-          $(this).attr('value', 'false');
-        }
-      }
+      var all = $(this).hasClass('global');
+      var style = window.current_style;
+      if(all) style = '_global';
+
       if($(this).attr('type') == 'number'){
-        window.opts[opt] = parseFloat($(this).val());
+        window.opts[style][opt] = parseFloat($(this).val());
+      }else if($(this).attr('type') == 'checkbox'){
+        if ($(this).is(':checked')) {
+          window.opts[style][opt] = true;
+          if(opt == 'bg_visible'){
+            $('#universal_overlay').prop('checked', true); // If bg is always visible, needs to be a consistent size
+            $('#universal_overlay').prop('disabled', true); // TODO change label colour afterwards
+          }
+        } else {
+          window.opts[style][opt] = false;
+          if(opt == 'bg_visible') $('#universal_overlay').prop('disabled', false); // Can alter size now
+        }
       }else{
-        window.opts[opt] = $(this).val();
+        window.opts[style][opt] = $(this).val();
       }
       $('#'+opt+'_range').val($(this).val());
-      if(opt == 'bg_visible'){ // TODO keep on top of any other booleans
-        window.opts.bg_visible = (window.opts.bg_visible == 'true');
-      }
       display_opts();
     }
 
@@ -505,10 +603,11 @@
     }
 
     function export_ass(){
+    // TODO rewrite for styles support – a bit more work
       var wrap = 0;
       var spacer = '';
       close_all_lines();
-      if(window.opts.bg_type == "full"){
+      if(window.opts.default.bg_type == "full"){
         wrap = 2; // For workaround to enable full-width box
         var char = 'G';
         var num = Math.floor($('#vid')[0].videoWidth / (fs_in_px() * 2));
@@ -519,7 +618,7 @@
       if(res) res_text = 'PlayResX: '+$('#vid')[0].videoWidth+'\nPlayResY: '+$('#vid')[0].videoHeight+'\n';
       var file = '[Script Info]\nScriptType: V4.00+\n'+res_text+'WrapStyle: '+wrap+'\n\n';
       file += '[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, BackColour, OutlineColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV\n';
-      file += 'Style: Default,Arial,'+ fs_in_px() +','+rgb_to_bgr(window.opts.text_colour)+','+rgb_to_bgr(window.opts.bg_colour, window.opts.bg_opacity)+','+rgb_to_bgr(window.opts.out_colour, 1)+',0,0,4,'+window.opts.out_size+','+window.opts.shad_off+',2,0,0,0\n\n'; // TODO update with variables
+      file += 'Style: Default,Arial,'+ fs_in_px() +','+rgb_to_bgr(window.opts.default.text_colour)+','+rgb_to_bgr(window.opts.default.bg_colour, window.opts.default.bg_opacity)+','+rgb_to_bgr(window.opts.default.out_colour, 1)+',0,0,4,'+window.opts.default.out_size+','+window.opts.default.shad_off+',2,0,0,0\n\n'; // TODO update with variables
       file += '[Events]\nFormat: Start, End, Style, Text\n';
       for(var i = 0; i < window.timecodes.length; i++){
         var num = i+1;
@@ -560,9 +659,9 @@
 
     function download(data, filename, type) {
     var file = new Blob([data], {type: type});
-    if (window.navigator.msSaveOrOpenBlob){// IE10+
+    if (window.navigator.msSaveOrOpenBlob) // IE10+
         window.navigator.msSaveOrOpenBlob(file, filename);
-    } else { // Others
+    else { // Others
         var a = document.createElement("a"),
                 url = URL.createObjectURL(file);
         a.href = url;
@@ -585,7 +684,7 @@
       //window.timecodes = []; // Reset everything
       //var lines = lyrics.match(/[^\r\n]+/g);
       //console.log('(?:[^\\n\\r]+[\\n\\r]?){1,')
-      var splitter = new RegExp('(?:[^\\n\\r]+[\\n\\r]?){1,'+window.opts.subtitle_lines+'}', 'g');
+      var splitter = new RegExp('(?:[^\\n\\r]+[\\n\\r]?){1,'+window.opts._global.subtitle_lines+'}', 'g');
       var lines = lyrics.match(splitter);
       //console.log(lines);
       lines = lines.filter(a => {if(a === '') return false; return true;}); // Should (I hope!) allow for multi-line splitting
@@ -629,6 +728,18 @@
       $('#lyric_text_'+id).trigger('click');
     }
 
+    function lyric_at_time(time){
+      var lyric_line = window.timecodes.find(function(line, i){
+        if(!('start' in line)) return false;
+        if(line.start <= time){
+          if(!('end' in line)) return true; // Presume so as it's not finished yet!
+          if(line.end > time) return true;
+          return false;
+        }
+      });
+      return lyric_line;
+    }
+
     function sync_lyrics(){
       //console.log(window.timecodes);
       if(window.timecodes.length < 1){
@@ -639,16 +750,12 @@
       }
       //console.log(window.timecodes);
       // Presume if not that we have at least some timecodes to work with!
-      var time = timecode();
-      var lyric_line = window.timecodes.find(function(line, i){
-        if(!('start' in line)) return false;
-        if(line.start <= time){
-          if(!('end' in line)) return true; // Presume so as it's not finished yet!
-          if(line.end > time) return true;
-          return false;
-        }
-      });
+      var lyric_line = lyric_at_time(timecode());
       if(lyric_line){
+        if(lyric_line.style && lyric_line.style != window.current_style){
+          window.current_style = lyric_line.style;
+          set_opt_controls();
+        }
         //$('#preview').text(lyric_line.text);
         window.preview_line = lyric_line;
         display_opts();
@@ -674,6 +781,7 @@
       var l = {};
       l.start = t;
       l.text = text;
+      l.style = window.current_style;
       window.timecodes.push(l);
       check_overlap(window.timecodes.length - 1);
       update_list();
@@ -701,16 +809,17 @@
       var html = '<table>';
       window.timecodes.sort(function(a,b){return a.start - b.start;});
       window.timecodes.forEach(function(line, index){
-        if(line.end){
-          html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - <span class="time" id="end_'+index+'">'+time_to_hms(line.end)+'</span>:</td><td width="100%"><div class="lyrics_text" id="text_'+index+'">'+line.text+'</div></td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
-        }else{
-          html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - (no end yet):</td><td width="100%"><div class="lyrics_text" id="text_'+index+'">'+line.text+'</div></td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
-        }
+        var end_time = '<span class="time" id="end_'+index+'">'+time_to_hms(line.end)+'</span>';
+        if(!line.end) end_time = '(no end yet)';
+        var style = 'default';
+        if(line.style) style = line.style;
+        html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - '+end_time+':</td><td width="100%"><div class="lyrics_text" id="text_'+index+'">'+line.text+'</div></td><td>Style: <select class="lyrics_style" id="style_'+index+'">'+style_options(style)+'</select></td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
       });
       html += '</table>';
       $('#list').html(html);
       $('.delete').on('click', delete_sub);
       $('.lyrics_text').on('click', edit_lyric);
+      $('.lyrics_style').on('change', change_lyric_style);
       $('.time').on('click', function(evt){
         if(evt.shiftKey){
           set_time($(this).attr('id'))
@@ -722,25 +831,42 @@
       check_text_width();
     }
 
+    function opt(line, opt){
+      //console.log(line.style, window.opts[line.style]);
+      if(line.style) return window.opts[line.style][opt];
+      return window.opts.default[opt];
+    }
+
     function edit_lyric(){
       //console.log($(this));
       //$(this).off('click'); // To stop it refiring when you do stuff with the edit box
       if($(this).html().match(/<textarea /)) return; // Don't bother if you've already got a textbox editing here
       var id = $(this).attr('id').substring(5);
-      $(this).html('<textarea style="white-space: prewrap; width: 100%;" rows="'+window.opts.subtitle_lines+'" id="edit_'+id+'">'+window.timecodes[id].text+'</textarea>');
+      $(this).html('<textarea style="white-space: prewrap; width: 100%;" rows="'+window.opts._global.subtitle_lines+'" id="edit_'+id+'">'+window.timecodes[id].text+'</textarea>');
       $('#edit_'+id).on('change blur', function() {
           window.timecodes[id].text = $(this).val();
           $(this).parent().text(window.timecodes[id].text);
           update_list();
       });
       $('#edit_'+id).keydown(function(e){
-        if(e.which === 13 && count_occ($(this).val(), '\n') >= window.opts.subtitle_lines - 1){
+        if(e.which === 13 && count_occ($(this).val(), '\n') >= window.opts._global.subtitle_lines - 1){
           window.timecodes[id].text = $(this).val();
           update_list();
         }
       });
 
       $('#edit_'+id).focus().val($('#edit_'+id).val());
+    }
+
+    function change_lyric_style(){
+      var id = $(this).attr('id').substring(6);
+      if(window.selected_line != -1 && current_lyric() == id){
+        window.timecodes[id].style = $(this).val();
+        set_style($(this).val()); // This is the current one
+      }else{
+        window.timecodes[id].style = $(this).val();
+        display_opts(); // In case of changing height
+      }
     }
 
     function click_line(){
@@ -787,14 +913,27 @@
 
   function load_subs(file){
     var f = JSON.parse(file);
-    //console.log(f);
+    //console.log(f.length);
     if(f.length > 0){
       // Backwards-compatibility: pure subtitles
       window.timecodes = f;
     }else{
       // Contains style information //
-      window.opts = f.opts; // TODO make this go through and import relevant styles, AND TODO check that they don't mind overwriting
-      window.opts.bg_visible = (window.opts.bg_visible == 'true');
+      if(f.opts._global){
+        // Up-to-date style info
+        window.opts = f.opts;
+        // TODO make this go through and import relevant styles, AND TODO check that they don't mind overwriting
+      }else{
+        // Need to convert
+        //console.log(window.opts);
+        Object.keys(window.opts._global).forEach(function(o){
+          if(f.opts[o]) window.opts._global[o] = f.opts[o];
+        });
+        Object.keys(window.opts.default).forEach(function(o){
+          if(f.opts[o]) window.opts.default[o] = f.opts[o];
+        });
+      }
+      window.opts._global.bg_visible = (window.opts._global.bg_visible == 'true'); // TODO keep on top of any others
       window.timecodes = f.timecodes;
       display_opts();
       set_opt_controls();
@@ -828,9 +967,7 @@
 }
 
     function save_opts(){
-      for(setting in window.opts){
-        localStorage.setItem('format_options_'+setting, window.opts[setting]);
-      }
+      localStorage.setItem('format_multi', JSON.stringify(window.opts));
       localStorage.setItem('format_saved', true);
     }
 
@@ -839,28 +976,43 @@
       localStorage.setItem('saved_rate', $('#rate').val());
     }
 
+    function load_codec(){
+      var codec = localStorage.getItem('saved_codec');
+      if(codec) $('#codec').val(codec);
+      var rate = localStorage.getItem('saved_rate');
+      if(rate) $('#rate').val(rate);
+    }
+
     function init_opts(){
       window.opts = {
-        text_colour: "#000000",
-        bg_colour: "#ffffff", // Alpha needed too
-        font_size: 5, // percent of screen height
-        font: 'sans-serif',
-        line_spacing: 1,
-        v_margin: 10,
-        v_offset: 0,
-        bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
-        bg_border: 0,
-        bg_opacity: 0.5,
-        bg_visible: false,
-        out_colour: "#000000",
-        out_size: 0,
-        shad_colour: "#000000",
-        shad_off: 0,
-        shad_op: 0.5,
-        shad_blur: 0,
-        text_align: 'center',
-        subtitle_lines: 1,
-        video_size: 50,
+        default: {
+          text_colour: "#000000",
+          bg_colour: "#ffffff", // Alpha needed too
+          font_size: 5, // percent of screen height
+          font: 'sans-serif',
+          line_spacing: 1,
+          v_margin: 10,
+          v_offset: 0,
+          bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
+          bg_border: 0,
+          bg_opacity: 0.5,
+          out_colour: "#000000",
+          out_size: 0,
+          shad_colour: "#000000",
+          shad_off: 0,
+          shad_op: 0.5,
+          shad_blur: 0,
+          text_align: 'center',
+          bold: false,
+          italic: false
+        },
+        _global: {
+          subtitle_lines: 1,
+          video_size: 50,
+          universal_overlay: true, // i.e. resize the overlay to the size of the tallest font
+          bg_visible: false,
+          min_height: true
+        }
       };
     }
 
@@ -871,24 +1023,32 @@
         set_opt_controls();
         return;
       }
-      for(setting in window.opts){
-        var temp = localStorage.getItem('format_options_'+setting);
-        if(temp) window.opts[setting] = temp; // For backwards compatibility (really I should have been using JSON, but hey...)
+      if(localStorage.getItem('format_multi')){
+        // New style formatting using JSON
+        var styles = JSON.parse(localStorage.getItem('format_multi'));
+        // Do it carefully so we don't lose any new things added
+        Object.keys(styles).forEach(function(s){
+          if(s in window.opts){
+            $.extend(true, window.opts[s], styles[s]);
+          }else{
+            window.opts[s] = $.extend(true, {}, window.opts.default, styles[s]);
+          }
+        })
+      }else{
+        // Old default formatting
+        for(setting in window.opts){
+          var temp = localStorage.getItem('format_options_'+setting);
+          if(temp) window.opts.default[setting] = temp; // For backwards compatibility (really I should have been using JSON, but hey...)
+        }
       }
       display_opts();
       set_opt_controls();
     }
 
-    function load_codec(){
-      var codec = localStorage.getItem('saved_codec');
-      if(codec) $('#codec').val(codec);
-      var rate = localStorage.getItem('saved_rate');
-      if(rate) $('#rate').val(rate);
-    }
-
     function wipe_opts(){
       if(!confirm('Are you sure you want to reset formatting?')) return;
-      localStorage.clear();
+      localStorage.removeItem('format_saved');
+      localStorage.removeItem('format_multi');
       load_opts();
       display_opts();
       set_opt_controls();
@@ -902,12 +1062,12 @@
       });
     }
 
-    function canvasTextHeight(font, size) {
+    function canvasTextHeight(style) {
 
       const canvas = document.createElement('CANVAS');
       const ctx = canvas.getContext('2d');
       const text = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      ctx.font = size+'px'+' '+font;
+      ctx.font = get_font(style);
       const textMetrics = ctx.measureText(text);
       //console.log(textMetrics);
 
@@ -924,21 +1084,64 @@
       return result;
     }
 
+    function list_styles(){
+      return Object.keys(window.opts).filter(function(s){
+        if(s[0] != '_') return true;
+        return false; // filter out globals
+      });
+    }
+
+    function style_options(style){
+      var html = '';
+      if(!style) style = 'default';
+      list_styles().forEach(function(s){
+        var selected = '';
+        if(s === style) selected = ' selected'
+        html += '<option value="'+s+'" '+selected+'>'+s+'</option>'; // TODO make sure style names on entry are escaped
+      })
+      return html;
+    }
+
+    function tallest_height(){
+      var tallest = 0;
+      //console.log(Object.keys(window.opts));
+      list_styles().forEach(function(s){
+        var height = canvasTextHeight(s).height  * window.opts[s].line_spacing * 1.2 * window.opts._global.subtitle_lines + window.opts[s].v_margin * 2;
+        if(height > tallest) tallest = height;
+      })
+
+      return tallest;
+    }
+
+    function all_fonts_same_size(){
+      var same = true;
+      list_styles().forEach(function(s){
+        if(Number.parseInt(window.opts[s].font_size) != Number.parseInt(window.opts.default.font_size)) same = false;
+      });
+      return same;
+    }
+
     function check_text_width(){
       const canvas = document.createElement('CANVAS');
       const ctx = canvas.getContext('2d');
       var biggest = 0;
+      var ratios = Object.fromEntries(list_styles().map(function(s){
+        return [s, 1];
+      }));
       window.timecodes.forEach(function(sub){
         sub.text.split(/[\n\r]/).forEach(function(line){
           const text = line;
           //console.log(text);
-          ctx.font = fs_in_px()+'px '+window.opts.font;
+          var style = sub.style || 'default';
+          ctx.font = get_font(sub.style);
           const textMetrics = ctx.measureText(text);
           var tw = Number.parseInt(textMetrics.width.toFixed(1));
+          console.log($('#vid')[0],$('#vid')[0].videoWidth)
           var vw = Number.parseInt($('#vid')[0].videoWidth.toFixed(1));
           if(tw > vw){
             var ratio = tw / vw;
             if(ratio > biggest) biggest = ratio;
+            if(ratio > ratios[style]) ratios[style] = ratio;
           }
         });
       });
@@ -949,119 +1152,129 @@
       }
       $('#size_warning').html('Warning: font too large, some subtitles won\'t fit on screen!<button id="fit_to_screen" class="w3-btn w3-blue" type="button">Fix this</button>');
       $('#fit_to_screen').on('click', function(){
-        window.opts.font_size = window.opts.font_size / biggest - 0.1;
-        window.opts.font_size = window.opts.font_size.toFixed(1);
+        // TODO make it handle different styles!!
+        Object.keys(ratios).forEach(function(s){
+          if(all_fonts_same_size()){
+            // Presume they want to preserve everything the same size;
+            window.opts[s].font_size = window.opts[s].font_size / biggest - 0.1;
+          }else{
+            if(ratios[s] > 1) window.opts[s].font_size = window.opts[s].font_size / ratios[s] - 0.1;
+          }
+          console.log(window.opts[s]);
+          window.opts[s].font_size = Number.parseFloat(window.opts[s].font_size.toFixed(1));
+        });
         $('#size_warning').html('');
         set_opt_controls();
         display_opts();
       });
-      return false;
+      return ratios;
     }
 
-    function getTextHeight(font, size) {
-      // Thanks to Daniel Earwicker https://stackoverflow.com/questions/1134586/how-can-you-find-the-height-of-text-on-an-html-canvas
-      //console.log('CTH:',canvasTextHeight(font,size))
-      var text = $('<span>abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789</span>').css({fontFamily: font, fontSize: size + 'px'});
-      var block = $('<div style="display: inline-block; width: 1px; height: 0px;"></div>');
-
-      var div = $('<div></div>');
-      div.append(text, block);
-
-      var body = $('body');
-      body.append(div);
-
-      try {
-
-        var result = {};
-
-        block.css({ verticalAlign: 'baseline' });
-        result.ascent = block.offset().top - text.offset().top;
-
-        block.css({ verticalAlign: 'bottom' });
-        result.height = block.offset().top - text.offset().top;
-
-        result.descent = result.height - result.ascent;
-
-      } finally {
-        div.remove();
-      }
-
-      //console.log(result);
-
-      return result;
-    };
-
-    function fs_in_px(){
+    function fs_in_px(style = window.current_style){
+      var font_size = window.opts[style].font_size;
+      //console.log(style);
       if($('#vid')[0].videoWidth){
-        return (window.opts.font_size / 100) * $('#vid')[0].videoWidth // / window.devicePixelRatio;
+        return (font_size / 100) * $('#vid')[0].videoWidth // / window.devicePixelRatio;
       }
       //console.log("no width");
-      return (window.opts.font_size / 100) * 1920 // / window.devicePixelRatio; // presume HD, optimistically
+      return (font_size / 100) * 1920 // / window.devicePixelRatio; // presume HD, optimistically
     }
 
     function isEven(n) {
         return n % 2 == 0;
     }
 
-    function overlay_height(){
-      var h = Math.round(canvasTextHeight(window.opts.font, fs_in_px()).height * window.opts.line_spacing * 1.2 * window.opts.subtitle_lines + (window.opts.v_margin * 2));
-      if(!isEven(h)){
-        return h+1;
+    function overlay_height(style = window.current_style){
+      // TODO oh man, this is gonna need to change based on the style... eeek!
+      var font_height = 0;
+      if(window.opts._global.universal_overlay){
+        font_height = tallest_height();
+      }else{
+        font_height = canvasTextHeight(style).height  * window.opts[style].line_spacing * 1.2 * window.opts._global.subtitle_lines + window.opts[style].v_margin * 2;
       }
-      return h;
+      if(!isEven(font_height)){
+        return font_height+1;
+      }
+      return font_height;
+    }
+
+    function get_font(s = 'default'){
+      var style = '';
+      var weight = '';
+      if(window.opts[s].italic) style = 'italic ';
+      if(window.opts[s].bold) weight = 'bold ';
+      return style+weight+fs_in_px(s)+'px '+window.opts[s].font;
+    }
+
+    function min_height(){
+      var def_height = overlay_height('default')+window.opts.default.v_offset;
+      list_styles().forEach(function(s){
+        var h = overlay_height(s)+window.opts[s].v_offset;
+        if(h > def_height) def_height = h;
+      })
+      return def_height;
+    }
+
+    function canvas_height(){
+      if(window.opts._global.min_height){
+        return min_height();
+      }else{
+        return $('#vid')[0].videoHeight;
+      }
     }
 
     function draw_subtitle(line, canvas){
-
+      // TODO make it always full height so that we can handle shifting offsets and heights and things across styles
+      // TODO handle differing margins so that things are centred
       //if(!line || !canvas) return; // why is this needed?
       var ctx = canvas.getContext('2d');
-      var oh = overlay_height();
+      var s = line.style;
+      if(!s) s = 'default';
+      var height = overlay_height(s) + opt(line, 'v_offset');
 
-      canvas.height = overlay_height() + window.opts.v_offset;
-      if(!isEven(canvas.height)){
+      canvas.height = canvas_height();
+      var y_orig = canvas.height - height;
+      if(window.opts._global.min_height && !isEven(canvas.height)){
         canvas.height++;
-        oh++; // so it pushes it down slightly
+        y_orig++; // so it pushes it down slightly
       }
+
       var txt = line.text.split(/[\r\n]/); // For multi-line text
-      var spare_lines = window.opts.subtitle_lines - txt.length;
-      var resultant_height = overlay_height() - (window.opts.v_margin * 2);
-      var unit = resultant_height / window.opts.subtitle_lines; //txt.length;
+      var spare_lines = window.opts._global.subtitle_lines - txt.length;
+      var resultant_height = overlay_height(s) - (opt(line,'v_margin') * 2);
+      var unit = resultant_height / window.opts._global.subtitle_lines; //txt.length;
       //resultant_height +=
       //console.log(spare_lines, txt);
       //console.log(window.opts.v_margin);
-      var translate = + window.opts.v_margin + spare_lines * unit / 2;
+      var translate = + opt(line, 'v_margin') + spare_lines * unit / 2;
       canvas.width = $('#vid')[0].videoWidth;
       //console.log(canvas.height);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if(line.text == '' && !window.opts.bg_visible){
-        //console.log('here!')
-        return; // No need to do any drawing
-      }
+      if(line.text == '' && !window.opts._global.bg_visible) return; // No need to do any drawing
       // Draw background
-      //console.log(line.text=='', window.opts.bg_visible);
 
-      ctx.globalAlpha = window.opts.bg_opacity;
-      ctx.fillStyle = window.opts.bg_colour;
-      ctx.fillRect(0, 0, canvas.width, oh);
+      ctx.globalAlpha = opt(line, 'bg_opacity');
+      ctx.fillStyle = opt(line, 'bg_colour');
+      ctx.fillRect(0, y_orig, canvas.width, overlay_height(s));
       ctx.globalAlpha = 1;
 
       //ctx.translate(0, translate);
 
       // Draw text
-      ctx.font = fs_in_px() + 'px ' + window.opts.font;
-      ctx.textAlign = window.opts.text_align;
+      ctx.font = get_font(s);
+      ctx.textAlign = opt(line, 'text_align');
       //ctx.fillStyle = window.opts.text_colour;
       //ctx.fillText("asdas",0,0);
       ctx.textBaseline = 'middle';
       ctx.save();
-      ctx.fillStyle = window.opts.text_colour;
-      if(window.opts.shad_off > 0 || window.opts.shad_blur > 0){
-        ctx.shadowOffsetX = window.opts.shad_off;
-        ctx.shadowOffsetY = window.opts.shad_off;
-        ctx.shadowColor = "rgba(" + window.opts.shad_colour.match(/[A-Za-z0-9]{2}/g).map(function(v) { return parseInt(v, 16) }).join(",") + ","+window.opts.shad_op+")";
+      ctx.fillStyle = opt(line, 'text_colour');
+      if(opt(line,'shad_off') > 0 || opt(line, 'shad_blur') > 0){
+        ctx.shadowOffsetX = opt(line, 'shad_off');
+        ctx.shadowOffsetY = opt(line, 'shad_off');
+        ctx.shadowColor = "rgba(" + opt(line, 'shad_colour').match(/[A-Za-z0-9]{2}/g).map(function(v) { return parseInt(v, 16) }).join(",") + ","+opt(line, 'shad_op')+")";
 
-        ctx.shadowBlur = window.opts.shad_blur;
+        ctx.shadowBlur = opt(line, 'shad_blur');
       }
 
       //console.log(canvas.height, window.opts.v_margin, resultant_height, spare_lines, unit, translate);
@@ -1071,19 +1284,19 @@
         //var y = canvas.height/(txt.length * 2) + i * (canvas.height / txt.length);
         var y = unit * i + unit / 2;
         //console.log(window.opts.v_margin, y);
-        ctx.fillText(t, canvas.width/2, y+translate); // Fix the x thing for different alignments
+        ctx.fillText(t, canvas.width/2, y_orig+y+translate); // Fix the x thing for different alignments
       });
 
       //ctx.fillText(line.text, canvas.width/2, canvas.height/2); // Fix height bit
-      if(window.opts.out_size > 0){
+      if(opt(line, 'out_size') > 0){
         ctx.restore();
-        ctx.strokeStyle = window.opts.out_colour;
-        ctx.lineWidth = window.opts.out_size;
+        ctx.strokeStyle = opt(line, 'out_colour');
+        ctx.lineWidth = opt(line, 'out_size');
         txt.forEach(function(t, i){
           //var y = canvas.height/(txt.length * 2) + i * (canvas.height / txt.length);
           var y = unit * i + unit / 2;
           //console.log(window.opts.v_margin, y);
-          ctx.strokeText(t, canvas.width/2, y+translate); // Fix the x thing for different alignments
+          ctx.strokeText(t, canvas.width/2, y_orig+y+translate); // Fix the x thing for different alignments
         });
       }
 
@@ -1108,20 +1321,21 @@
       var canvas = document.createElement('CANVAS');
       var ctx = canvas.getContext('2d');
       //console.log(h);
-      var oh = overlay_height();
-      canvas.height = overlay_height() + window.opts.v_offset;
-      if(!isEven(canvas.height)){
+      canvas.height = canvas_height();
+      var y_orig = canvas.height - height;
+      if(window.opts._global.min_height && !isEven(canvas.height)){
         canvas.height++;
-        oh++; // so it pushes it down slightly
+        y_orig++; // so it pushes it down slightly
       }
 
       canvas.width = $('#vid')[0].videoWidth;
       //console.log(canvas.height);
-      if(window.opts.bg_visible){
+      if(window.opts._global.bg_visible){
+        var height = overlay_height() + window.opts.default.v_offset;
         // Draw overlay background on blank canvas
-        ctx.globalAlpha = window.opts.bg_opacity;
-        ctx.fillStyle = window.opts.bg_colour;
-        ctx.fillRect(0, 0, canvas.width, oh);
+        ctx.globalAlpha = window.opts.default.bg_opacity;
+        ctx.fillStyle = window.opts.default.bg_colour;
+        ctx.fillRect(0, y_orig, canvas.width, overlay_height());
         ctx.globalAlpha = 1;
       }
 
@@ -1329,7 +1543,7 @@
             //sources.push({num: i+1, start: blob.line.start, end: blob.line.end});
           });
 
-          if(window.opts.bg_visible && position < $('#vid')[0].duration){
+          if(window.opts._global.bg_visible && position < $('#vid')[0].duration){
             // Pad to end
             var gap = $('#vid')[0].duration - position;
             duration_list.push({file:'blank.png', dur:dur.toFixed(3)});
@@ -1350,7 +1564,7 @@
             var concat_args = '-f concat -i concat.txt';
             args.push(...concat_args.split(' '));
             if(!just_overlay){
-              var y_offset = $('#vid')[0].videoHeight - overlay_height() - window.opts.v_offset; // TODO make formatting option
+              var y_offset = $('#vid')[0].videoHeight - overlay_height() - window.opts.default.v_offset; // TODO make formatting option
               args.push('-filter_complex','[0][1] overlay=0:'+y_offset+'');
             }
           }else if(method == 'overlay'){
@@ -1408,7 +1622,6 @@
 
           //console.log(data);
           //var avi_args =  '-nostdin -loop 1 -i img.png -c:v huffyuv -t 15 out.avi';
-
           var rate_settings = {
             rate: '-r '+fps+' ',
             cfr: '-r '+fps+' -vsync cfr ',
@@ -1416,10 +1629,8 @@
             drop: '-r '+fps+' -vsync drop ',
             none: ' '
           }
-
           var rate = '';
           if(method == 'concat'){
-            //console.log($('#rate').val());
             rate = rate_settings[$('#rate').val()];
           }
 
@@ -1511,7 +1722,7 @@
       if(res && res.length > 0){
         var so_far = res[1];
         var final_duration = window.timecodes[window.timecodes.length - 1].end;
-        if(window.opts.bg_visible) final_duration = $('#vid')[0].duration;
+        if(window.opts._global.bg_visible) final_duration = $('#vid')[0].duration;
         //console.log(so_far, final_duration, so_far / final_duration);
         var progress = Math.round(so_far / final_duration * 100).toString()+'%'; // Judge by length of overlay not video
         var current_text = $('#ffmpeg_bar').text();
@@ -1556,16 +1767,16 @@
       var filtergraph = '';
       close_all_lines();
       window.timecodes.forEach(function(line){
-        var bgcol = window.opts.bg_colour+'@'+window.opts.bg_opacity;
-        var col = window.opts.text_colour;
+        var bgcol = opt(line, 'bg_colour')+'@'+opt(line, 'bg_opacity');
+        var col = opt(line, 'text_colour');
         var size = fs_in_px(); //* window.devicePixelRatio; // pixels, I think
         var x_offset = "w / 2 - tw / 2";
         var y_offset = "h - "+size+" * 1.5";  //(max_glyph_h / 2)" //  + ascent";
         var box_edge = '20'; //$('#vid')[0].videoWidth / 2;
-        var font = window.opts.font;
+        var font = opt(line, 'font');
         //console.log('font color='+col);
         var db = 'drawbox="y=ih-'+size*2+':h='+size*2+':t=fill:color='+bgcol+':enable=\'between(t,'+line.start+','+line.end+')\'"';
-        var dt = 'drawtext="text='+escape_filter_option(line.text)+':font='+font+':x='+x_offset+':y='+y_offset+':fontcolor='+col+':fontsize='+size+':borderw='+window.opts.out_size+':bordercolor='+window.opts.out_colour+':shadowcolor='+window.opts.shad_colour+':shadowx='+window.opts.shad_off+':shadowy='+window.opts.shad_off+':enable=\'between(t,'+line.start+','+line.end+')\'"';
+        var dt = 'drawtext="text='+escape_filter_option(line.text)+':font='+font+':x='+x_offset+':y='+y_offset+':fontcolor='+col+':fontsize='+size+':borderw='+opt(line,'out_size')+':bordercolor='+opt(line,'out_colour')+':shadowcolor='+opt(line,'shad_colour')+':shadowx='+opt(line, 'shad_off')+':shadowy='+opt(line, 'shad_off')+':enable=\'between(t,'+line.start+','+line.end+')\'"';
         //var dt = 'drawtext="text='+escape_filter_option(line.text)+':x='+x_offset+':y='+y_offset+':box=1:boxcolor='+bgcol+':boxborderw='+box_edge+':fontcolor='+col+':fontsize='+size+':enable=\'between(t,'+line.start+','+line.end+')\'"';
 
         if(filtergraph !== '') filtergraph += ',';
@@ -1596,11 +1807,16 @@
   <div id="header" class="w3-container w3-blue">
     <h1>Make your own lyrics video!</h1>
   </div>
-  <p>Choose a video file to work with: <input type="file" id="vid_file"/></p>
+  <p>Choose a video or audio file to work with: <input type="file" id="vid_file" accept="video/*,audio/*"/></p>
   <button class="w3-btn w3-blue" id="save_subs">Save work in progress </button> Or load from a previous save: <input type="file" id="sub_file" accept=".json"/>
-  <p>Show video at <input type='range' min='1' max='100' value='50' class='slider' id='video_size_range'/>
-  <input id="video_size" class="opt_control" type="number" min="1" max="100" value="50" size="3"/> % of original size
+  <div id="video_proportions">
+    <p>Show video at <input type='range' min='1' max='100' value='50' class='slider' id='video_size_range'/>
+  <input id="video_size" class="opt_control global" type="number" min="1" max="100" value="50" size="3"/> % of original size
   <button id="float" class="w3-btn w3-blue">Float video to right</button>
+</div>
+<div id="audio_settings">
+  Size of video: <input id="vid_x" class="resize_vid" type="number" value="1024" /> x <input id="vid_y" class="resize_vid" type="number" value="768" />
+</div>
   </p>
   <div id="vc_container">
   <div id="video_container"><video id="vid" controls="true">
@@ -1620,7 +1836,7 @@
   <h2>Import lyrics</h2>
   <p>Copy your lyrics here, then press 'Process lyrics!' (or hit ctrl-return) to split into subtitles:</p>
   <p><span>Default lines per subtitle (empty lines will still split subtitles): <input id="subtitle_lines_range" type='range' min='1' max='5' value='1' class= 'slider'/>
-  <input id="subtitle_lines" type="number" class="opt_control" value="1" size="1"/></span></p>
+  <input id="subtitle_lines" type="number" class="opt_control global" value="1" size="1"/></span></p>
   <p><textarea id="lyrics" class="w3-input w3-border" rows=10></textarea></p>
   <button class="w3-btn w3-black" type="button" id="clear">Clear</button>
   <button class="w3-btn w3-blue" type="button" id="process">Process lyrics!</button>
@@ -1632,8 +1848,7 @@
   <p>Click on a lyric to make it appear at this moment. Click again to make it disappear (or click the next lyric). You can also press up or down. Press space to start/pause the video.</p>
   <button class="w3-btn w3-black" type="button" id="clear_board">Clear lyrics board</button>
   <div id="lyrics_array" class="lyrics_array"></div>
-
-</div>
+  </div>
 <div id="edit_lyrics" class="tab_option" style="display: none;">
 <h2>Edit subtitles</h2>
 <p>Click on times to jump to them in the video. Shift-click to set to current time. Click on subtitle text to edit it.
@@ -1641,14 +1856,12 @@
 </div>
 <div id="options" class="tab_option" style="display: none;">
 <h2>Format subtitles</h2>
-<div class="w3-panel" id="named_styles" style="display: none;">
-</p><p>Current style: <select id="styles_list"></select><button class="w3-button w3-red">Delete style</button>
-</p><p>
-Make new style with name: <input type="text" id="new_style_name"/><button class="w3-button w3-blue">Make style</button>
-</p>
+<div class="w3-panel" id="named_styles">
+Current style: <select id="styles_list"></select> <button class="w3-button w3-red" id="delete_style">Delete style</button>
+Make new style with name: <input type="text" id="new_style_name"/> <button class="w3-button w3-blue" id="make_style">Make style</button>
 </div>
 <div class="w3-panel w3-cell">
-  <div class="w3-container w3-blue "><h3>Text</h3></div>
+  <div class="w3-container w3-blue"><h3>Text</h3></div>
 <div id="text_opts">
 <label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
 <label>Text size:</label><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
@@ -1656,6 +1869,10 @@ Make new style with name: <input type="text" id="new_style_name"/><button class=
 <div id="size_warning"></div>
 </p><p>
 Font: <input id="font" class="opt_control" type="text" value='sans-serif' size="20"/> (You can type any on your system)
+</p>
+<p>
+Style options: <input id="bold" class="w3-check opt_control" type="checkbox" value="false"/><label>Bold</label>
+<input id="italic" class="w3-check opt_control" type="checkbox" value="false"/><label>Italic</label>
 </p>
 <p>
 Outline colour: <input class="opt_control" type='color' id='out_colour' value='#000000'/>
@@ -1687,14 +1904,20 @@ Shadow blur: <input type='range' min='0' max='50' value='0' class='slider' id='s
 Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
 Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' />
 <input id="bg_opacity" class="opt_control" type="number" value="0.5" size="3"/>
+</div>
+</div>
 </p>
-<p>
-<input id="bg_visible" class="w3-check opt_control" type="checkbox" value="false"/><label>Keep background visible even where there is no lyric text?</label>
-</div>
-</div>
+<h3>Global options</h3>
+<p><div>
+<input id="bg_visible" class="w3-check opt_control global" type="checkbox"/><label>Keep background visible even where there is no lyric text?</label>
+</div><div>
+<input id="universal_overlay" class="w3-check opt_control global" type="checkbox" checked/><label>Make background consistent height across all styles? (Useful if font sizes change between styles)</label>
+</div><div>
+<input id="min_height" class="w3-check opt_control global" type="checkbox" checked/><label>Make overlay minimum possible height? (If you untick this, the overlay will be the same height as the base video)</label>
+</div></p>
 <div id="saving">
-<button class="w3-btn w3-black" id="reset_opts" type="button">Reset to default style</button>
-<button class="w3-btn w3-blue" id="save_opts" type="button">Save as new default style</button>
+<button class="w3-btn w3-black" id="reset_opts" type="button">Reset to default styleset</button>
+<button class="w3-btn w3-blue" id="save_opts" type="button">Save as new default styleset</button>
 <p>
 <button class="w3-btn w3-red" id="wipe_opts" type="button">Factory reset (wipe all saved styles)</button>
 </div>
@@ -1733,7 +1956,7 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
 </p><p><button class="w3-btn w3-blue" id="browser_overlay" type="button">Export video overlay from browser</button><div id="ffmpeg_loading" style="color: red;">Recommended: export as video overlay (still loading, please be patient...)</div></p>
   <div id="ffmpeg_info">
     Progress of export: <div class="w3-border"><div id="ffmpeg_bar" class="w3-blue" style="height: 24px; width: 0%"></div></div>
-    <input id="show_log" class="w3-check opt_control" type="checkbox" />Show export log: <div id="ffmpeg_log" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
+    <input id="show_log" class="w3-check opt_control" type="checkbox" />Show export log: <div id="ffmpeg_log" class="lyrics_array" style="font-family: monospace; white-space:pre; overflow: scroll;"></div>
   </div>
   <p>This will use your browser to create an overlay of the lyrics. All formatting should be perfectly preserved (let me know if it isn't, and I'll try to fix it). You can then add this to the original video in your editor. It is exported in a format that supports transparency; this might not be viewable in your usual video player (it won't open in Apple QuickTime, for example), but the editor should be able to open it.</p>
   <p>The fact that this is possible is thanks to the amazing efforts of <a href="https://bgrins.github.io/videoconverter.js/">Brian Grinstead</a>, who somehow (a number of years ago) managed to compile FFMPEG (a desktop video processor) to run on your browser using Javascript. What a guy.</p>
