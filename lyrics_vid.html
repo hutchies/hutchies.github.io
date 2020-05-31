@@ -1647,7 +1647,7 @@
     var canvas = document.createElement('CANVAS');
     var ctx = canvas.getContext('2d');
 
-    draw_subtitle('', canvas, true); // To avoid duplication!
+    draw_subtitle({style: 'default', text: ''}, canvas, true); // To avoid duplication!
     /*
     canvas.height = canvas_height();
     var y_orig = canvas.height - height;
@@ -1745,6 +1745,9 @@ function close_all_lines(){
 function browser_video(just_overlay, zip = false){
   var method = 'concat'; // Could also be overlay?
   var fn = '';
+
+  // TODO remove!
+  //if(zip) method = 'overlay';
 
   if(window.timecodes.length < 1){
     alert('Nothing to export yet – add some subtitles!');
@@ -1896,54 +1899,68 @@ function browser_video(just_overlay, zip = false){
           args.push('-filter_complex','[0][1]overlay=x=0:y=0:repeatlast=0');
         }
       }else if(method == 'overlay'){
-
-        var current = 1;
-        if(!just_overlay) current = 2;
+        var current = 0;
+        if(!just_overlay) current = 1;
         var overlay_args = '';
         var filter_args = '';
         var join_args = '';
-        var last_dur = parseFloat(duration_list[0].dur);
+        var last_dur = 0;
+        var fade = true;
+        var fade_type = 'fade';
+        var fade_dur = 1;
+        if(!fade){
+          join_args = 'concat=n='+duration_list.length+' [v]'
+        }
+        // TODO make them handle small (below 3) lists well. Or at all.
+        console.log(duration_list); // TODO seems one item too big!!
         duration_list.forEach(function(e, i){
+          e.dur = parseFloat(e.dur);
+          if(fade) e.dur += fade_dur * 2;
           overlay_args += '-loop 1 -t '+e.dur+' -i '+e.file+' ';
           if(i == 0) return; // Don't alter timestamp/fade of first one
-          var fade = true;
-          if(fade){
-            // TODO change timings
-            var fadetime = 1;
-            if(last_dur < fadetime) fadetime = last_dur;
-            //took out format=yuva444p, to see
-            var adjusted_time = last_dur - fadetime;
-            filter_args += '['+current+']fade=d='+fadetime+':t=in:alpha=1,setpts=PTS-STARTPTS+'+adjusted_time.toFixed(3)+'/TB[f'+current+'];';
-          }else{
-            filter_args += '['+current+']setpts=PTS-STARTPTS+'+last_dur.toFixed(3)+'/TB[f'+current+'];';
-          }
-          if(i < duration_list.length - 1){
-            var join = current - 1;
-            join = 'bg'+join;
-            if(i == 1){
-              join = '0';
+          if(!fade){
+            filter_args += '['+current+']';
+          }else if(current > 0){ // No fade for first one
+            var prev = current - 1;
+            if(prev != 0) prev = 'f'+prev; // So they'll stack after the first
+            var offset = last_dur + e.dur - (fade_dur / 2);
+            //console.log(offset,last_dur,e.dur,fade_dur);
+            var temp_dur = fade_dur;
+            if((fade_dur / 2) > e.dur){
+              offset = last_dur; // Don't overlap
+              temp_dur = e.dur * 2; // Don't overlap
             }
-            join_args += '['+join+'][f'+current+']overlay[bg'+current+'];';
-          }else{
-            // Last one, so make format appropriate too
-            if(!just_overlay){
-              var f = current - 1;
-              '[0][bg'+f+']overlay[v]';
-            }else{
-              var f = current-1;
-              join_args += '[bg'+f+'][f'+current+']overlay[v]'; //yuv420p? / argb
+            var out = '[f'+current+'];';
+            if(current >= duration_list.length - 1){
+              // last one
+              out = '[v]';
             }
+            offset = offset.toFixed(3);
+            temp_dur = temp_dur.toFixed(3);
+            var out_start = e.dur - fade.dur;
+            filter_args += '['+current+']fade=t=in:d='+fade_dur+':alpha=1,fade=t=out:st='+out_start+':d='+fade_dur+':alpha=1'+out;
+            // TODO still need overlay....
           }
 
           current++;
           last_dur += parseFloat(e.dur);
+
         });
 
+        var out_stream = '[v]';
+
+        if(!just_overlay){
+          join_args += ';[0][v]overlay[out]';
+          out_stream = '[out]';
+        }else{
+          join_args = join_args.trim(); // To take off final semicolon
+        }
+
         // Now assemble
-        filter_args += join_args
+        filter_args += join_args;
         args.push(...overlay_args.trim().split(' '));
         args.push('-filter_complex', filter_args);
-        args.push('-map','[v]');
+        args.push('-map',out_stream);
 
       }
       //return;
@@ -2071,7 +2088,7 @@ function adjust_range(){
   <div id="header" class="w3-container w3-blue">
     <h1>Make your own lyrics video!</h1>
   </div>
-  <p>Choose a video or audio file to work with: <input type="file" id="vid_file" accept="video/*,audio/*"/></p>
+  <p>Choose a video or audio file to work with: <input type="file" id="vid_file" accept="video/*,audio/*,.mov,.m4v,.mkv,.avi,.mp4,.wav,.aiff,.mp3"/></p>
   <button class="w3-btn w3-blue" id="save_subs">Save work in progress </button> Or load from a previous save: <input type="file" id="sub_file" accept=".json"/>
   <div id="video_proportions">
     <p>Show video at <input type='range' min='1' max='100' value='50' class='slider' id='video_size_range'/>
