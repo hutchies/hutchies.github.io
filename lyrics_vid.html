@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
   <style>
-  
+
   .line_text {
     display: inline-block;
     cursor: pointer;
@@ -614,6 +614,7 @@
   }
 
   function vid_ready(){
+    set_opt_controls(); // In case any depend on video info
     display_opts(); // Update for font size
   }
 
@@ -669,11 +670,27 @@
       }
     }else if(opt == 'text_align'){
       if(value == 'center'){
-        $('#horiz_off').hide();
+        var limit = Math.round($('#vid')[0].videoWidth / 2);
+        $('#h_offset_range').prop('min', 0 - limit);
+        $('#h_offset_range').prop('max', +limit);
+        $('#horiz_dir').text('centre');
+        var changed = false;
+        if(window.opts[window.current_style].h_offset > limit){
+          window.opts[window.current_style].h_offset = limit;
+          changed = true;
+        }else if(window.opts[window.current_style].h_offset < -limit){
+          window.opts[window.current_style].h_offset = -limit;
+          changed = true;
+        }
+        if(changed) set_opt_controls(); // Redo to ensure everything is drawn right in this edge case
       }else{
-        $('#horiz_off').show();
         $('#h_offset_range').prop('max', $('#vid')[0].videoWidth);
+        $('#h_offset_range').prop('min', 0); // I'm going to presume you wouldn't want text offscreen (sue me)
         $('#horiz_dir').text($('#text_align').val());
+        if(window.opts[window.current_style].h_offset < 0){
+          window.opts[window.current_style].h_offset = 0;
+          set_opt_controls(); // To redraw
+        }
       }
     }
   }
@@ -1561,7 +1578,7 @@
     if(opt(line,'bg_type') != 'none'){
       if(opt(line, 'bg_type') == 'tight'){
         bg_width = opt(line, 'h_margin') * 2 + get_max_width(line);
-        var bg_margin = (canvas.width - bg_width) / 2;
+        var bg_margin = (canvas.width - bg_width) / 2 + opt(line, 'h_offset');
         bg_start = bg_margin;
         if(opt(line, 'text_align') == 'left') bg_start = opt(line, 'h_offset');
         if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - opt(line, 'h_offset');
@@ -1577,7 +1594,7 @@
     // Draw text
     ctx.font = get_font(s);
     ctx.textAlign = opt(line, 'text_align');
-    var text_x = canvas.width/2;
+    var text_x = canvas.width/2 + opt(line, 'h_offset');
     if(ctx.textAlign == 'left') text_x = opt(line, 'h_margin') + opt(line, 'h_offset');
     if(ctx.textAlign == 'right') text_x = canvas.width - opt(line, 'h_margin') - opt(line, 'h_offset');
     //ctx.fillStyle = window.opts.text_colour;
