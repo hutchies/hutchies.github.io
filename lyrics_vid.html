@@ -19,6 +19,11 @@
   .selected {
     background-color: pink;
   }
+
+  #confirmation {
+    color: green;
+  }
+
   .lyrics_array {
     min-height:200px;
     border:1px solid #ccc;
@@ -110,6 +115,7 @@
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
   <script src="mousetrap.min.js"></script>
+  <script src="jszip.min.js"></script>
   <script>
     $(document).ready(function() {
       window.selected_line = -1;
@@ -118,7 +124,7 @@
       window.undo_buffer = [];
       window.redo_buffer = [];
       //window.running_locally = false;
-      window.vid_name = '';
+      window.vid_name = '[novideo]';
       window.is_audio = false;
       window.isWorkerLoaded = false;
       window.worker = null;
@@ -178,6 +184,7 @@
       $('#vid').on('canplay', vid_ready);
       $('#vid').on('timeupdate', sync_lyrics);
       $('#make_video').on('click', process_video);
+      $('#home_ffmpeg').on('click', home_ffmpeg);
       $('#export_srt').on('click', export_srt);
       $('#export_ass').on('click', export_ass);
       $('.instructions').hide();
@@ -1654,6 +1661,10 @@
       browser_video(false);
     }
 
+    function home_ffmpeg(){
+      browser_video(true, true);
+    }
+
     function round_to_frame(d, fps){
       d = d * fps;
       d = Math.round(d);
@@ -1676,7 +1687,7 @@
       update_list();
     }
 
-    function browser_video(just_overlay){
+    function browser_video(just_overlay, zip = false){
       var method = 'concat'; // Could also be overlay?
 
       if(window.timecodes.length < 1){
@@ -1698,7 +1709,6 @@
       // Don't do the whole encode
       blank_canvas_promise().then(function(blank){
         var png_promises = [];
-        var main_name = '';
         var fps = 25;
         var single_frame = (1/fps);
         close_all_lines();
@@ -1706,18 +1716,16 @@
           png_promises.push(canvas_to_ab_promise(line));
           //console.log('added '+line.text);
         });
-        if(!just_overlay){
+        if(!just_overlay || zip){
           if(!window.vid_name){
             alert('No video loaded to overlay yet!');
             return;
           }
-          var fn = window.vid_name.match(/\.(.+)$/);
-          if(!fn){
+          if(!window.vid_name.match(/\.(.+)$/)){
             alert("Video has no extension: ffmpeg cannot process it!");
             return;
           }
-          main_name = 'main.'+fn[1];
-          png_promises.push(fetch($('#video_here')[0].src).then(function(r){
+          if(!zip) png_promises.push(fetch($('#video_here')[0].src).then(function(r){ // Only do this if you really need to
              return r.blob().then(function(b){
               return b.arrayBuffer().then((ab) => {
                 return {
@@ -1755,8 +1763,8 @@
 
           var position = 0;
 
-          if(!just_overlay){
-            args.push('-i',main_name); // First one
+          if(!just_overlay || zip){
+            args.push('-i',window.vid_name); // First one
             output_type = 'h264';
           }else{
             output_type = $('#codec').val();
@@ -1770,7 +1778,7 @@
             //download(data, 'img'+i+'.png', 'image/png');
             if(blob.main_vid){
               files.push({
-                name: main_name,
+                name: window.vid_name,
                 data: data
               });
               return;
@@ -1830,14 +1838,14 @@
             files.push({name: 'concat.txt', data: concat_file});
             var concat_args = '-f concat -i concat.txt';
             args.push(...concat_args.split(' '));
-            if(!just_overlay){
+            if(!just_overlay || zip){
               var y_offset = $('#vid')[0].videoHeight - overlay_height() - window.opts.default.v_offset; // TODO make formatting option
-              args.push('-filter_complex','[0][1] overlay=0:'+y_offset+'');
+              args.push('-filter_complex','[0][1]overlay=0:'+y_offset+'');
             }
           }else if(method == 'overlay'){
 
             var current = 1;
-            if(!just_overlay) current = 2;
+            if(!just_overlay || zip) current = 2;
             var overlay_args = '';
             var filter_args = '';
             var join_args = '';
@@ -1865,7 +1873,7 @@
                 join_args += '['+join+'][f'+current+']overlay[bg'+current+'];';
               }else{
                 // Last one, so make format appropriate too
-                if(!just_overlay){
+                if(!just_overlay || zip){
                   var f = current - 1;
                   '[0][bg'+f+']overlay[v]';
                 }else{
@@ -1935,6 +1943,34 @@
     download(file.data, file.name, "video/quicktime");
   });*/
   /*if(!running_locally){*/
+  if(zip){
+    // Don't actually run FFMPEG in browser, instead export the files to do at home
+    var command = 'ffmpeg';
+    args.forEach(function(a, i){
+      if(/\s/g.test(a)) a = '"' + a + '"'; // To escape filter command or anything else
+      if(a == 'ultrafast') a = 'veryfast';
+      if(a == '-debug_ts') return; // Skip debug info
+      command += ' ';
+      command += a;
+    });
+    var export_zip = new JSZip();
+    files.forEach(function(f){
+      export_zip.file(f.name, f.data);
+    });
+    export_zip.generateAsync({type: "uint8array"}).then(function(f){
+      download(f, 'diy_overlay.zip', 'application/zip');
+      $('#ffmpeg_command').val(command);
+      $('#ffmpeg_command')[0].select();
+      $('#ffmpeg_command')[0].setSelectionRange(0,99999);
+      if(document.execCommand("copy")){
+        alert()
+        $('#confirmation').text('Command has been copied to clipboard (and is in textbox below)');
+      }else{
+        $('#confirmation').text('');
+      }
+
+    });
+  }else{
     if(ffmpeg_ready()){
       ffmpeg_start();
       // TODO check whether memory amounts below are needed!
@@ -1945,7 +1981,10 @@
         TOTAL_MEMORY: 1073741824, // TODO check if needed with vbr, was 268435456
         files: files
       });
+    }else{
+      alert('FFMPEG is not loaded yet! Please wait and try again once it has loaded.');
     }
+  }
 });
 
 });
@@ -2244,15 +2283,27 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
   </div>
   <p>This will use your browser to create an overlay of the lyrics. All formatting should be perfectly preserved (let me know if it isn't, and I'll try to fix it). You can then add this to the original video in your editor. It is exported in a format that supports transparency; this might not be viewable in your usual video player (it won't open in Apple QuickTime, for example), but the editor should be able to open it.</p>
   <p>The fact that this is possible is thanks to the amazing efforts of <a href="https://bgrins.github.io/videoconverter.js/">Brian Grinstead</a>, who somehow (a number of years ago) managed to compile FFMPEG (a desktop video processor) to run on your browser using Javascript. What a guy.</p>
-  <h3>Subtitle file export options</h3>
+  <h3>Quick: Subtitle file export options</h3>
   <p>This is very quick, but will require you to assemble the result yourself using an editor or processor that supports subtitle files (most do, to varying extents). Some formatting information may be lost.</p>
     <button class="w3-btn w3-blue" type=button id="export_srt">Export lyrics as SRT file</button> (SRT files are widely accepted, but don't contain any formatting information.)
     <p />
     <button class="w3-btn w3-blue" type=button id="export_ass">Export lyrics as ASS file</button> (ASS files contain most formatting information, but not all readers can use this information – FFMPEG can though, mostly. Note that at present only the default style is exported.)
     <p />
+  <h3>Failsafe: download materials to use FFMPEG on your system</h3>
+  <p>
+  If the browser overlay export doesn't work (eg. it runs out of memory), or you don't have an easy way to merge the overlay with the video on your own computer, you can download everything you need to process the video on your own computer, as a Zip file. The command you need will be copied into a text-box below.
+</p><ul><li>First you need to <a href="https://ffmpeg.org">install ffmpeg</a> on your own computer (<a href="http://blog.gregzaal.com/how-to-install-ffmpeg-on-windows/">here is a guide to installing on Windows</a>, and <a href="https://github.com/fluent-ffmpeg/node-fluent-ffmpeg/wiki/Installing-ffmpeg-on-Mac-OS-X">here is a guide for Macs</a>).
+</li><li>Then decompress the downloaded 'diy_overlay.zip' file and add your source video file to the resulting folder.</li>
+<li>Open a command window inside that folder (using a <a href="https://www.thewindowsclub.com/how-to-open-command-prompt-from-right-click-menu/">command or PowerShell window on Windows</a> or <a href="https://www.howtogeek.com/210147/how-to-open-terminal-in-the-current-os-x-finder-location/">the terminal on Mac</a>).</li>
+<li>Finally, copy and paste the command from the text-box below into the command window, and press return.</li>
+<li>The processed video will appear in the folder as 'overlay.mp4'.</li></ul>
+<p>
+    <button class="w3-btn w3-blue" type=button id="home_ffmpeg">Download DIY materials for FFMPEG</button>
+    <div id="command"><div id="confirmation"></div>FFMPEG command: <input id="ffmpeg_command" size="100" value="The command will be generated when you press the button above."/></div>
+</p>
   <h3>Experimental: Export full video from browser</h3>
-  <p>If you're very patient and have a fast computer (and lots of memory), you can try to process the whole video using your browser. I don't recommend this unless you don't have any other way of putting the video together.</p>
-  <button class="w3-btn w3-red" id="browser_full" type="button">Experimental in-browser FFMPEG: export full video</button>
+  <p>If you're very patient and have a fast computer (and lots of memory), you can try to process the whole video using your browser. I don't recommend this unless you don't have any other way of putting the video together. It is <b>very</b> likely to run out of memory and give up, or at the very least to take an extremely long time. You have been warned!</p>
+  <button class="w3-btn w3-red" id="browser_full" type="button">Experimental: export full video in browser</button>
 </div>
  </body>
 </html>
