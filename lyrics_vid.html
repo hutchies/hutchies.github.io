@@ -1466,7 +1466,7 @@
       list_styles().forEach(function(s){
         var h = overlay_height(s)+window.opts[s].v_offset;
         if(h > def_height) def_height = h;
-      })
+      });
       return def_height;
     }
 
@@ -1662,7 +1662,8 @@
     }
 
     function home_ffmpeg(){
-      browser_video(true, true);
+      var just_overlay = $('#just_overlay').is(':checked');
+      browser_video(just_overlay, true);
     }
 
     function round_to_frame(d, fps){
@@ -1706,6 +1707,9 @@
         };
       }
 
+      var save_setting = window.opts._global.min_height;
+      if(!just_overlay) window.opts._global.min_height = false;
+
       // Don't do the whole encode
       blank_canvas_promise().then(function(blank){
         var png_promises = [];
@@ -1716,7 +1720,7 @@
           png_promises.push(canvas_to_ab_promise(line));
           //console.log('added '+line.text);
         });
-        if(!just_overlay || zip){
+        if(!just_overlay){
           if(!window.vid_name){
             alert('No video loaded to overlay yet!');
             return;
@@ -1741,8 +1745,10 @@
           }));
         }
 
+        window.opts._global.min_height = save_setting;
+
         Promise.all(png_promises).then(function(blobs) {
-          //console.log('Blobbed');
+        //console.log('Blobbed');
           //console.log('Promise resolved');
           //var args = '-formats';
           var blank_data = new Uint8Array(blank);
@@ -1763,7 +1769,7 @@
 
           var position = 0;
 
-          if(!just_overlay || zip){
+          if(!just_overlay){
             args.push('-i',window.vid_name); // First one
             output_type = 'h264';
           }else{
@@ -1838,14 +1844,15 @@
             files.push({name: 'concat.txt', data: concat_file});
             var concat_args = '-f concat -i concat.txt';
             args.push(...concat_args.split(' '));
-            if(!just_overlay || zip){
-              var y_offset = $('#vid')[0].videoHeight - overlay_height() - window.opts.default.v_offset; // TODO make formatting option
-              args.push('-filter_complex','[0][1]overlay=0:'+y_offset+'');
+            if(!just_overlay){
+              // offset should be dealt with by suspending min-height
+              //var y_offset = $('#vid')[0].videoHeight - overlay_height() - window.opts.default.v_offset; // TODO make formatting option
+              args.push('-filter_complex','[0][1]overlay=0:0');
             }
           }else if(method == 'overlay'){
 
             var current = 1;
-            if(!just_overlay || zip) current = 2;
+            if(!just_overlay) current = 2;
             var overlay_args = '';
             var filter_args = '';
             var join_args = '';
@@ -1873,7 +1880,7 @@
                 join_args += '['+join+'][f'+current+']overlay[bg'+current+'];';
               }else{
                 // Last one, so make format appropriate too
-                if(!just_overlay || zip){
+                if(!just_overlay){
                   var f = current - 1;
                   '[0][bg'+f+']overlay[v]';
                 }else{
@@ -1911,7 +1918,7 @@
 
           var output_formats = {
             prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 11 -alpha_bits 8 '+rate+'out.mov',
-            h264: '-c:a copy -c:v libx264 -preset ultrafast -crf 1 -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
+            h264: '-c:a aac -c:v libx264 -preset ultrafast -crf 1 -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
             quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
             png: '-c:a copy -c:v png '+rate+'overlay.mov',
             vp8: '-c:a copy -c:v libvpx -pix_fmt yuva420p -crf 0 -metadata:s:v:0 alphamode="1" '+rate+'overlay.webm',
@@ -2298,6 +2305,9 @@ Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" c
 <li>Finally, copy and paste the command from the text-box below into the command window, and press return.</li>
 <li>The processed video will appear in the folder as 'overlay.mp4'.</li></ul>
 <p>
+
+<div><input id="just_overlay" class="w3-check" type="checkbox" /><label>Export just overlay? (If checked, the command will create an overlay using the codec and framerate settings above. If unchecked, the command will process the whole video as H.264.)</label>
+</div>
     <button class="w3-btn w3-blue" type=button id="home_ffmpeg">Download DIY materials for FFMPEG</button>
     <div id="command"><div id="confirmation"></div>FFMPEG command: <input id="ffmpeg_command" size="100" value="The command will be generated when you press the button above."/></div>
 </p>
