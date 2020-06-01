@@ -673,6 +673,8 @@
         var limit = Math.round($('#vid')[0].videoWidth / 2);
         $('#h_offset_range').prop('min', 0 - limit);
         $('#h_offset_range').prop('max', +limit);
+        $('#h_offset').prop('min', 0 - limit);
+        $('#h_offset').prop('max', +limit);
         $('#horiz_dir').text('centre');
         var changed = false;
         if(window.opts[window.current_style].h_offset > limit){
@@ -686,11 +688,23 @@
       }else{
         $('#h_offset_range').prop('max', $('#vid')[0].videoWidth);
         $('#h_offset_range').prop('min', 0); // I'm going to presume you wouldn't want text offscreen (sue me)
+        $('#h_offset').prop('max', $('#vid')[0].videoWidth);
+        $('#h_offset').prop('min', 0); // I'm going to presume you wouldn't want text offscreen (sue me)
         $('#horiz_dir').text($('#text_align').val());
         if(window.opts[window.current_style].h_offset < 0){
           window.opts[window.current_style].h_offset = 0;
           set_opt_controls(); // To redraw
         }
+      }
+    }else if(opt == 'fades'){
+      if(value == false){
+        $('#fade_dur').prop('disabled', true);
+        $('#fade_dur_range').prop('disabled', true);
+        $('#fade_div').addClass('impossible');
+      }else{
+        $('#fade_dur').prop('disabled', false);
+        $('#fade_dur_range').prop('disabled', false);
+        $('#fade_div').removeClass('impossible');
       }
     }
   }
@@ -901,6 +915,7 @@
       if(n > min) min = n;
     });
     $('#subtitle_lines_range').prop('min', min);
+    $('#subtitle_lines').prop('min', min);
     if(window.opts._global.subtitle_lines < min){
       window.opts._global.subtitle_lines = min;
       display_opts();
@@ -1306,7 +1321,8 @@
           video_size: 50,
           universal_overlay: false, // i.e. resize the overlay to the size of the tallest font
           bg_visible: false,
-          min_height: true
+          min_height: true,
+          fades: false
         }
       };
     }
@@ -1746,8 +1762,8 @@ function browser_video(just_overlay, zip = false){
   var method = 'concat'; // Could also be overlay?
   var fn = '';
 
-  // TODO remove!
-  //if(zip) method = 'blank_fade';
+  //if(zip)
+  if(window.opts._global.fades) method = 'blank_fade';
 
   if(window.timecodes.length < 1){
     alert('Nothing to export yet – add some subtitles!');
@@ -1905,35 +1921,41 @@ function browser_video(just_overlay, zip = false){
         var input_args = '';
         var overlay_args = '';
         var out_stream = '[v]'
-        var fade_dur = 1;
+        var fade_dur = window.opts._global.fade_dur;
+        var total_dur = 0;
         var input_aug = (just_overlay) ? 0 : 1;
 
         duration_list.forEach(function(e, i){
-          var overlay_num = i + input_aug;
+          var overlay_num = input_aug;
           var overlay_stream = '['+overlay_num+']';
           if(e.file == 'blank.png' && i < duration_list.length - 1 && duration_list[i+1].file != 'blank.png'){
             // Blank before non-blank
+            //console.log('blank before non-blank',i);
             var fade_amount = fade_dur;
             e.dur = parseFloat(e.dur);
             if(e.dur < fade_amount) fade_amount = e.dur;
             e.dur -= fade_amount;
             e.dur = e.dur.toFixed(3);
-          }else if(e.file == 'blank.png' && i > 0 && duration_list[i-1].file != 'blank.png'){
+          }if(e.file == 'blank.png' && i > 0 && duration_list[i-1].file != 'blank.png'){
             // Blank after non-blank
+            //console.log('blank after non-blank',i);
             var fade_amount = fade_dur;
             e.dur = parseFloat(e.dur);
             if(e.dur < fade_amount) fade_amount = e.dur;
             e.dur -= fade_amount;
             e.dur = e.dur.toFixed(3);
           }else if(e.file != 'blank.png'){
+            console.log('non-blank');
             if(i > 0 && duration_list[i-1].file == 'blank.png'){
               // Non-blank after blank
+              console.log('blank before');
               var fade_amount_1 = fade_dur;
-              if(parseFloat(duration_list[i-1].dur) < fade_amount) fade_amount = parseFloat(duration_list[i-1].dur);
+              if(parseFloat(duration_list[i-1].dur) < fade_amount_1) fade_amount_1 = parseFloat(duration_list[i-1].dur);
               if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
                 // Blank sandwich!
+                console.log('fade in and output',i);
                 var fade_amount_2 = fade_dur;
-                if(parseFloat(duration_list[i+1].dur) < fade_amount) fade_amount = parseFloat(duration_list[i+1].dur);
+                if(parseFloat(duration_list[i+1].dur) < fade_amount_2) fade_amount_2 = parseFloat(duration_list[i+1].dur);
                 e.dur = parseFloat(e.dur) + fade_amount_1 + fade_amount_2; // On each side!
                 var out_start = e.dur - fade_amount_2;
                 e.dur = e.dur.toFixed(3);
@@ -1941,8 +1963,23 @@ function browser_video(just_overlay, zip = false){
                 var new_overlay = '[f'+overlay_num+']';
                 filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1,fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
                 overlay_stream = new_overlay;
+              }else if(i == duration_list.length - 1 && total_dur + parseFloat(e.dur) < $('#vid')[0].duration){
+                // Blank sandwich with ending!
+                console.log('blank to end');
+                var fade_amount_2 = fade_dur;
+                var diff = $('#vid')[0].duration - parseFloat(e.dur) - total_dur;
+                if(diff < fade_amount_2) fade_amount_2 = diff;
+                e.dur = parseFloat(e.dur) + fade_amount_2 ;
+                var out_start = e.dur - fade_amount_2;
+                //e.dur += 0.5; //Pad
+                e.dur = e.dur.toFixed(3);
+                out_start = out_start.toFixed(3);
+                var new_overlay = '[f'+overlay_num+']';
+                filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1,fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
+                overlay_stream = new_overlay;
               }else{
                 // Just fade in
+                console.log('fade in',i);
                 e.dur = parseFloat(e.dur) + fade_amount_1;
                 e.dur = e.dur.toFixed(3);
                 var new_overlay = '[f'+overlay_num+']';
@@ -1951,8 +1988,9 @@ function browser_video(just_overlay, zip = false){
               }
             }else if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
               // Non-blank before blank - just fade out
+              console.log('fade out',i);
               var fade_amount_2 = fade_dur;
-              if(parseFloat(duration_list[i+1].dur) < fade_amount) fade_amount = parseFloat(duration_list[i+1].dur);
+              if(parseFloat(duration_list[i+1].dur) < fade_amount_2) fade_amount_2 = parseFloat(duration_list[i+1].dur);
               e.dur = parseFloat(e.dur) + fade_amount_2;
               var out_start = e.dur - fade_amount_2;
               e.dur = e.dur.toFixed(3);
@@ -1960,18 +1998,35 @@ function browser_video(just_overlay, zip = false){
               var new_overlay = '[f'+overlay_num+']';
               filter_args += overlay_stream+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
               overlay_stream = new_overlay;
-            }// TODO add setting for if it's last one and there is time left after
+            }else if(i == duration_list.length - 1 && total_dur + parseFloat(e.dur) < $('#vid')[0].duration){
+              console.log('early end',i);
+              var fade_amount_2 = fade_dur;
+              var diff = $('#vid')[0].duration - parseFloat(e.dur) - total_dur;
+              if(diff < fade_amount_2) fade_amount_2 = diff;
+              e.dur = parseFloat(e.dur) + fade_amount_2;
+              var out_start = e.dur - fade_amount_2;
+              //                                                       e.dur += 0.5; //Pad
+              e.dur = e.dur.toFixed(3);
+              out_start = out_start.toFixed(3);
+              var new_overlay = '[f'+overlay_num+']';
+              filter_args += overlay_stream+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
+              overlay_stream = new_overlay;
+            }else{
+              console.log('nowt special',i);
+            }
           }
 
           if(parseFloat(e.dur) > 0){
             // i.e. only bother if it's long enough
             input_args += '-loop 1 -t '+e.dur+' -i '+e.file+' ';
             join_args += overlay_stream;
+            input_aug++;
+            total_dur += parseFloat(e.dur);
           }else{
-            input_args += '-loop 1 -t  1 -i '+e.file+' '; // just a placeholder TODO fix
+            //input_args += '-loop 1 -t  1 -i '+e.file+' '; // just a placeholder TODO fix
           }
         });
-        join_args += 'concat=n='+duration_list.length+'[v]';
+        join_args += 'concat=n='+input_aug+'[v]';
 
         if(!just_overlay){
           join_args += ';[0][v]overlay[out]';
@@ -2199,7 +2254,7 @@ function adjust_range(){
     <h2>Import lyrics</h2>
     <p>Copy your lyrics here, then press 'Process lyrics!' (or hit ctrl-return) to split into subtitles:</p>
     <p><span>Default lines per subtitle (empty lines will still split subtitles): <input id="subtitle_lines_range" type='range' min='1' max='5' value='1' class= 'slider'/>
-      <input id="subtitle_lines" type="number" class="opt_control global" value="1" size="1"/></span></p>
+      <input id="subtitle_lines" type="number" class="opt_control global" min="1" max="5" value="1" size="1"/></span></p>
       <p><textarea id="lyrics" class="w3-input w3-border" rows=10></textarea></p>
       <button class="w3-btn w3-black" type="button" id="clear">Clear</button>
       <button class="w3-btn w3-blue" type="button" id="process">Process lyrics!</button>
@@ -2255,7 +2310,7 @@ function adjust_range(){
           <div id="text_opts">
             <label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
             <label>Text size:</label><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
-            <input id="font_size" class="opt_control" type="number" value="5" size="1"/> % of width of video
+            <input id="font_size" class="opt_control" type="number" min="0.1" max="20" value="5" size="1"/> % of width of video
             <div id="size_warning"></div>
           </p><p>
             Font: <input id="font" class="opt_control" type="text" value='sans-serif' size="20"/> (You can type any on your system)
@@ -2268,18 +2323,18 @@ function adjust_range(){
           <p>
             Outline colour: <input class="opt_control" type='color' id='out_colour' value='#000000'/>
             Outline thickness: <input type='range' min='0' max='10' value='0' class='slider' id='out_size_range' />
-            <input id="out_size" class="opt_control" type="number" value="0" size="3"/> pixel(s)
+            <input id="out_size" class="opt_control" type="number" min="0" max="10" value="0" size="3"/> pixel(s)
           </p>
           <p>
             Shadow colour: <input class="opt_control" type='color' id='shad_colour' value='#000000'/>
             Shadow offset: <input type='range' min='0' max='20' value='0' class='slider' id='shad_off_range' />
-            <input id="shad_off" class="opt_control" type="number" alue="0" size="3"/> pixel(s)
+            <input id="shad_off" class="opt_control" type="number" min="0" max="20" value="0" size="3"/> pixel(s)
           </p>
           <p>
             Shadow opacity: <input type='range' min='0' max='1' value='0.5' step='0.1' class='slider' id='shad_op_range' />
-            <input id="shad_op" class="opt_control" type="number" value="0.5" size="3"/>
+            <input id="shad_op" class="opt_control" type="number" min='0' max='1' value="0.5" size="3"/>
             Shadow blur: <input type='range' min='0' max='50' value='0' class='slider' id='shad_blur_range' />
-            <input id="shad_blur" class="opt_control" type="number" value="0" size="3"/>
+            <input id="shad_blur" class="opt_control" type="number" min='0' max='50' value="0" size="3"/>
           </p>
         </div>
       </div><div class="w3-panel w3-cell">
@@ -2287,13 +2342,13 @@ function adjust_range(){
         <div id="layout_opts">
           <p>Line spacing: <input type='range' min='0.5' max='2' step="0.1" value='1' class='slider' id='line_spacing_range'/><input id="line_spacing" class="opt_control" value="1" size="3" />
           </p><p>Vertical margin: <input type='range' min='0' max='200' value='10' class='slider' id='v_margin_range'/>
-            <input id="v_margin" type="number" class="opt_control" value="0" size="3" /> pixel(s)
+            <input id="v_margin" type="number" min='0' max='200' class="opt_control" value="0" size="3" /> pixel(s)
           </p><p>Horizontal margin: <input type='range' min='0' max='500' value='10' class='slider' id='h_margin_range'/>
-            <input id="h_margin" type="number" class="opt_control" value="0" size="3" /> pixel(s)
+            <input id="h_margin" type="number" min='0' max='500' class="opt_control" value="0" size="3" /> pixel(s)
           </p><p>Offset from bottom of screen: <input type='range' min='0' max='100' value='10' class='slider' id='v_offset_range'/>
-            <input id="v_offset" type="number" class="opt_control" value="0" size="4" /> pixel(s)
+            <input id="v_offset" type="number" class="opt_control" min='0' max='100' value="0" size="4" /> pixel(s)
             <div id="horiz_off"></p><p>Offset from <span id="horiz_dir">left</span> of screen: <input type='range' min='0' max='100' value='10' class='slider' id='h_offset_range'/>
-              <input id="h_offset" type="number" class="opt_control" value="0" size="4" /> pixel(s)</div>
+              <input id="h_offset" type="number" class="opt_control" min='0' max='100' value="0" size="4" /> pixel(s)</div>
             </p>
             <p>
               Background type:
@@ -2305,7 +2360,7 @@ function adjust_range(){
             </p><div id="bg_options"><p>
               Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
               Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' />
-              <input id="bg_opacity" class="opt_control" type="number" value="0.5" size="3"/>
+              <input id="bg_opacity" class="opt_control" type="number" min='0' max='1' value="0.5" size="3"/>
             </p></div></div>
           </div>
         </p>
@@ -2317,6 +2372,11 @@ function adjust_range(){
             <span id="overlay_wrapper"><input id="universal_overlay" class="w3-check opt_control global" type="checkbox" checked/><label>Make background consistent height across all styles? (Useful if font sizes change between styles)</label>
             </span></div><div>
               <input id="min_height" class="w3-check opt_control global" type="checkbox" checked/><label>Make overlay minimum possible height? (If you untick this, the transparent overlay will be the same height as the base video, for ease of alignment in your editor, but the file will be bigger)</label>
+            </div>
+            <div>
+              <input id="fades" class="w3-check opt_control global" type="checkbox"/><label>Fade in and out when there are gaps in the lyrics? (Warning – significantly increases processing time; recommended only for home processing)</label>
+            </div><div id="fade_div">Fade duration: <input type='range' min='0' max='2' value='1' step="0.1" class='slider' id='fade_dur_range' />
+              <input id="fade_dur" class="opt_control" type="number" min='0' max='2' value="1" size="3"/>
             </div>
           </div>
           <div id="saving">
