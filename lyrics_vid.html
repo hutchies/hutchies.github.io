@@ -1569,7 +1569,7 @@
 
     if(window.is_audio) video_placeholder();
 
-    if(line.text == '' && !window.opts._global.bg_visible && !blank) return; // No need to do any drawing
+    if(line.text == '' && !window.opts._global.bg_visible) return; // No need to do any drawing
     // Draw background
 
     var bg_start = 0;
@@ -1747,7 +1747,7 @@ function browser_video(just_overlay, zip = false){
   var fn = '';
 
   // TODO remove!
-  //if(zip) method = 'overlay';
+  //if(zip) method = 'blank_fade';
 
   if(window.timecodes.length < 1){
     alert('Nothing to export yet – add some subtitles!');
@@ -1898,6 +1898,88 @@ function browser_video(just_overlay, zip = false){
           // offset should be dealt with by suspending min-height
           args.push('-filter_complex','[0][1]overlay=x=0:y=0:repeatlast=0');
         }
+      }else if(method == 'blank_fade'){
+
+        var join_args = '';
+        var filter_args = '';
+        var input_args = '';
+        var overlay_args = '';
+        var out_stream = '[v]'
+        var fade_dur = 1;
+        var input_aug = (just_overlay) ? 0 : 1;
+
+        duration_list.forEach(function(e, i){
+          var overlay_num = i + input_aug;
+          var overlay_stream = '['+overlay_num+']';
+          if(e.file == 'blank.png' && i < duration_list.length - 1 && duration_list[i+1].file != 'blank.png'){
+            // Blank before non-blank
+            var fade_amount = fade_dur;
+            e.dur = parseFloat(e.dur);
+            if(e.dur < fade_amount) fade_amount = e.dur;
+            e.dur -= fade_amount;
+            e.dur = e.dur.toFixed(3);
+          }else if(e.file == 'blank.png' && i > 0 && duration_list[i-1].file != 'blank.png'){
+            // Blank after non-blank
+            var fade_amount = fade_dur;
+            e.dur = parseFloat(e.dur);
+            if(e.dur < fade_amount) fade_amount = e.dur;
+            e.dur -= fade_amount;
+            e.dur = e.dur.toFixed(3);
+          }else if(e.file != 'blank.png'){
+            if(i > 0 && duration_list[i-1].file == 'blank.png'){
+              // Non-blank after blank
+              var fade_amount_1 = fade_dur;
+              if(parseFloat(duration_list[i-1].dur) < fade_amount) fade_amount = parseFloat(duration_list[i-1].dur);
+              if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
+                // Blank sandwich!
+                var fade_amount_2 = fade_dur;
+                if(parseFloat(duration_list[i+1].dur) < fade_amount) fade_amount = parseFloat(duration_list[i+1].dur);
+                e.dur = parseFloat(e.dur) + fade_amount_1 + fade_amount_2; // On each side!
+                var out_start = e.dur - fade_amount_2;
+                e.dur = e.dur.toFixed(3);
+                out_start = out_start.toFixed(3);
+                var new_overlay = '[f'+overlay_num+']';
+                filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1,fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
+                overlay_stream = new_overlay;
+              }else{
+                // Just fade in
+                e.dur = parseFloat(e.dur) + fade_amount_1;
+                e.dur = e.dur.toFixed(3);
+                var new_overlay = '[f'+overlay_num+']';
+                filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1'+new_overlay+';';
+                overlay_stream = new_overlay;
+              }
+            }else if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
+              // Non-blank before blank - just fade out
+              var fade_amount_2 = fade_dur;
+              if(parseFloat(duration_list[i+1].dur) < fade_amount) fade_amount = parseFloat(duration_list[i+1].dur);
+              e.dur = parseFloat(e.dur) + fade_amount_2;
+              var out_start = e.dur - fade_amount_2;
+              e.dur = e.dur.toFixed(3);
+              out_start = out_start.toFixed(3);
+              var new_overlay = '[f'+overlay_num+']';
+              filter_args += overlay_stream+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
+              overlay_stream = new_overlay;
+            }// TODO add setting for if it's last one and there is time left after
+          }
+
+          if(parseFloat(e.dur) > 0){
+            // i.e. only bother if it's long enough
+            input_args += '-loop 1 -t '+e.dur+' -i '+e.file+' ';
+            join_args += overlay_stream;
+          }else{
+            input_args += '-loop 1 -t  1 -i '+e.file+' '; // just a placeholder TODO fix
+          }
+        });
+        join_args += 'concat=n='+duration_list.length+'[v]';
+
+        if(!just_overlay){
+          join_args += ';[0][v]overlay[out]';
+        }
+        filter_args += join_args;
+        args.push(...input_args.trim().split(' '));
+        args.push('-filter_complex', filter_args);
+        args.push('-map', out_stream);
       }else if(method == 'overlay'){
         var current = 0;
         if(!just_overlay) current = 1;
@@ -1999,7 +2081,7 @@ function browser_video(just_overlay, zip = false){
         // Don't actually run FFMPEG in browser, instead export the files to do at home
         var command = 'ffmpeg';
         args.forEach(function(a, i){
-          if(/\s/g.test(a)) a = '"' + a + '"'; // To escape filter command or anything else
+          if(/[\s;&]/g.test(a)) a = '"' + a + '"'; // To escape spaces or anything else that bash might not like
           if(a == 'ultrafast') a = 'veryfast';
           if(a == '-debug_ts') return; // Skip debug info
           command += ' ';
