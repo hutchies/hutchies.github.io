@@ -21,6 +21,10 @@
     background-color: pink;
   }
 
+  .subpanel {
+    margin-left: 15px;
+  }
+
   .impossible {
     color: grey;
   }
@@ -390,9 +394,6 @@
     preview_canvas();
   }
 
-  function fit_to_screen(){
-
-  }
 
   function opt_controls(style){
     for(o in window.opts[style]){
@@ -667,16 +668,24 @@
         $('#bg_opacity').prop('disabled', false);
         $('#bg_opacity_range').prop('disabled', false);
         $('#bg_options').removeClass('impossible');
+        $('#bg_width').prop('disabled', false);
+        $('#bg_width_range').prop('disabled', false);
+        $('#width_div').removeClass('impossible');
       }else if(value == 'tight'){
         $('#bg_visible').prop('disabled', true);
         $('#bg_colour').prop('disabled', false);
         $('#bg_opacity').prop('disabled', false);
         $('#bg_opacity_range').prop('disabled', false);
         $('#bg_options').removeClass('impossible');
+        $('#bg_width').prop('disabled', true);
+        $('#bg_width_range').prop('disabled', true);
+        $('#width_div').addClass('impossible');
       }else if(value == 'none'){
         $('#bg_colour').prop('disabled', true);
         $('#bg_opacity').prop('disabled', true);
         $('#bg_opacity_range').prop('disabled', true);
+        $('#bg_width').prop('disabled', true);
+        $('#bg_width_range').prop('disabled', true);
         $('#bg_options').addClass('impossible');
       }
     }else if(opt == 'text_align'){
@@ -717,6 +726,8 @@
         $('#fade_dur_range').prop('disabled', false);
         $('#fade_div').removeClass('impossible');
       }
+    }else if(opt == 'bg_width'){
+      $('#actual_width').text(proportional_width(window.current_style));
     }
   }
 
@@ -1316,6 +1327,7 @@
           bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
           bg_border: 0,
           bg_opacity: 0.5,
+          bg_width: 100,
           bg_type: 'full',
           out_colour: "#000000",
           out_size: 0,
@@ -1457,12 +1469,18 @@
       return max;
     }
 
+    function proportional_width(style = 'default'){
+      var prop = window.opts[style].bg_width || window.opts.default.bg_width;
+      var actual_width = $('#vid')[0].videoWidth / 100 * prop;
+      return parseInt(actual_width.toFixed(0));
+    }
+
     function check_text_width(){
       const canvas = document.createElement('CANVAS');
       const ctx = canvas.getContext('2d');
       var biggest = 0;
       var ratios = Object.fromEntries(list_styles('in use').map(function(s){
-        return [s, 1];
+        return [s, 0];
       }));
       window.timecodes.forEach(function(sub){
         sub.text.split(/[\n\r]/).forEach(function(line){
@@ -1470,34 +1488,42 @@
           ctx.font = get_font(sub.style);
           const textMetrics = ctx.measureText(line);
           var tw = Number.parseInt(textMetrics.width.toFixed(1)) + window.opts[style].h_margin * 2;
-          var vw = Number.parseInt($('#vid')[0].videoWidth.toFixed(1));
-          if(tw > vw){
-            var ratio = tw / vw;
-            if(ratio > biggest) biggest = ratio;
-            if(ratio > ratios[style]) ratios[style] = ratio;
-          }
+          var vw = Number.parseInt(proportional_width(style));
+          var ratio = tw / vw;
+          if(ratio > ratios[style]) ratios[style] = ratio; // Should now also include larger ones!
+          if(ratio > biggest) biggest = ratio;
         });
       });
-      if(biggest == 0){
-        $('#size_warning').html('');
-        return true;
+      if(biggest < 1){
+        if($('#size_warning').html() != '') $('#size_warning').html('');
+        $('#fit_width').show();
+      }else{
+        if($('#size_warning').html() == '') $('#size_warning').html('Warning: font too large, some subtitles won\'t fit on screen!<button id="fit_to_screen" class="w3-btn w3-blue" type="button">Fix this</button>');
+        $('#fit_to_screen').off('click').on('click', function(){
+          fit_text_to_width(ratios, biggest, false);
+        });
+        $('#fit_width').hide();
+        return false;
       }
-      $('#size_warning').html('Warning: font too large, some subtitles won\'t fit on screen!<button id="fit_to_screen" class="w3-btn w3-blue" type="button">Fix this</button>');
-      $('#fit_to_screen').on('click', function(){
-        Object.keys(ratios).forEach(function(s){
-          if(all_fonts_same_size()){
-            // Presume they want to preserve everything the same size;
-            window.opts[s].font_size = window.opts[s].font_size / biggest - 0.1;
-          }else{
-            if(ratios[s] > 1) window.opts[s].font_size = window.opts[s].font_size / ratios[s] - 0.1;
-          }
-          window.opts[s].font_size = Number.parseFloat(window.opts[s].font_size.toFixed(1));
-        });
-        $('#size_warning').html('');
-        set_opt_controls();
-        display_opts();
+      $('#fit_width').off('click').on('click', function(){
+        fit_text_to_width(ratios, biggest, true);
       });
-      return ratios;
+      return true;
+    }
+
+    function fit_text_to_width(ratios, biggest, up_too = false){
+      Object.keys(ratios).forEach(function(s){
+        if(all_fonts_same_size()){
+          // Presume they want to preserve everything the same size;
+          if(biggest > 1 || up_too) window.opts[s].font_size = window.opts[s].font_size / biggest - 0.1;
+        }else{
+          if(ratios[s] > 1 || up_too) window.opts[s].font_size = window.opts[s].font_size / ratios[s] - 0.1;
+        }
+        window.opts[s].font_size = Number.parseFloat(window.opts[s].font_size.toFixed(1));
+      });
+      $('#size_warning').html('');
+      set_opt_controls();
+      display_opts();
     }
 
     function fs_in_px(style = window.current_style, raw_size = false){
@@ -1600,14 +1626,19 @@
     if(line.text == '' && !window.opts._global.bg_visible) return; // No need to do any drawing
     // Draw background
 
-    var bg_start = 0;
     var bg_width = canvas.width;
+    var bg_start = 0;
 
     if(opt(line,'bg_type') != 'none'){
       if(opt(line, 'bg_type') == 'tight'){
         bg_width = opt(line, 'h_margin') * 2 + get_max_width(line);
         var bg_margin = (canvas.width - bg_width) / 2 + opt(line, 'h_offset');
         bg_start = bg_margin;
+        if(opt(line, 'text_align') == 'left') bg_start = opt(line, 'h_offset');
+        if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - opt(line, 'h_offset');
+      }else{
+        bg_width = proportional_width(s);
+        bg_start = (canvas.width - bg_width) / 2 + opt(line, 'h_offset');
         if(opt(line, 'text_align') == 'left') bg_start = opt(line, 'h_offset');
         if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - opt(line, 'h_offset');
       }
@@ -1936,12 +1967,25 @@ function browser_video(just_overlay, zip = false){
         var fade_dur = window.opts._global.fade_dur;
         var total_dur = 0;
         var input_aug = (just_overlay) ? 0 : 1;
-        var min_blank = window.opts._global.fade_dur; // TODO not used yet, integrate when I've simplified the routine
+        var reduced_blank = false;
+        // TODO handle a limit of blank length for fades, and refactor to suit. I think simplest
+        // would be to limit it to fade_dur * 2 for the middle as then a lot of the edge cases below would be gone.
+        // Could still allow for smaller at start or end if you like.
 
         duration_list.forEach(function(e, i){
           var overlay_num = input_aug;
           var overlay_stream = '['+overlay_num+']';
-          if(e.file == 'blank.png' && i < duration_list.length - 1 && duration_list[i+1].file != 'blank.png'){
+          if(e.file == 'blank.png' && i > 0 && duration_list[i-1].file != 'blank.png'){
+            // Blank after non-blank
+            //console.log('blank after non-blank',i);
+            var fade_amount = fade_dur;
+            e.dur = parseFloat(e.dur);
+            if(e.dur < fade_amount){
+              fade_amount = e.dur;
+            }
+            e.dur -= fade_amount;
+            e.dur = e.dur.toFixed(3);
+          }if(e.file == 'blank.png' && i < duration_list.length - 1 && duration_list[i+1].file != 'blank.png'){
             // Blank before non-blank
             //console.log('blank before non-blank',i);
             var fade_amount = fade_dur;
@@ -1949,26 +1993,18 @@ function browser_video(just_overlay, zip = false){
             if(e.dur < fade_amount) fade_amount = e.dur;
             e.dur -= fade_amount;
             e.dur = e.dur.toFixed(3);
-          }if(e.file == 'blank.png' && i > 0 && duration_list[i-1].file != 'blank.png'){
-            // Blank after non-blank
-            //console.log('blank after non-blank',i);
-            var fade_amount = fade_dur;
-            e.dur = parseFloat(e.dur);
-            if(e.dur < fade_amount) fade_amount = e.dur;
-            e.dur -= fade_amount;
-            e.dur = e.dur.toFixed(3);
           }else if(e.file != 'blank.png'){
-            console.log('non-blank');
+          //  console.log('non-blank');
             if(i > 0 && duration_list[i-1].file == 'blank.png'){
               // Non-blank after blank
-              console.log('blank before');
+              //console.log('blank before');
               var fade_amount_1 = fade_dur;
               if(parseFloat(duration_list[i-1].dur) < fade_amount_1) fade_amount_1 = parseFloat(duration_list[i-1].dur);
-              console.log(fade_amount_1);
+              //console.log(fade_amount_1);
               if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
                 // Blank sandwich!
                 var join = overlay_stream;
-                console.log('fade in and output',i);
+                //console.log('fade in and output',i);
                 if(fade_amount_1 > 0){
                   e.dur = parseFloat(e.dur) + fade_amount_1;
                   e.dur = e.dur.toFixed(3);
@@ -1990,7 +2026,7 @@ function browser_video(just_overlay, zip = false){
               }else if(i == duration_list.length - 1 && total_dur + parseFloat(e.dur) < $('#vid')[0].duration){
                 // Blank sandwich with ending!
                 var join = overlay_stream;
-                console.log('blank to end');
+                //console.log('blank to end');
                 if(fade_amount_1 > 0){
                   e.dur = parseFloat(e.dur) + fade_amount_1;
                   e.dur = e.dur.toFixed(3);
@@ -2013,7 +2049,7 @@ function browser_video(just_overlay, zip = false){
                 }
               }else{
                 // Just fade in
-                console.log('fade in',i);
+                //console.log('fade in',i);
                 if(fade_amount_1 > 0){
                   e.dur = parseFloat(e.dur) + fade_amount_1;
                   e.dur = e.dur.toFixed(3);
@@ -2024,7 +2060,7 @@ function browser_video(just_overlay, zip = false){
               }
             }else if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
               // Non-blank before blank - just fade out
-              console.log('fade out',i);
+              //console.log('fade out',i);
               var fade_amount_2 = fade_dur;
               if(parseFloat(duration_list[i+1].dur) < fade_amount_2) fade_amount_2 = parseFloat(duration_list[i+1].dur);
               if(fade_amount_2 > 0){
@@ -2037,7 +2073,7 @@ function browser_video(just_overlay, zip = false){
                 overlay_stream = new_overlay;
               }
             }else if(i == duration_list.length - 1 && total_dur + parseFloat(e.dur) < $('#vid')[0].duration){
-              console.log('early end',i);
+              //console.log('early end',i);
               var fade_amount_2 = fade_dur;
               var diff = $('#vid')[0].duration - parseFloat(e.dur) - total_dur;
               if(diff < fade_amount_2) fade_amount_2 = diff;
@@ -2052,7 +2088,7 @@ function browser_video(just_overlay, zip = false){
                 overlay_stream = new_overlay;
               }
             }else{
-              console.log('nowt special',i);
+              //console.log('nowt special',i);
             }
           }
 
@@ -2350,7 +2386,8 @@ function adjust_range(){
           <div id="text_opts">
             <label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
             <label>Text size:</label><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
-            <input id="font_size" class="opt_control" type="number" min="0.1" max="20" value="5" size="1"/> % of width of video
+            <input id="font_size" class="opt_control" type="number" min="0.1" max="100" value="5" size="1"/> % of width of video
+            <button type="button" id="fit_width" class="w3-btn w3-green">Fit to width</button>
             <div id="size_warning"></div>
           </p><p>
             Font: <input id="font" class="opt_control" type="text" value='sans-serif' size="20"/> (You can type any on your system)
@@ -2393,15 +2430,18 @@ function adjust_range(){
             <p>
               Background type:
               <select id="bg_type" class="opt_control">
-                <option value="full">Full width of video</option>
+                <option value="full">Fixed width background</option>
                 <option value="tight">Tight around text</option>
                 <option value="none">No background</option>
               </select>
-            </p><div id="bg_options"><p>
+            </p><div id="bg_options" class="subpanel"><p><div>
               Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
               Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' />
               <input id="bg_opacity" class="opt_control" type="number" min='0' max='1' value="0.5" size="3"/>
-            </p></div></div>
+            </div></p><p><div id="width_div">Background width: <input type='range' min='0' max='100' step="0.1" value='0' class='slider' id='bg_width_range' />
+              <input id="bg_width" class="opt_control" type="number" min='0' max='100' value="0.5" size="3"/> % of video width
+              (<span id="actual_width">1024</span> pixels)
+            </div></p></div></div>
           </div>
         </p>
         <div class="w3-panel">
