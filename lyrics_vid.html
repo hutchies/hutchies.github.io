@@ -2374,7 +2374,7 @@ function adjust_range(){
               <input id="min_height" class="w3-check opt_control global" type="checkbox" checked/><label>Make overlay minimum possible height? (If you untick this, the transparent overlay will be the same height as the base video, for ease of alignment in your editor, but the file will be bigger)</label>
             </div>
             <div>
-              <input id="fades" class="w3-check opt_control global" type="checkbox"/><label>Fade in and out when there are gaps in the lyrics? (Warning – significantly increases processing time; recommended only for home processing)</label>
+              <input id="fades" class="w3-check opt_control global" type="checkbox"/><label>Fade in and out when there are gaps in the lyrics? (Warning – may significantly increase processing time for long videos. If you run out of memory, use the failsafe home download option)</label>
             </div><div id="fade_div">Fade duration: <input type='range' min='0' max='2' value='1' step="0.1" class='slider' id='fade_dur_range' />
               <input id="fade_dur" class="opt_control" type="number" min='0' max='2' value="1" size="3"/>
             </div>
