@@ -642,9 +642,20 @@
         $('#universal_overlay').prop('checked', true); // If bg is always visible, needs to be a consistent size
         $('#universal_overlay').prop('disabled', true); // TODO change label colour afterwards
         $('#overlay_wrapper').addClass('impossible');
+        $('#fade_dur').prop('disabled', true);
+        $('#fade_dur_range').prop('disabled', true);
+        $('#fade_div').addClass('impossible');
+        $('#fades').prop('checked', false);
+        $('#fades').prop('disabled', true);
       }else{
         $('#universal_overlay').prop('disabled', false); // Can alter size now
         $('#overlay_wrapper').removeClass('impossible');
+        $('#fades').prop('disabled', false);
+        if($('#fades').is(':checked')){
+          $('#fade_dur').prop('disabled', false);
+          $('#fade_dur_range').prop('disabled', false);
+          $('#fade_div').removeClass('impossible');
+        }
       }
     }else if(opt == 'subtitle_lines'){
       // Expand textarea to fit
