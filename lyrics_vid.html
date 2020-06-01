@@ -1333,7 +1333,8 @@
           universal_overlay: false, // i.e. resize the overlay to the size of the tallest font
           bg_visible: false,
           min_height: true,
-          fades: false
+          fades: false,
+          fade_dur: 1
         }
       };
     }
@@ -1935,6 +1936,7 @@ function browser_video(just_overlay, zip = false){
         var fade_dur = window.opts._global.fade_dur;
         var total_dur = 0;
         var input_aug = (just_overlay) ? 0 : 1;
+        var min_blank = window.opts._global.fade_dur; // TODO not used yet, integrate when I've simplified the routine
 
         duration_list.forEach(function(e, i){
           var overlay_num = input_aug;
@@ -1962,66 +1964,93 @@ function browser_video(just_overlay, zip = false){
               console.log('blank before');
               var fade_amount_1 = fade_dur;
               if(parseFloat(duration_list[i-1].dur) < fade_amount_1) fade_amount_1 = parseFloat(duration_list[i-1].dur);
+              console.log(fade_amount_1);
               if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
                 // Blank sandwich!
+                var join = overlay_stream;
                 console.log('fade in and output',i);
+                if(fade_amount_1 > 0){
+                  e.dur = parseFloat(e.dur) + fade_amount_1;
+                  e.dur = e.dur.toFixed(3);
+                  var new_overlay = '[f'+overlay_num+']';
+                  filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1';
+                  join = ',';
+                }
                 var fade_amount_2 = fade_dur;
                 if(parseFloat(duration_list[i+1].dur) < fade_amount_2) fade_amount_2 = parseFloat(duration_list[i+1].dur);
-                e.dur = parseFloat(e.dur) + fade_amount_1 + fade_amount_2; // On each side!
-                var out_start = e.dur - fade_amount_2;
-                e.dur = e.dur.toFixed(3);
-                out_start = out_start.toFixed(3);
-                var new_overlay = '[f'+overlay_num+']';
-                filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1,fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
-                overlay_stream = new_overlay;
+                if(fade_amount_2 > 0){
+                  e.dur = parseFloat(e.dur) + fade_amount_2; // On each side!
+                  var out_start = e.dur - fade_amount_2;
+                  e.dur = e.dur.toFixed(3);
+                  out_start = out_start.toFixed(3);
+                  var new_overlay = '[f'+overlay_num+']';
+                  filter_args += join+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
+                  overlay_stream = new_overlay;
+                }
               }else if(i == duration_list.length - 1 && total_dur + parseFloat(e.dur) < $('#vid')[0].duration){
                 // Blank sandwich with ending!
+                var join = overlay_stream;
                 console.log('blank to end');
+                if(fade_amount_1 > 0){
+                  e.dur = parseFloat(e.dur) + fade_amount_1;
+                  e.dur = e.dur.toFixed(3);
+                  var new_overlay = '[f'+overlay_num+']';
+                  filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1';
+                  join = ',';
+                }
                 var fade_amount_2 = fade_dur;
                 var diff = $('#vid')[0].duration - parseFloat(e.dur) - total_dur;
                 if(diff < fade_amount_2) fade_amount_2 = diff;
-                e.dur = parseFloat(e.dur) + fade_amount_2 ;
-                var out_start = e.dur - fade_amount_2;
-                //e.dur += 0.5; //Pad
-                e.dur = e.dur.toFixed(3);
-                out_start = out_start.toFixed(3);
-                var new_overlay = '[f'+overlay_num+']';
-                filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1,fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
-                overlay_stream = new_overlay;
+                if(fade_amount_2 > 0){
+                  e.dur = parseFloat(e.dur) + fade_amount_2;
+                  var out_start = e.dur - fade_amount_2;
+                  //e.dur += 0.5; //Pad
+                  e.dur = e.dur.toFixed(3);
+                  out_start = out_start.toFixed(3);
+                  var new_overlay = '[f'+overlay_num+']';
+                  filter_args += join+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
+                  overlay_stream = new_overlay;
+                }
               }else{
                 // Just fade in
                 console.log('fade in',i);
-                e.dur = parseFloat(e.dur) + fade_amount_1;
-                e.dur = e.dur.toFixed(3);
-                var new_overlay = '[f'+overlay_num+']';
-                filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1'+new_overlay+';';
-                overlay_stream = new_overlay;
+                if(fade_amount_1 > 0){
+                  e.dur = parseFloat(e.dur) + fade_amount_1;
+                  e.dur = e.dur.toFixed(3);
+                  var new_overlay = '[f'+overlay_num+']';
+                  filter_args += overlay_stream+'fade=t=in:d='+fade_amount_1+':alpha=1'+new_overlay+';';
+                  overlay_stream = new_overlay;
+                }
               }
             }else if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
               // Non-blank before blank - just fade out
               console.log('fade out',i);
               var fade_amount_2 = fade_dur;
               if(parseFloat(duration_list[i+1].dur) < fade_amount_2) fade_amount_2 = parseFloat(duration_list[i+1].dur);
-              e.dur = parseFloat(e.dur) + fade_amount_2;
-              var out_start = e.dur - fade_amount_2;
-              e.dur = e.dur.toFixed(3);
-              out_start = out_start.toFixed(3);
-              var new_overlay = '[f'+overlay_num+']';
-              filter_args += overlay_stream+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
-              overlay_stream = new_overlay;
+              if(fade_amount_2 > 0){
+                e.dur = parseFloat(e.dur) + fade_amount_2;
+                var out_start = e.dur - fade_amount_2;
+                e.dur = e.dur.toFixed(3);
+                out_start = out_start.toFixed(3);
+                var new_overlay = '[f'+overlay_num+']';
+                filter_args += overlay_stream+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
+                overlay_stream = new_overlay;
+              }
             }else if(i == duration_list.length - 1 && total_dur + parseFloat(e.dur) < $('#vid')[0].duration){
               console.log('early end',i);
               var fade_amount_2 = fade_dur;
               var diff = $('#vid')[0].duration - parseFloat(e.dur) - total_dur;
               if(diff < fade_amount_2) fade_amount_2 = diff;
-              e.dur = parseFloat(e.dur) + fade_amount_2;
-              var out_start = e.dur - fade_amount_2;
-              //                                                       e.dur += 0.5; //Pad
-              e.dur = e.dur.toFixed(3);
-              out_start = out_start.toFixed(3);
-              var new_overlay = '[f'+overlay_num+']';
-              filter_args += overlay_stream+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
-              overlay_stream = new_overlay;
+              if(fade_amount_2 > 0){
+                e.dur = parseFloat(e.dur) + fade_amount_2;
+                var out_start = e.dur - fade_amount_2;
+                //                                                       e.dur += 0.5; //Pad
+                e.dur = e.dur.toFixed(3);
+                out_start = out_start.toFixed(3);
+                var new_overlay = '[f'+overlay_num+']';
+                filter_args += overlay_stream+'fade=t=out:st='+out_start+':d='+fade_amount_2+':alpha=1'+new_overlay+';';
+                overlay_stream = new_overlay;
+              }
             }else{
               console.log('nowt special',i);
             }
@@ -2387,7 +2416,7 @@ function adjust_range(){
             <div>
               <input id="fades" class="w3-check opt_control global" type="checkbox"/><label>Fade in and out when there are gaps in the lyrics? (Warning – may significantly increase processing time for long videos. If you run out of memory, use the failsafe home download option)</label>
             </div><div id="fade_div">Fade duration: <input type='range' min='0' max='2' value='1' step="0.1" class='slider' id='fade_dur_range' />
-              <input id="fade_dur" class="opt_control" type="number" min='0' max='2' value="1" size="3"/>
+              <input id="fade_dur" class="global opt_control" type="number" min='0' max='2' value="1" size="3"/>
             </div>
           </div>
           <div id="saving">
