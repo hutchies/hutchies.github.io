@@ -47,6 +47,47 @@
     position: relative;
   }
 
+  /* Tooltip container */
+.percentage {
+  position: relative;
+  display: inline-block;
+}
+
+/* Tooltip text */
+.percentage .tooltiptext {
+  visibility: hidden;
+  width: 120px;
+  background-color: black;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px 0;
+
+  /* Position the tooltip */
+  position: absolute;
+  z-index: 1;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -60px;
+  margin-bottom: 10px;
+}
+
+.percentage .tooltiptext::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: black transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.percentage:hover .tooltiptext {
+  visibility: visible;
+}
+
   input[type="number"]{
     width: 4em;
   }
@@ -202,6 +243,7 @@
     $('.opt_control').on('change', change_opt);
     $('.opt_control').on('input', change_opt);
     $('.slider').on('input', adjust_range);
+    $('.percentage').mouseover(show_percentage);
     $('#browser_overlay').on('click', export_overlay);
     $('#browser_overlay').hide();
     $('#browser_full').on('click', export_full);
@@ -225,6 +267,7 @@
       $('#save_codec').on('click', save_codec);
       load_opts();
       load_codec();
+      check_autosave();
     }else{
       $('#saving').hide();
       $('#save_codec').hide();
@@ -301,6 +344,28 @@
     //console.log(tallest_height());
   });
 
+  function update_percentage(id){
+    var real = 0;
+    if(id == 'font_size'){
+      real = fs_in_px().toFixed(0);
+    }else if(id == 'video_size'){
+      var x = $('#vid')[0].videoWidth * video_size_mult();
+      var y = $('#vid')[0].videoHeight * video_size_mult();
+      real = x.toFixed(0) + ' x ' + y.toFixed(0);
+    }else if(id == 'h_offset' || id == 'bg_width'){
+      real = proportion('width', window.opts[window.current_style][id]).toFixed(0);
+    }else if(id == 'v_offset'){
+      real = proportion('height', window.opts[window.current_style][id]).toFixed(0);
+    }
+    real += ' pixels';
+    $('#'+id+'_range').next('.tooltiptext').text(real);
+  }
+
+  function show_percentage(){
+    var id = $(this).children().first().attr('id').slice(0, -6);
+    update_percentage(id);
+  }
+
   function video_size_mult(){
     return window.opts._global.video_size / 100;
   }
@@ -311,6 +376,18 @@
     window.undo_buffer = [];
     window.redo_buffer = [];
     update_list();
+  }
+
+  function check_autosave(){
+    var tc = localStorage.getItem('autosave');
+    if(tc){
+      load_subs(tc);
+      localStorage.removeItem('autosave');
+      alert('Your subtitles were autosaved and have been restored.');
+      $('#autosave').show();
+    }else{
+      $('#autosave').hide();
+    }
   }
 
   function setup_styles(){
@@ -382,9 +459,6 @@
     //$('#preview').hide();
     //console.log(canvas);
     $('#canvas').css('height', canvas_height() * video_size_mult() );
-    $('#v_offset_range').prop('max', $('#vid')[0].videoHeight - overlay_height());
-    $('#v_offset').prop('max', $('#vid')[0].videoHeight - overlay_height());
-
     draw_subtitle(window.preview_line, $('#canvas')[0]);
     check_text_width();
   }
@@ -625,9 +699,6 @@
     $('#video_container').height($('#vid')[0].videoHeight * video_size_mult());
     $('#vid').width($('#video_container').width());
     $('#canvas').css('width', $('#vid').width());
-    if(window.opts[window.current_style].v_offset > ($('#vid')[0].videoHeight - overlay_height())){
-      window.opts[window.current_style].v_offset = video_size_mult() - overlay_height();
-    }
     $('#canvas').css('height', canvas_height() * video_size_mult());
     if(window.is_audio){
       $('#placeholder')[0].width = $('#vid')[0].videoWidth;
@@ -638,6 +709,8 @@
   }
 
   function opt_constraints(opt, value){
+    var percentages = ['bg_width', 'h_offset', 'v_offset', 'font_size', 'video_size'];
+    if(percentages.includes(opt)) update_percentage(opt);
     if(opt == 'bg_visible'){
       if(value == true){
         $('#universal_overlay').prop('checked', true); // If bg is always visible, needs to be a consistent size
@@ -690,26 +763,16 @@
       }
     }else if(opt == 'text_align'){
       if(value == 'center'){
-        var limit = Math.round($('#vid')[0].videoWidth / 2);
-        $('#h_offset_range').prop('min', 0 - limit);
-        $('#h_offset_range').prop('max', +limit);
-        $('#h_offset').prop('min', 0 - limit);
-        $('#h_offset').prop('max', +limit);
+        $('#h_offset').prop('min', -50);
+        $('#h_offset').prop('max', 50);
+        $('#h_offset_range').prop('min', -50);
+        $('#h_offset_range').prop('max', 50);
         $('#horiz_dir').text('centre');
-        var changed = false;
-        if(window.opts[window.current_style].h_offset > limit){
-          window.opts[window.current_style].h_offset = limit;
-          changed = true;
-        }else if(window.opts[window.current_style].h_offset < -limit){
-          window.opts[window.current_style].h_offset = -limit;
-          changed = true;
-        }
-        if(changed) set_opt_controls(); // Redo to ensure everything is drawn right in this edge case
       }else{
-        $('#h_offset_range').prop('max', $('#vid')[0].videoWidth);
-        $('#h_offset_range').prop('min', 0); // I'm going to presume you wouldn't want text offscreen (sue me)
-        $('#h_offset').prop('max', $('#vid')[0].videoWidth);
-        $('#h_offset').prop('min', 0); // I'm going to presume you wouldn't want text offscreen (sue me)
+        $('#h_offset').prop('min', 0);
+        $('#h_offset').prop('max', 100);
+        $('#h_offset_range').prop('min', 0);
+        $('#h_offset_range').prop('max', 100);
         $('#horiz_dir').text($('#text_align').val());
         if(window.opts[window.current_style].h_offset < 0){
           window.opts[window.current_style].h_offset = 0;
@@ -726,8 +789,6 @@
         $('#fade_dur_range').prop('disabled', false);
         $('#fade_div').removeClass('impossible');
       }
-    }else if(opt == 'bg_width'){
-      $('#actual_width').text(proportional_width(window.current_style));
     }
   }
 
@@ -1235,26 +1296,39 @@
   }
 
   function save_subs(){
+    var tc = get_json();
+    download(tc, "lyrics.json", "application/json");
+  }
+
+  function get_json(){
     var tc = {
       opts: window.opts,
       timecodes: window.timecodes
     }
-    download(JSON.stringify(tc), "lyrics.json", "application/json");
+    return JSON.stringify(tc);
+  }
+
+  function restore_subs(struct){
+
   }
 
   function load_subs(file){
     var f = JSON.parse(file);
     if(f.length > 0){
+      console.log('old');
       // Backwards-compatibility: pure subtitles
       window.timecodes = f;
     }else{
       // Contains style information //
       if(f.opts._global){
+        //console.log('global');
         // Up-to-date style info
-        window.opts = f.opts;
+        window.opts = $.extend(true, window.opts, f.opts);
+        //console.log(window.opts);
         // TODO make this go through and import relevant styles, AND TODO check that they don't mind overwriting
       }else{
         // Need to convert
+        console.log('local');
         Object.keys(window.opts._global).forEach(function(o){
           if(f.opts[o]) window.opts._global[o] = f.opts[o];
         });
@@ -1264,9 +1338,9 @@
       }
       window.opts._global.bg_visible = (window.opts._global.bg_visible == 'true');
       window.timecodes = f.timecodes;
-      display_opts();
-      set_opt_controls();
     }
+    display_opts();
+    set_opt_controls();
     update_list();
   }
 
@@ -1469,6 +1543,11 @@
       return max;
     }
 
+    function proportion(dim, num){
+      if(dim == 'width') return $('#vid')[0].videoWidth / 100 * num;
+      else return $('#vid')[0].videoHeight / 100 * num;
+    }
+
     function proportional_width(style = 'default'){
       var prop = window.opts[style].bg_width || window.opts.default.bg_width;
       var actual_width = $('#vid')[0].videoWidth / 100 * prop;
@@ -1565,10 +1644,10 @@
   }
 
   function min_height(){
-    var def_height = overlay_height('default')+window.opts.default.v_offset;
+    var def_height = overlay_height('default')+proportion('height', window.opts.default.v_offset);
     list_styles('in use').forEach(function(s){
       if(!window.timecodes.some(t => t.style == s)) return; // Discount styles not actually included in lyrics
-      var h = overlay_height(s)+window.opts[s].v_offset;
+      var h = overlay_height(s)+proportion('height', window.opts[s].v_offset);
       if(h > def_height) def_height = h;
     });
     return def_height;
@@ -1602,7 +1681,7 @@
     var ctx = canvas.getContext('2d');
     var s = line.style;
     if(!s) s = 'default';
-    var height = overlay_height(s) + opt(line, 'v_offset');
+    var height = overlay_height(s) + proportion('height', opt(line, 'v_offset'));
     //console.log(overlay_height(s), height);
 
     canvas.height = canvas_height();
@@ -1628,19 +1707,20 @@
 
     var bg_width = canvas.width;
     var bg_start = 0;
+    var h_off = proportion('width', opt(line, 'h_offset'));
 
     if(opt(line,'bg_type') != 'none'){
       if(opt(line, 'bg_type') == 'tight'){
         bg_width = opt(line, 'h_margin') * 2 + get_max_width(line);
-        var bg_margin = (canvas.width - bg_width) / 2 + opt(line, 'h_offset');
+        var bg_margin = (canvas.width - bg_width) / 2 + h_off;
         bg_start = bg_margin;
-        if(opt(line, 'text_align') == 'left') bg_start = opt(line, 'h_offset');
-        if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - opt(line, 'h_offset');
+        if(opt(line, 'text_align') == 'left') bg_start = h_off;;
+        if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - h_off;
       }else{
         bg_width = proportional_width(s);
-        bg_start = (canvas.width - bg_width) / 2 + opt(line, 'h_offset');
-        if(opt(line, 'text_align') == 'left') bg_start = opt(line, 'h_offset');
-        if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - opt(line, 'h_offset');
+        bg_start = (canvas.width - bg_width) / 2 + h_off;;
+        if(opt(line, 'text_align') == 'left') bg_start = h_off;;
+        if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - h_off;;
       }
       ctx.globalAlpha = opt(line, 'bg_opacity');
       ctx.fillStyle = opt(line, 'bg_colour');
@@ -1653,9 +1733,9 @@
     // Draw text
     ctx.font = get_font(s);
     ctx.textAlign = opt(line, 'text_align');
-    var text_x = canvas.width/2 + opt(line, 'h_offset');
-    if(ctx.textAlign == 'left') text_x = opt(line, 'h_margin') + opt(line, 'h_offset');
-    if(ctx.textAlign == 'right') text_x = canvas.width - opt(line, 'h_margin') - opt(line, 'h_offset');
+    var text_x = canvas.width/2 + h_off;;
+    if(ctx.textAlign == 'left') text_x = opt(line, 'h_margin') + h_off;;
+    if(ctx.textAlign == 'right') text_x = canvas.width - opt(line, 'h_margin') - h_off;
     //ctx.fillStyle = window.opts.text_colour;
     //ctx.fillText("asdas",0,0);
     ctx.textBaseline = 'middle';
@@ -1759,6 +1839,10 @@ function init_worker(){
       buffers.forEach(function(file) {
         download(file.data, file.name, "video/quicktime");
       });
+      if(storageAvailable('localStorage')){
+        // Delete autosave
+        localStorage.removeItem('autosave');
+      }
     }
   };
   worker.onerror = function(event){
@@ -1804,6 +1888,7 @@ function close_all_lines(){
 function browser_video(just_overlay, zip = false){
   var method = 'concat'; // Could also be overlay?
   var fn = '';
+  var stored = false;
 
   //if(zip)
   if(window.opts._global.fades) method = 'blank_fade';
@@ -1822,6 +1907,12 @@ function browser_video(just_overlay, zip = false){
       $('#opt_tab')[0].dispatchEvent(evt);
       return;
     };
+  }
+
+  if(storageAvailable('localStorage')){
+    // Auto-save in case we run out of memory
+    var tc = get_json();
+    localStorage.setItem('autosave', tc);
   }
 
   var save_setting = window.opts._global.min_height;
@@ -2302,9 +2393,10 @@ function adjust_range(){
     <h1>Make your own lyrics video!</h1>
   </div>
   <p>Choose a video or audio file to work with: <input type="file" id="vid_file" accept="video/*,audio/*,.mov,.m4v,.mkv,.avi,.mp4,.wav,.aiff,.mp3"/></p>
-  <button class="w3-btn w3-blue" id="save_subs">Save work in progress </button> Or load from a previous save: <input type="file" id="sub_file" accept=".json"/>
-  <div id="video_proportions">
-    <p>Show video at <input type='range' min='1' max='100' value='50' class='slider' id='video_size_range'/>
+  <p id="autosave" style="color: green;">Your work-in-progress was automatically restored after the export ran out of memory. You can try another export method.</p>
+  </div><div id="loadsave"><button class="w3-btn w3-blue" id="save_subs">Save work in progress </button> Or load from a previous save: <input type="file" id="sub_file" accept=".json"/></div>
+    <div id="video_proportions">
+    <p>Show video at <div class="percentage"><input type='range' min='1' max='100' value='50' class='slider' id='video_size_range'/><span class="tooltiptext"></span></div>
       <input id="video_size" class="opt_control global" type="number" min="1" max="100" value="50" size="3"/> % of original size
       <button id="float" class="w3-btn w3-blue">Float video to right</button>
     </div>
@@ -2385,8 +2477,8 @@ function adjust_range(){
           <div class="w3-container w3-blue"><h3>Text</h3></div>
           <div id="text_opts">
             <label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
-            <label>Text size:</label><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
-            <input id="font_size" class="opt_control" type="number" min="0.1" max="100" value="5" size="1"/> % of width of video
+            <label>Text size:</label><div class="percentage"><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/><span class="tooltiptext"></span></div>
+            <input id="font_size" class="opt_control" type="number" min="0.1" max="100" value="5" size="1" /><span class="tooltiptext"></span> % of width of video
           </div><div><button type="button" id="fit_width" class="w3-btn w3-green">Fit to width</button>
             <div id="size_warning"></div>
           </p><p>
@@ -2422,10 +2514,10 @@ function adjust_range(){
             <input id="v_margin" type="number" min='0' max='200' class="opt_control" value="0" size="3" /> pixel(s)
           </p><p>Horizontal margin: <input type='range' min='0' max='500' value='10' class='slider' id='h_margin_range'/>
             <input id="h_margin" type="number" min='0' max='500' class="opt_control" value="0" size="3" /> pixel(s)
-          </p><p>Offset from bottom of screen: <input type='range' min='0' max='100' value='10' class='slider' id='v_offset_range'/>
-            <input id="v_offset" type="number" class="opt_control" min='0' max='100' value="0" size="4" /> pixel(s)
-            <div id="horiz_off"></p><p>Offset from <span id="horiz_dir">left</span> of screen: <input type='range' min='0' max='100' value='10' class='slider' id='h_offset_range'/>
-              <input id="h_offset" type="number" class="opt_control" min='0' max='100' value="0" size="4" /> pixel(s)</div>
+          </p><p>Offset from bottom of screen: <div class="percentage"><input type='range' min='0' max='100' value='0' class='slider' id='v_offset_range'/><span class="tooltiptext"></span></div>
+            <input id="v_offset" type="number" class="opt_control" min='0' max='100' value="0" size="4" /><span class="tooltiptext"></span> % of height of video
+            <div id="horiz_off"></p><p>Offset from <span id="horiz_dir">left</span> of screen: <div class="percentage"><input type='range' min='0' max='100' value='10' class='slider' id='h_offset_range'/><span class="tooltiptext"></span></div>
+              <input id="h_offset" type="number" class="opt_control" min='0' max='100' value="0" size="4" /><span class="tooltiptext"></span> % of width of video</div>
             </p>
             <p>
               Background type:
@@ -2438,9 +2530,8 @@ function adjust_range(){
               Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
               Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' />
               <input id="bg_opacity" class="opt_control" type="number" min='0' max='1' value="0.5" size="3"/>
-            </div></p><p><div id="width_div">Background width: <input type='range' min='0' max='100' step="0.1" value='0' class='slider' id='bg_width_range' />
-              <input id="bg_width" class="opt_control" type="number" min='0' max='100' value="0.5" size="3"/> % of video width
-              (<span id="actual_width">1024</span> pixels)
+            </div></p><p><div id="width_div">Background width: <div class="percentage"><input type='range' min='0' max='100' step="0.1" value='0' class='slider' id='bg_width_range' /><span class="tooltiptext"></span></div>
+              <input id="bg_width" class="opt_control" type="number" min='0' max='100' value="0.5" size="3"/><span class="tooltiptext"></span> % of width of video
             </div></p></div></div>
           </div>
         </p>
@@ -2503,6 +2594,7 @@ function adjust_range(){
               <input id="show_log" class="w3-check opt_control" type="checkbox" />Show export log: <div id="ffmpeg_log" class="lyrics_array" style="height: 200px; font-family: monospace; white-space: pre; overflow: scroll;"></div>
             </div>
             <p>This will use your browser to create an overlay of the lyrics. All formatting should be perfectly preserved (let me know if it isn't, and I'll try to fix it). You can then add this to the original video in your editor. It is exported in a format that supports transparency; this might not be viewable in your usual video player (it won't open in Apple QuickTime, for example), but the editor should be able to open it.</p>
+            <p>The editor will autosave your lyrics when it starts an export, so don't worry - if the export crashes (as it might on a long file with particular settings), when you reload the page it will restore your lyrics so you can try again with different settings.</p>
             <p>The fact that this is possible is thanks to the amazing efforts of <a href="https://bgrins.github.io/videoconverter.js/">Brian Grinstead</a>, who somehow (a number of years ago) managed to compile FFMPEG (a desktop video processor) to run on your browser using Javascript. What a guy.</p>
             <h3>Quick: Subtitle file export options</h3>
             <p>This is very quick, but will require you to assemble the result yourself using an editor or processor that supports subtitle files (most do, to varying extents). Some formatting information may be lost.</p>
