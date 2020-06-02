@@ -2207,6 +2207,8 @@ function browser_video(just_overlay, zip = false){
         args.push(...input_args.trim().split(' '));
         args.push('-filter_complex', filter_args);
         args.push('-map', out_stream);
+
+        if(!just_overlay) args.push('-map', '0:a?'); // to map audio from main stream
       }
 
       //console.log(data);
