@@ -2196,11 +2196,12 @@ function browser_video(just_overlay, zip = false){
             //input_args += '-loop 1 -t  1 -i '+e.file+' '; // just a placeholder TODO fix
           }
         });
+        input_aug--;
         join_args += 'concat=n='+input_aug+'[v]';
         var out_stream = '[v]';
 
         if(!just_overlay){
-          join_args += ';[0][v]overlay=repeatlast=0[out]';
+          join_args += ';[0][v]overlay=x=0:y=0:repeatlast=0[out]';
           out_stream = '[out]';
         }
         filter_args += join_args;
@@ -2228,7 +2229,7 @@ function browser_video(just_overlay, zip = false){
       var output_formats = {
         prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 10 -alpha_bits 8 '+rate+'overlay.mov',
         prores_noalpha: '-c:a copy -c:v prores_ks -profile:v standard -vendor ap10 -q:v 10 '+rate+'overlay.mov',
-        h264: '-c:a aac -c:v libx264 -preset ultrafast -crf 1 -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
+        h264: '-strict -2 -c:a aac -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
         quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
         png: '-c:a copy -c:v png '+rate+'overlay.mov',
         vp8: '-c:a copy -c:v libvpx -pix_fmt yuva420p -crf 0 -metadata:s:v:0 alphamode="1" '+rate+'overlay.webm',
@@ -2555,7 +2556,7 @@ function adjust_range(){
             <li>The processed video will appear in the folder as 'overlay.mp4'.</li></ul>
             <p>
 
-              <div><input id="just_overlay" class="w3-check" type="checkbox" /><label>Export just overlay? (If checked, the command will create an overlay using the codec and framerate settings above. If unchecked, the command will process the whole video as H.264.)</label>
+              <div><input id="just_overlay" class="w3-check" type="checkbox" selected/><label>Export just overlay? (If checked, the command will create an overlay using the codec and framerate settings above. If unchecked, the command will process the whole video as H.264.)</label>
               </div>
               <button class="w3-btn w3-blue" type=button id="home_ffmpeg">Download DIY materials for FFMPEG</button>
               <div id="command"><div id="confirmation"></div>FFMPEG command: <input id="ffmpeg_command" size="100" value="The command will be generated when you press the button above."/></div>
