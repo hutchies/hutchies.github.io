@@ -2308,6 +2308,7 @@ function log_it(text) {
   if(res && res.length > 0){
     var so_far = res[1];
     var final_duration = window.timecodes[window.timecodes.length - 1].end;
+    if(!window._global.just_overlay) final_duration = $('#vid')[0].duration;
     if(window.opts._global.bg_visible) final_duration = $('#vid')[0].duration;
     //console.log(so_far, final_duration, so_far / final_duration);
     var progress = Math.round(so_far / final_duration * 100).toString()+'%'; // Judge by length of overlay not video
