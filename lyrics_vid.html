@@ -1573,19 +1573,21 @@
           if(ratio > biggest) biggest = ratio;
         });
       });
-      if(biggest < 1){
+      if(biggest <= 1){
         if($('#size_warning').html() != '') $('#size_warning').html('');
         $('#fit_width').show();
       }else{
         if($('#size_warning').html() == '') $('#size_warning').html('Warning: font too large, some subtitles won\'t fit on screen!<button id="fit_to_screen" class="w3-btn w3-blue" type="button">Fix this</button>');
         $('#fit_to_screen').off('click').on('click', function(){
           fit_text_to_width(ratios, biggest, false);
+          $('#fit_to_screen').hide();
         });
         $('#fit_width').hide();
         return false;
       }
       $('#fit_width').off('click').on('click', function(){
         fit_text_to_width(ratios, biggest, true);
+        $('#fit_width').hide();
       });
       return true;
     }
@@ -1859,6 +1861,8 @@ function export_full(){
 }
 
 function home_ffmpeg(){
+  $('#home_ffmpeg').prop('disabled', true);
+  $('#home_ffmpeg').text('Preparing download...');
   var just_overlay = $('#just_overlay').is(':checked');
   browser_video(just_overlay, true);
 }
@@ -2054,7 +2058,6 @@ function browser_video(just_overlay, zip = false){
         var filter_args = '';
         var input_args = '';
         var overlay_args = '';
-        var out_stream = '[v]'
         var fade_dur = window.opts._global.fade_dur;
         var total_dur = 0;
         var input_aug = (just_overlay) ? 0 : 1;
@@ -2194,80 +2197,17 @@ function browser_video(just_overlay, zip = false){
           }
         });
         join_args += 'concat=n='+input_aug+'[v]';
+        var out_stream = '[v]';
 
         if(!just_overlay){
-          join_args += ';[0][v]overlay[out]';
+          join_args += ';[0][v]overlay:repeatlast=0[out]';
+          out_stream = '[out]';
         }
         filter_args += join_args;
         args.push(...input_args.trim().split(' '));
         args.push('-filter_complex', filter_args);
         args.push('-map', out_stream);
-      }else if(method == 'overlay'){
-        var current = 0;
-        if(!just_overlay) current = 1;
-        var overlay_args = '';
-        var filter_args = '';
-        var join_args = '';
-        var last_dur = 0;
-        var fade = true;
-        var fade_type = 'fade';
-        var fade_dur = 1;
-        if(!fade){
-          join_args = 'concat=n='+duration_list.length+' [v]'
-        }
-        // TODO make them handle small (below 3) lists well. Or at all.
-        console.log(duration_list); // TODO seems one item too big!!
-        duration_list.forEach(function(e, i){
-          e.dur = parseFloat(e.dur);
-          if(fade) e.dur += fade_dur * 2;
-          overlay_args += '-loop 1 -t '+e.dur+' -i '+e.file+' ';
-          if(i == 0) return; // Don't alter timestamp/fade of first one
-          if(!fade){
-            filter_args += '['+current+']';
-          }else if(current > 0){ // No fade for first one
-            var prev = current - 1;
-            if(prev != 0) prev = 'f'+prev; // So they'll stack after the first
-            var offset = last_dur + e.dur - (fade_dur / 2);
-            //console.log(offset,last_dur,e.dur,fade_dur);
-            var temp_dur = fade_dur;
-            if((fade_dur / 2) > e.dur){
-              offset = last_dur; // Don't overlap
-              temp_dur = e.dur * 2; // Don't overlap
-            }
-            var out = '[f'+current+'];';
-            if(current >= duration_list.length - 1){
-              // last one
-              out = '[v]';
-            }
-            offset = offset.toFixed(3);
-            temp_dur = temp_dur.toFixed(3);
-            var out_start = e.dur - fade.dur;
-            filter_args += '['+current+']fade=t=in:d='+fade_dur+':alpha=1,fade=t=out:st='+out_start+':d='+fade_dur+':alpha=1'+out;
-            // TODO still need overlay....
-          }
-
-          current++;
-          last_dur += parseFloat(e.dur);
-
-        });
-
-        var out_stream = '[v]';
-
-        if(!just_overlay){
-          join_args += ';[0][v]overlay[out]';
-          out_stream = '[out]';
-        }else{
-          join_args = join_args.trim(); // To take off final semicolon
-        }
-
-        // Now assemble
-        filter_args += join_args;
-        args.push(...overlay_args.trim().split(' '));
-        args.push('-filter_complex', filter_args);
-        args.push('-map',out_stream);
-
       }
-      //return;
 
       //console.log(data);
       //var avi_args =  '-nostdin -loop 1 -i img.png -c:v huffyuv -t 15 out.avi';
@@ -2323,7 +2263,9 @@ function browser_video(just_overlay, zip = false){
           }else{
             $('#confirmation').text('');
           }
-
+          localStorage.removeItem('autosave'); // Because we're not calling anything
+          $('#home_ffmpeg').prop('disabled', false);
+          $('#home_ffmpeg').text('Download DIY materials for FFMPEG');
         });
       }else{
         if(ffmpeg_ready()){
