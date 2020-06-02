@@ -172,7 +172,9 @@
     window.timecodes = [];
     window.ids = 0;
     window.undo_buffer = [];
+    window.last_timecode = -1;
     window.redo_buffer = [];
+    window.test_canvas = document.createElement('CANVAS');
     //window.running_locally = false;
     window.vid_name = '[novideo]';
     window.is_audio = false;
@@ -519,11 +521,13 @@
 
 
   function goto_time(id){
+    return;
     if(id.match(/start/)){
       var num = id.substring(6);
       $('#vid')[0].currentTime = window.timecodes[num].start;
     }else if(id.match(/end/)){
       var num = id.substring(4);
+      if(!window.timecodes[num].end) return;
       $('#vid')[0].currentTime = window.timecodes[num].end;
     }
   }
@@ -590,7 +594,11 @@
       check_overlap(num);
     }else if(id.match(/end/)){
       var num = id.substring(4);
-      if(window.timecodes[num].end == $('#vid')[0].currentTime) return;
+      if(!window.timecodes[num].end){
+        deselect();
+      }else if(window.timecodes[num].end == $('#vid')[0].currentTime){
+        return;
+      }
       add_undo();
       window.timecodes[num].end = $('#vid')[0].currentTime;
       check_overlap(num);
@@ -646,7 +654,7 @@
     var intermediate = window.timecodes.filter(function(tc, tc_i){
       //console.log('filter: '+tc_i,tc);
       // Filter out impossibles or zero-length ones
-      if(tc_i == 1) console.log(tc);
+      //if(tc_i == 1) //console.log(tc);
       if(tc.end <= tc.start){
         if(current_lyric() == tc_i) deselect();
         return false;
@@ -1105,6 +1113,8 @@
       display_opts();
       return;
     }
+    if(timecode() == window.last_timecode) return; // No duplication
+    window.last_timecode = timecode();
     // Presume if not that we have at least some timecodes to work with!
     var lyric_line = lyric_at_time(timecode());
     if(lyric_line){
@@ -1167,11 +1177,11 @@
     var html = '<table>';
     window.timecodes.sort(function(a,b){return a.start - b.start;});
     window.timecodes.forEach(function(line, index){
-      var end_time = '<span class="time" id="end_'+index+'">'+time_to_hms(line.end)+'</span>';
+      var end_time = time_to_hms(line.end);
       if(!line.end) end_time = '(no end yet)';
       var style = 'default';
       if(line.style) style = line.style;
-      html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - '+end_time+':</td><td width="100%"><div class="lyrics_text" id="text_'+index+'">'+line.text+'</div></td><td>Style: <select class="lyrics_style" id="style_'+index+'">'+style_options(style)+'</select></td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
+      html += '<tr><td><span class="time" id="start_'+index+'">'+time_to_hms(line.start)+'</span> - <span class="time" id="end_'+index+'">'+end_time+'</span>:</td><td width="100%"><div class="lyrics_text" id="text_'+index+'">'+line.text+'</div></td><td>Style: <select class="lyrics_style" id="style_'+index+'">'+style_options(style)+'</select></td><td><span class="delete" id="delete_'+index+'">Delete this entry</span></td></tr>';
     });
     html += '</table>';
     $('#list').html(html);
@@ -1262,6 +1272,7 @@
   }
 
   function click_line(evt){
+    //console.log(window.selected_line);
     var id = $(this).attr('id').substring(11);
     var t = -1; // Use existing timecode
     if(evt.shiftKey){
@@ -1343,7 +1354,7 @@
       // Backwards-compatibility: pure subtitles
       window.timecodes = f;
     }else{
-      if(!f.percentages) convert_fields = true;
+      if(!f._percentages) convert_fields = true;
       // Contains style information //
       if(f.opts._global){
         //console.log('global');
@@ -1415,7 +1426,7 @@
 
     function init_opts(){
       window.opts = {
-        percentages: true,
+        _percentages: true,
         default: {
           text_colour: "#000000",
           bg_colour: "#ffffff", // Alpha needed too
@@ -1438,6 +1449,7 @@
           shad_op: 0.5,
           shad_blur: 0,
           text_align: 'center',
+          v_align: 'middle',
           bold: false,
           italic: false
         },
@@ -1501,7 +1513,7 @@
 
     function canvasTextHeight(style) {
 
-      const canvas = document.createElement('CANVAS');
+      const canvas = window.test_canvas;
       const ctx = canvas.getContext('2d');
       const text = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
       ctx.font = get_font(style);
@@ -1558,7 +1570,7 @@
     }
 
     function get_max_width(sub){
-      const canvas = document.createElement('CANVAS');
+      const canvas = window.test_canvas;
       const ctx = canvas.getContext('2d');
       var max = 0;
       sub.text.split(/[\n\r]/).forEach(function(line){
@@ -1583,7 +1595,7 @@
     }
 
     function check_text_width(){
-      const canvas = document.createElement('CANVAS');
+      const canvas = window.test_canvas;
       const ctx = canvas.getContext('2d');
       var biggest = 0;
       var ratios = Object.fromEntries(list_styles('in use').map(function(s){
@@ -1726,7 +1738,6 @@
     var resultant_height = overlay_height(s) - (proportion('height', opt(line,'v_margin')) * 2);
     var unit = resultant_height / window.opts._global.subtitle_lines; //txt.length;
 
-    var translate = + proportion('height', opt(line,'v_margin')) + spare_lines * unit / 2;
     canvas.width = $('#vid')[0].videoWidth;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1779,6 +1790,12 @@
       ctx.shadowBlur = opt(line, 'shad_blur');
     }
 
+    var translate = + proportion('height', opt(line,'v_margin'));
+    if(opt(line, 'v_align') == 'middle'){
+      translate +=  spare_lines * unit / 2;
+    }else if(opt(line, 'v_align') == 'bottom'){
+      translate += spare_lines * unit;
+    }
 
     txt.forEach(function(t, i){
       var y = unit * i + unit / 2;
@@ -2449,7 +2466,7 @@ function adjust_range(){
           <div class="w3-container w3-blue"><h3>Text</h3></div>
           <div id="text_opts">
             <label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
-            <label>Text size:</label><div class="percentage"><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/
+            <label>Text size:</label><div class="percentage"><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
             <input id="font_size" class="opt_control" type="number" min="0.1" max="100" value="5" size="1" /> % of width of video<span class="tooltiptext"></span></div>
           </div><div><button type="button" id="fit_width" class="w3-btn w3-green">Fit to width</button>
             <div id="size_warning"></div>
@@ -2458,6 +2475,7 @@ function adjust_range(){
           </p>
           <p>
             Align: <select id="text_align" class="opt_control"><option value="left">Left</option><option value="center" selected>Centred</option><option value="right">Right</option></select>
+            Vertical position: <select id="v_align" class="opt_control"><option value="top">Top</option><option value="middle" selected>Middle</option><option value="bottom">Bottom</option></select>
             Style options: <input id="bold" class="w3-check opt_control" type="checkbox" value="false"/><label>Bold</label>
             <input id="italic" class="w3-check opt_control" type="checkbox" value="false"/><label>Italic</label>
           </p>
