@@ -2319,7 +2319,6 @@ function browser_video(just_overlay, zip = false){
           $('#ffmpeg_command')[0].select();
           $('#ffmpeg_command')[0].setSelectionRange(0,99999);
           if(document.execCommand("copy")){
-            alert()
             $('#confirmation').text('Command has been copied to clipboard (and is in textbox below)');
           }else{
             $('#confirmation').text('');
