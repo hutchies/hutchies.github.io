@@ -190,7 +190,6 @@
     });
     $('#clear_board').on('click', function(){
       $('#lyrics_array').html('');
-      deselect();
       end_lyric();
     });
     $('#sub_file').on('change', function(evt){
@@ -254,6 +253,8 @@
     $('#split_lyric').on('click', split_selected);
     $('#join_lyric').on('click', join_selected);
     $('#split_lyric').hide();
+    $('#deselect_lyric').hide();
+    $('#deselect_lyric').on('click', end_lyric);
     $('#join_lyric').hide();
     $('#show_log').on('click', function(){
       if($('#show_log').is(':checked')){
@@ -325,6 +326,7 @@
     });
     Mousetrap.bind('mod+z', undo);
     Mousetrap.bind('mod+shift+z', redo);
+    Mousetrap.bind(['del', 'backspace', 'esc'], end_lyric);
     $('#undo_button').click(undo);
     $('#redo_button').click(redo);
     $('#undo_button').hide();
@@ -1142,6 +1144,7 @@
     window.selected_line = -1;
     $('#split_lyric').hide();
     $('#join_lyric').hide();
+    $('#deselect_lyric').hide();
   }
 
   function push_lyric(text, t){
@@ -1167,6 +1170,7 @@
     var i = current_lyric(); // Find the unfinished timecode
     if(i == -1) return;
     window.timecodes[i].end = t;
+    deselect();
     check_overlap(i);
     update_list();
     return t; //To abut subsequent lyrics exactly
@@ -1284,7 +1288,6 @@
       if(timecode() >= window.timecodes[current_lyric()].start){
         // Normal operation – end a lyric we started, even if it is 0-length (in which case it will automatically be deleted)
         end_lyric();
-        deselect();
       }else{
         // We've jumped back before the start of the lyric, so maybe we want it to start earlier?
         add_undo();
@@ -1300,7 +1303,6 @@
       // There was a previous line, so deselect them and set their end_time
       //$('#lyric_end_'+window.selected_line).text(timecode());
       t = end_lyric();
-      deselect();
     }
     //$('#lyric_start_'+id).text(timecode());
     push_lyric($(this).text(), t);
@@ -1308,6 +1310,7 @@
     window.selected_line = id;
     if($(this).text().match(/\n/)) $('#split_lyric').show();
     if(+window.selected_line + 1 < window.ids) $('#join_lyric').show();
+    $('#deselect_lyric').show();
   }
 
   function save_subs(){
@@ -1379,6 +1382,7 @@
     display_opts();
     set_opt_controls();
     update_list();
+    if(current_lyric() != -1) $('#deselect_lyric').show();
   }
 
   function storageAvailable(type) {
@@ -2421,7 +2425,7 @@ function adjust_range(){
         Here you can:
         <ul>
           <li>Click on a lyric to make it appear at this moment;</li>
-          <li>Click again to make it disappear (or click the next lyric);</li>
+          <li>Click again (or press delete or escape) to make it disappear (or click 'end current lyric', or just click the next lyric);</li>
           <li>Press the up and down arrows to select the next or previous lyric;</li>
           <li>Press space to start and stop the video;</li>
           <li>Shift-click on a lyric to edit its text in the board before you add it;</li>
@@ -2429,10 +2433,12 @@ function adjust_range(){
         </ul>
       </details>
       <p>If you want to add and display another lyric quickly, you can type it here and press enter:</p>
-      <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea><button class="w3-btn w3-blue" type="button" id="add">Display</button>  <button class="w3-btn w3-blue" id="split_lyric">Split selected lyric</button>
-        <button class="w3-btn w3-blue" id="join_lyric">Join selected lyric</button></div>
+      <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea>
+        <button class="w3-btn w3-blue" type="button" id="add">Display</button><button class="w3-green w3-btn" id="deselect_lyric">End current lyric</button>
+        <button class="w3-btn w3-blue" id="split_lyric">Split selected lyric</button>
+        <button class="w3-btn w3-blue" id="join_lyric">Join to next lyric</button></div>
         <div id="lyrics_array" class="lyrics_array"></div>
-        <button class="w3-btn w3-black" type="button" id="clear_board">Clear lyrics board</button>
+        <button class="w3-btn w3-black" type="button" id="clear_board">Empty lyrics board</button>
       </div>
       <div id="edit_lyrics" class="tab_option" style="display: none;">
         <h2>Edit subtitles</h2>
