@@ -9,7 +9,7 @@ onmessage = function(event){
     fetch(url, {method: 'get', mode: 'no-cors'})
       .then(function(response){
         console.log(response);
-        if(response.type == 'basic') return response.text();
+        if(response.type == 'basic') return 'basic';//response.text();
         else postMessage({
           'type' : 'log',
           'data' : response.type,
