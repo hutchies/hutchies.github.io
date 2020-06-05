@@ -2730,8 +2730,15 @@ function show_passage(result){
   add_line();
 }
 
+function bible_callback(json){
+  var all = JSON.parse(json);
+  var passage = $('#single_line').val();
+  $('#single_line').val(all);
+  add_line();
+}
+
 function bible_passage(passage, version = 'NIV'){
-  var url = "https://api.biblia.com/v1/bible/content/"+encodeURIComponent(version)+".txt?passage="+encodeURIComponent(passage)+"&key=30a80e79b9aac1a77b8bdb334f03a03f";
+  var url = "https://api.biblia.com/v1/bible/content/"+encodeURIComponent(version)+".txt.js?passage="+encodeURIComponent(passage)+"&key=30a80e79b9aac1a77b8bdb334f03a03f";
   //"https://bible-api.com/John+3:16";
 
   //
@@ -2746,13 +2753,13 @@ function bible_passage(passage, version = 'NIV'){
   return;*/
   $.ajax({
     url: url,
+    dataType: "jsonp",
+    jsonpCallback: bible_callback
     statusCode: {
       404: function() {
         alert( "page not found" );
       }
     }
-  }).done(function(text){
-    console.log(text);
   });
 }
 
@@ -2823,7 +2830,7 @@ function bible_passage(passage, version = 'NIV'){
         <button class="w3-btn w3-blue" id="split_lyric">Split selected subtitle</button>
         <button class="w3-btn w3-blue" id="join_lyric">Join to next subtitle</button>
       </span><span class="verse_opts">
-      <button class="w3-btn w3-blue" type="button" id="add_verse">Fetch verse and display!</button>
+      <button class="w3-btn w3-blue" type="button" id="add_verse">Fetch verse and display</button>
       <input id="verse_numbers" class="w3-check" type="checkbox"/><label>Show verse numbers? </label>
       Bible version:
       <select id="bible_version">
