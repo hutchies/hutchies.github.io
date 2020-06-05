@@ -2745,7 +2745,7 @@ function bible_passage(passage, version = 'NIV'){
   passage = passage.replace(/\s/g,'');
   passage = passage.replace(/:/g,'.');
 
-  var url = "https://api.biblia.com/v1/bible/content/"+version+".txt.json?passage="+encodeURIComponent(passage)+"&key=30a80e79b9aac1a77b8bdb334f03a03f?callback=?";///+api_key;
+  var url = "https://api.biblia.com/v1/bible/content/"+version+".txt.json?passage="+encodeURIComponent(passage)+"&key=30a80e79b9aac1a77b8bdb334f03a03f&callback=?";///+api_key;
   $.getJSON(url, function(result){
     bible_callback(result);
   });
@@ -2818,7 +2818,7 @@ function bible_passage(passage, version = 'NIV'){
         <button class="w3-btn w3-blue" id="split_lyric">Split selected subtitle</button>
         <button class="w3-btn w3-blue" id="join_lyric">Join to next subtitle</button>
       </span><span class="verse_opts">
-      <button class="w3-btn w3-blue" type="button" id="add_verse">Fetch verse and display!</button>
+      <button class="w3-btn w3-blue" type="button" id="add_verse">Fetch verse and display</button>
       <input id="verse_numbers" class="w3-check" type="checkbox"/><label>Show verse numbers? </label>
       Bible version:
       <select id="bible_version">
