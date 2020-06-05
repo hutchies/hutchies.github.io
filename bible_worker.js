@@ -12,7 +12,7 @@ onmessage = function(event){
         if(response.type == 'basic') return response.text();
         else postMessage({
           'type' : 'log',
-          'data' : response,
+          'data' : response.type,
         })
       })
       .then(function(text){
