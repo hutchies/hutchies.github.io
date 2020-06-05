@@ -2691,7 +2691,10 @@ function bible_passage(passage, version = 'NIV'){
   var url = "https://www.biblegateway.com/passage/?search="+encodeURIComponent(passage)+'&version='+encodeURIComponent(version);
 
   fetch(url, {method: 'get', mode: 'no-cors'})
-    .then(response => response.text())
+    .then(function(response){
+      console.log(response);
+      return response.text();
+    })
     .then(
   /*return;
   $.ajax({
