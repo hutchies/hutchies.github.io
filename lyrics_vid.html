@@ -2133,8 +2133,8 @@ function init_worker(){
 
     } else if(message.type == 'found') {
       show_passage(message.data, message.passage);
-    } else if(message.type == 'error') {
-      Alert('error retrieving verse');
+    } else if(message.type == 'log') {
+      console.log('Log:');
       console.log(message.data);
     }
   }
