@@ -214,7 +214,7 @@
         $('#video_here')[0].src = URL.createObjectURL(f);
         //$('#video_proportions').show();
         $('#vid').on('canplay', vid_ready); // Reinstate events
-        $('#vid').on('timeupdate', sync_lyrics); // Reinstate events
+        $('#vid').on('timeupdate', timeupdate); // Reinstate events
         $('#audio_settings').hide();
       }else if(f.type.match('audio.*')){
         window.is_audio = true;
@@ -223,7 +223,7 @@
         $('#vid')[0].videoWidth = 1024; // Placeholder to stop breakage
         $('#vid')[0].videoHeight = 768; // Placeholder to stop breakage
         $('#vid').on('canplay', vid_ready); // Reinstate events
-        $('#vid').on('timeupdate', sync_lyrics); // Reinstate events
+        $('#vid').on('timeupdate', timeupdate); // Reinstate events
         $('#audio_settings').show();
         $('.resize_vid').on('click', resize_vid_for_audio);
         $('#placeholder').css('width', 1024 * video_size_mult());
@@ -235,12 +235,13 @@
       $('#video_here').parent()[0].load();
     });
     $('#vid').on('canplay', vid_ready);
-    $('#vid').on('timeupdate', sync_lyrics);
+    $('#vid').on('timeupdate', timeupdate);
     $('#home_ffmpeg').on('click', home_ffmpeg);
     $('#export_srt').on('click', export_srt);
     $('#export_ass').on('click', export_ass);
     $('.instructions').hide();
     $('#audio_settings').hide();
+    $('.fit_to_screen').hide();
     $('.options').hide();
     $('#float').on('click', float_video);
     $('.opt_control').on('change', change_opt);
@@ -336,7 +337,7 @@
 
     Mousetrap.prototype.stopCallback = function(e, element, combo) {
       if ((' ' + element.className + ' ').indexOf(' mousetrap ') > -1) {
-        if(combo != 'space') return false;
+        if(combo != 'space' && combo != 'backspace' && combo != 'del') return false;
       }
 
       // stop for input, select, and textarea
@@ -469,6 +470,8 @@
   function preview_canvas(){
     //$('#preview').hide();
     //console.log(canvas);
+    if(!window.previewing) window.previewing = 0;
+    //console.log('previewing',window.previewing++);
     $('#canvas').css('height', canvas_height() * video_size_mult() );
     draw_subtitle(window.preview_line, $('#canvas')[0]);
     check_text_width();
@@ -757,27 +760,29 @@
         $('#bg_opacity_range').prop('disabled', false);
         $('#bg_options').removeClass('impossible');
         $('#bg_width').prop('disabled', false);
+        $('#bg_width_text').text('Background width');
         $('#bg_width_range').prop('disabled', false);
-        $('#width_div').removeClass('impossible');
       }else if(value == 'tight'){
         $('#bg_visible').prop('disabled', true);
         $('#bg_colour').prop('disabled', false);
         $('#bg_opacity').prop('disabled', false);
         $('#bg_opacity_range').prop('disabled', false);
         $('#bg_options').removeClass('impossible');
-        $('#bg_width').prop('disabled', true);
-        $('#bg_width_range').prop('disabled', true);
-        $('#width_div').addClass('impossible');
+        $('#bg_width').prop('disabled', false);
+        $('#bg_width_text').text('Text width');
+        $('#bg_width_range').prop('disabled', false);
       }else if(value == 'none'){
+        $('#bg_visible').prop('disabled', true);
         $('#bg_colour').prop('disabled', true);
         $('#bg_opacity').prop('disabled', true);
         $('#bg_opacity_range').prop('disabled', true);
-        $('#bg_width').prop('disabled', true);
-        $('#bg_width_range').prop('disabled', true);
+        $('#bg_width_text').text('Text width');
+        $('#bg_width').prop('disabled', false);
+        $('#bg_width_range').prop('disabled', false);
         $('#bg_options').addClass('impossible');
       }
     }else if(opt == 'text_align'){
-      if(value == 'center'){
+      if(value == 'center' || value == 'justify'){
         $('#h_offset').prop('min', -50);
         $('#h_offset').prop('max', 50);
         $('#h_offset_range').prop('min', -50);
@@ -1108,15 +1113,22 @@
     return lyric_line;
   }
 
+  function timeupdate(){
+    if(timecode() == window.last_timecode) return; // No duplication
+    window.last_timecode = timecode();
+    sync_lyrics();
+  }
+
   function sync_lyrics(){
+    //console.log('sl', window.timecodes);
     if(window.timecodes.length < 1){
       //$('#preview').text('');
       window.preview_line = { start: 0, end: 0, text: ''};
       display_opts();
+      //console.log('slearly', window.timecodes);
       return;
     }
-    if(timecode() == window.last_timecode) return; // No duplication
-    window.last_timecode = timecode();
+
     // Presume if not that we have at least some timecodes to work with!
     var lyric_line = lyric_at_time(timecode());
     if(lyric_line){
@@ -1134,6 +1146,7 @@
       window.preview_line = {start: 0, end: 0, text: ''};
       display_opts();
     }
+    //console.log('sle', window.timecodes);
   }
 
   function timecode(){
@@ -1432,8 +1445,8 @@
       window.opts = {
         _percentages: true,
         default: {
-          text_colour: "#000000",
-          bg_colour: "#ffffff", // Alpha needed too
+          text_colour: "#ffffff",
+          bg_colour: "grey",
           font_size: 5, // percent of screen height
           font: 'sans-serif',
           line_spacing: 1,
@@ -1441,26 +1454,27 @@
           v_offset: 0,
           h_offset: 0,
           h_margin: 1,
-          bg_type: "full", // possibilities: 'full' border, 'box' box, 'none'
+          bg_type: "full", // possibilities: 'full' border, 'tight' box, 'none'
           bg_border: 0,
-          bg_opacity: 0.5,
+          bg_opacity: 0.6,
           bg_width: 100,
           bg_type: 'full',
           out_colour: "#000000",
           out_size: 0,
           shad_colour: "#000000",
-          shad_off: 0,
-          shad_op: 0.5,
-          shad_blur: 0,
+          shad_off: 3,
+          shad_op: 0.7,
+          shad_blur: 30,
           text_align: 'center',
           v_align: 'middle',
           bold: false,
-          italic: false
+          italic: false,
+          wrap: true
         },
         _global: {
           subtitle_lines: 1,
           video_size: 50,
-          universal_overlay: false, // i.e. resize the overlay to the size of the tallest font
+          universal_overlay: true, // i.e. resize the overlay to the size of the tallest font
           bg_visible: false,
           min_height: true,
           fades: false,
@@ -1556,13 +1570,14 @@
     }
 
     function tallest_height(){
-      var tallest = 0;
+      return get_max_height(-1);
+      /*var tallest = 0;
       list_styles('in use').forEach(function(s){
         var height = canvasTextHeight(s).height  * window.opts[s].line_spacing * 1.2 * window.opts._global.subtitle_lines + proportion('height', window.opts[s].v_margin) * 2;
         if(height > tallest) tallest = height;
       })
 
-      return tallest;
+      return tallest;*/
     }
 
     function all_fonts_same_size(){
@@ -1573,18 +1588,51 @@
       return same;
     }
 
-    function get_max_width(sub){
+    function get_max_width(text, style = 'default'){
       const canvas = window.test_canvas;
       const ctx = canvas.getContext('2d');
       var max = 0;
-      sub.text.split(/[\n\r]/).forEach(function(line){
-        var style = sub.style || 'default';
-        ctx.font = get_font(sub.style);
+      text.forEach(function(line){
+        ctx.font = get_font(style);
         const textMetrics = ctx.measureText(line);
-        var tw = Number.parseInt(textMetrics.width.toFixed(1));
+        var width = textMetrics.actualBoundingBoxLeft + textMetrics.actualBoundingBoxRight;
+        var tw = Number.parseInt(width.toFixed(1));
         if(tw > max) max = tw;
       });
       return max;
+    }
+
+    function get_sub_height(sub){
+      const canvas = window.test_canvas;
+      const ctx = canvas.getContext('2d');
+      ctx.font = get_font(s);
+      var s = sub.style || 'default';
+      var lines = sub.text.split(/[\r\n]/);
+      if(window.opts[s].wrap) lines = wrap_text(lines, s).text;
+      var h = 0;
+      lines.forEach(function(l){
+        const textMetrics = ctx.measureText(l);
+        var height = textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent; // TODO check it works!
+        if(height > h) h = height;
+      });
+      h = h * window.opts[s].line_spacing * 1.2 * lines.length + proportion('height', window.opts[s].v_margin) * 2;
+      return h;
+    }
+
+    function get_max_height(style){
+      var styles = [];
+      if(style == -1) styles = list_styles('in use');
+      else styles = [style];
+      var mh = 0;
+      styles.forEach(function(s){
+        var sh = 0;
+        window.timecodes.filter(tc => tc.style == s).forEach(function(tc){
+          var h = get_sub_height(tc);
+          if(h > sh) sh = h;
+        });
+        if(sh > mh) mh = sh;
+      });
+      return mh;
     }
 
     function proportion(dim, num){
@@ -1592,15 +1640,22 @@
       else return $('#vid')[0].videoHeight / 100 * num;
     }
 
-    function proportional_width(style = 'default'){
+    /*function proportional_width(style = 'default'){
       var prop = window.opts[style].bg_width || window.opts.default.bg_width;
       var actual_width = $('#vid')[0].videoWidth / 100 * prop;
       return parseInt(actual_width.toFixed(0));
+    }*/
+
+    function text_width(text, style = 'default'){
+      const canvas = window.test_canvas;
+      const ctx = canvas.getContext('2d');
+      ctx.font = get_font(style);
+      const textMetrics = ctx.measureText(text);
+      var width = textMetrics.actualBoundingBoxLeft + textMetrics.actualBoundingBoxRight;
+      return textMetrics.width;
     }
 
     function check_text_width(){
-      const canvas = window.test_canvas;
-      const ctx = canvas.getContext('2d');
       var biggest = 0;
       var ratios = Object.fromEntries(list_styles('in use').map(function(s){
         return [s, 0];
@@ -1608,10 +1663,8 @@
       window.timecodes.forEach(function(sub){
         sub.text.split(/[\n\r]/).forEach(function(line){
           var style = sub.style || 'default';
-          ctx.font = get_font(sub.style);
-          const textMetrics = ctx.measureText(line);
-          var tw = Number.parseInt(textMetrics.width.toFixed(1)) + proportion('width', window.opts[style].h_margin) * 2;
-          var vw = Number.parseInt(proportional_width(style));
+          var tw = Number.parseInt(text_width(line, style).toFixed(1)) + proportion('width', window.opts[style].h_margin) * 2;
+          var vw = Number.parseInt(proportion('width', window.opts[style].bg_width));
           var ratio = tw / vw;
           if(ratio > ratios[style]) ratios[style] = ratio; // Should now also include larger ones!
           if(ratio > biggest) biggest = ratio;
@@ -1620,11 +1673,13 @@
       if(biggest <= 1){
         if($('#size_warning').html() != '') $('#size_warning').html('');
         $('#fit_width').show();
+        $('.fit_to_screen').hide();
       }else{
-        if($('#size_warning').html() == '') $('#size_warning').html('Warning: font too large, some subtitles won\'t fit on screen!<button id="fit_to_screen" class="w3-btn w3-blue" type="button">Fix this</button>');
-        $('#fit_to_screen').off('click').on('click', function(){
+        if($('#size_warning').html() == '') $('#size_warning').html('Warning: font too large, some subtitles won\'t fit on screen!<button class="w3-btn w3-blue fit_to_screen" type="button">Fix this</button>');
+        $('.fit_to_screen').show();
+        $('.fit_to_screen').off('click').on('click', function(){
           fit_text_to_width(ratios, biggest, false);
-          $('#fit_to_screen').hide();
+          $('.fit_to_screen').hide();
         });
         $('#fit_width').hide();
         return false;
@@ -1632,6 +1687,7 @@
       $('#fit_width').off('click').on('click', function(){
         fit_text_to_width(ratios, biggest, true);
         $('#fit_width').hide();
+        $('.fit_to_screen').hide();
       });
       return true;
     }
@@ -1671,9 +1727,9 @@
     function overlay_height(style = window.current_style){
       var font_height = 0;
       if(window.opts._global.universal_overlay){
-        font_height = tallest_height();
+        font_height = get_max_height(-1);
       }else{
-        font_height = canvasTextHeight(style).height * window.opts[style].line_spacing * 1.2 * window.opts._global.subtitle_lines + proportion('height', window.opts[style].v_margin) * 2;
+        font_height = get_max_height(style); //canvasTextHeight(style).height * window.opts[style].line_spacing * 1.2 * window.opts._global.subtitle_lines + proportion('height', window.opts[style].v_margin) * 2;
       }
       /*if(!isEven(font_height)){
       return font_height+1;
@@ -1723,12 +1779,105 @@
     ctx.fillText('[Video will go here]', canvas.width/2, canvas.height/2);
   }
 
+  function wrap_text(text, style = 'default'){
+    var text_lines = [];
+    var last_lines = [];
+    var ret_obj = {text: [''], last_lines: []};
+    var max_w = proportion('width', window.opts[style].bg_width) - proportion('width', window.opts[style].h_margin) * 2;
+    if(text.length == 1 && text[0] == '') return ret_obj;
+    text.forEach(function(line){
+      var current_width = 0;
+      var current_line = '';
+      text_lines.push(line); // Single words don't get wrapped
+      if(line.split(' ').length > 1) line.split(' ').forEach(function(word){
+        if(current_line.length > 0) current_line += ' ';
+        var new_width = text_width(current_line+word, style);
+        //console.log('length of',current_line+' '+word,new_width,max_w);
+        if(new_width < max_w){
+          // add to current line
+          current_line += word;
+          current_width = new_width;
+          text_lines[text_lines.length - 1] = current_line; // Ensures we don't lose last line
+        }else{
+          // end current line and make new one
+          current_line = word;
+          current_width = text_width(word);
+          text_lines.push(current_line); // Start new line
+        }
+      });
+      last_lines.push(text_lines.length - 1); // show that this is a last line
+    });
+    //console.log(text_lines);
+    ret_obj = {
+      text: text_lines,
+      last_lines: last_lines
+    };
+    return ret_obj;
+  }
+
+  function justified_text(params){
+    // Presumes it's already been wrapped, since it will have been!
+    // TODO could add ability to deal with italics etc. – or add this in text_width? Or elsewhere?
+    // Could generalise this function for all text, to handle escaped style preferences etc.
+    // Don't suppose I want to handle leading...??!??!
+    var words = params.text.split(' ');
+    var style = params.style || 'default';
+    var x = params.x;
+    var y = params.y;
+    var width = params.width;
+    var ctx = params.ctx; // Presumes it's all set up with relevant formatting codes etc.
+    var type = params.type; // 'fill' or 'stroke'
+    var threshold = params.threshold || 0;
+    threshold = width * threshold;
+
+    // First, get width without spaces
+    var running_width = 0;
+    words.forEach(function(word){
+      running_width += text_width(word, style);
+    });
+
+    if(running_width < threshold){ // Too narrow to justify, so just draw
+      if(type == 'fill') ctx.fillText(params.text, x, y);
+      if(type == 'stroke') ctx.strokeText(params.text, x, y);
+      return;
+    }
+
+    // Then, get gap
+    var gap = 0;
+    if(words.length > 1) gap = (width - running_width) / (words.length - 1); // Note that if this is negative, words will overlap, which is probs ok
+    var x_off = 0;
+
+    //console.log(words,gap,x,y);
+
+    // Now draw it!
+    words.forEach(function(word){
+      if(type == 'fill') ctx.fillText(word, x+x_off, y);
+      if(type == 'stroke') ctx.strokeText(word, x+x_off, y);
+      x_off += text_width(word, style) + gap;
+    });
+
+  }
+
+  function max_lines(){
+    var max = window.opts._global.subtitle_lines;
+    window.timecodes.forEach(function(tc){
+      var style = tc.style || 'default';
+      var text = tc.text.split(/[\r\n]/);
+      if(window.opts[style].wrap) text = wrap_text(text, style).text;
+      if(text.length > max) max = text.length;
+    });
+    return max;
+  }
+
   function draw_subtitle(line, canvas, blank = false){
     var ctx = canvas.getContext('2d');
     var s = line.style;
     if(!s) s = 'default';
     var height = overlay_height(s) + proportion('height', opt(line, 'v_offset'));
+    var lines = max_lines(); // allowing us to change it for wrapping
     //console.log(overlay_height(s), height);
+    var wrap = opt(line, 'wrap');
+    var last_lines = [];
 
     canvas.height = canvas_height();
     var y_orig = canvas.height - height;
@@ -1738,9 +1887,18 @@
     }
 
     var txt = line.text.split(/[\r\n]/); // For multi-line text
-    var spare_lines = window.opts._global.subtitle_lines - txt.length;
+    //console.log(window.timecodes);
+    if(wrap){
+      var obj = wrap_text(txt,s);
+      txt = obj.text;
+      //console.log(obj, txt);
+      last_lines = obj.last_lines;
+    }
+    //console.log(wrap_text(txt, s));
+    var spare_lines = 0;
+    if(lines > txt.length) spare_lines = lines - txt.length; // To keep things padded
     var resultant_height = overlay_height(s) - (proportion('height', opt(line,'v_margin')) * 2);
-    var unit = resultant_height / window.opts._global.subtitle_lines; //txt.length;
+    var unit = resultant_height / (txt.length + spare_lines); // i.e. full height for whatever
 
     canvas.width = $('#vid')[0].videoWidth;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1750,37 +1908,57 @@
     if(line.text == '' && !window.opts._global.bg_visible) return; // No need to do any drawing
     // Draw background
 
+
+    var translate = 0;
+    if(opt(line, 'v_align') == 'middle'){
+      translate += spare_lines * unit / 2;
+    }else if(opt(line, 'v_align') == 'bottom'){
+      translate += spare_lines * unit;
+    }
+    var bg_trans = 0;
+    var bg_height = overlay_height(s);
+    var text_width = 0;
     var bg_width = canvas.width;
     var bg_start = 0;
     var h_off = proportion('width', opt(line, 'h_offset'));
 
+    if(opt(line,'bg_type') == 'full'){
+      bg_width = proportion('width', opt(line, 'bg_width'));
+      text_width = bg_width - proportion('width', opt(line, 'h_margin')) * 2;
+      bg_start = (canvas.width - bg_width) / 2 + h_off;
+      if(opt(line, 'text_align') == 'left') bg_start = h_off;
+      if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - h_off;
+    }else{
+      text_width = get_max_width(txt, s);
+      bg_width = proportion('width', opt(line, 'h_margin')) * 2 + text_width;
+      var bg_margin = (canvas.width - bg_width) / 2 + h_off;
+      bg_trans = translate;
+      bg_height = get_sub_height(line); // TODO handle universal_overlay!
+      //bg_height = unit * txt.length; // TODO I think!!
+      bg_start = bg_margin;
+      if(opt(line, 'text_align') == 'left') bg_start = h_off;
+      if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - h_off;
+    }
+
     if(opt(line,'bg_type') != 'none'){
-      if(opt(line, 'bg_type') == 'tight'){
-        bg_width = proportion('width', opt(line, 'h_margin')) * 2 + get_max_width(line);
-        var bg_margin = (canvas.width - bg_width) / 2 + h_off;
-        bg_start = bg_margin;
-        if(opt(line, 'text_align') == 'left') bg_start = h_off;;
-        if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - h_off;
-      }else{
-        bg_width = proportional_width(s);
-        bg_start = (canvas.width - bg_width) / 2 + h_off;;
-        if(opt(line, 'text_align') == 'left') bg_start = h_off;;
-        if(opt(line, 'text_align') == 'right') bg_start = canvas.width - bg_width - h_off;;
-      }
       ctx.globalAlpha = opt(line, 'bg_opacity');
       ctx.fillStyle = opt(line, 'bg_colour');
-      ctx.fillRect(bg_start, y_orig, bg_width, overlay_height(s));
+      ctx.fillRect(bg_start, y_orig+bg_trans, bg_width, bg_height);
       ctx.globalAlpha = 1;
     }
 
     if(blank) return;
 
+    translate += proportion('height', opt(line,'v_margin'));
+
     // Draw text
     ctx.font = get_font(s);
-    ctx.textAlign = opt(line, 'text_align');
-    var text_x = canvas.width/2 + h_off;;
-    if(ctx.textAlign == 'left') text_x = proportion('width', opt(line, 'h_margin')) + h_off;;
-    if(ctx.textAlign == 'right') text_x = canvas.width - proportion('width', opt(line, 'h_margin')) - h_off;
+
+    //txt.forEach(function(t, i){
+
+    var align = opt(line, 'text_align');
+
+
     //ctx.fillStyle = window.opts.text_colour;
     //ctx.fillText("asdas",0,0);
     ctx.textBaseline = 'middle';
@@ -1794,16 +1972,33 @@
       ctx.shadowBlur = opt(line, 'shad_blur');
     }
 
-    var translate = + proportion('height', opt(line,'v_margin'));
-    if(opt(line, 'v_align') == 'middle'){
-      translate +=  spare_lines * unit / 2;
-    }else if(opt(line, 'v_align') == 'bottom'){
-      translate += spare_lines * unit;
-    }
-
     txt.forEach(function(t, i){
       var y = unit * i + unit / 2;
-      ctx.fillText(t, text_x, y_orig+y+translate); // Fix the x thing for different alignments
+      if(t.startsWith('\\r')) align = 'right';
+      if(t.startsWith('\\l')) align = 'left';
+      if(t.startsWith('\\c')) align = 'center';
+      if(t.startsWith('\\j')) align = 'justify';
+      t = t.replace(/\\[^\\]/g,'');
+      if(align != 'justify') ctx.textAlign = align; else ctx.textAlign = 'left';
+      var text_x = text_start(align, s, bg_start, bg_width);
+      //console.log(text_x);
+
+      if(align == 'justify'){
+        var threshold = 0;
+        if(last_lines.includes(i)) threshold = 0.7; // Could adjust
+        justified_text({
+          text: t,
+          style: s,
+          x: text_x,
+          y: y_orig+y+translate,
+          width: text_width,
+          ctx: ctx,
+          type: 'fill',
+          threshold: threshold
+        });
+      }else{
+        ctx.fillText(t, text_x, y_orig+y+translate); // Fix the x thing for different alignments
+      }
     });
 
     if(opt(line, 'out_size') > 0){
@@ -1811,12 +2006,50 @@
       ctx.strokeStyle = opt(line, 'out_colour');
       ctx.lineWidth = opt(line, 'out_size');
       txt.forEach(function(t, i){
+        if(t.startsWith('\\r')) align = 'right';
+        if(t.startsWith('\\l')) align = 'left';
+        if(t.startsWith('\\c')) align = 'center';
+        if(align != 'justify') ctx.textAlign = opt(line, 'text_align'); else ctx.textAlign = 'left';
+        var text_x = text_start(align, s, bg_start, bg_width);
+
         var y = unit * i + unit / 2;
-        ctx.strokeText(t, text_x, y_orig+y+translate); // Fix the x thing for different alignments
+        if(align == 'justify'){
+          var threshold = 0;
+          if(last_lines.includes(i)) threshold = 0.7; // Could adjust
+          justified_text({
+            text: t,
+            style: s,
+            x: text_x,
+            y: y_orig+y+translate,
+            width: text_width,
+            ctx: ctx,
+            type: 'stroke',
+            threshold: threshold
+          });
+        }else{
+          ctx.strokeText(t, text_x, y_orig+y+translate); // Fix the x thing for different alignments
+        }
       });
     }
 
   }
+
+/*function text_start(align, s = 'default', canvas, bg_start){
+  var text_x = canvas.width/2 + proportion('width', window.opts[s].h_offset);
+
+  if(align == 'left') text_x = proportion('width', window.opts[s].h_margin) + proportion('width', window.opts[s].h_offset);
+  if(align == 'right') text_x = canvas.width - proportion('width', window.opts[s].h_margin) - proportion('width', window.opts[s].h_offset);
+  if(align == 'justify') text_x = bg_start + proportion('width', window.opts[s].h_margin);
+  return text_x;
+}*/
+
+function text_start(align, s = 'default', bg_start, bg_width){
+  var text_x = ((bg_start * 2) + bg_width) / 2;
+
+  if(align == 'left' || align == 'justify') text_x = bg_start + proportion('width', window.opts[s].h_margin);
+  if(align == 'right') text_x = bg_start + bg_width - proportion('width', window.opts[s].h_margin);
+  return text_x;
+}
 
   function canvas_to_ab_promise(line){
     var canvas = document.createElement('CANVAS');
@@ -2379,6 +2612,7 @@ function adjust_range(){
   $('#'+id).val($(this).val());
   $('#'+id).trigger('change');
 }
+
 </script>
 </head>
 <body>
@@ -2432,10 +2666,15 @@ function adjust_range(){
           <li>Shift-click on a lyric to edit its text in the board before you add it;</li>
           <li>Press the 'split' and 'join' buttons when they appear to adjust how many lines appear in a lyric.</li>
         </ul>
+        <b>Special codes:</b> You can add the following codes to your text for formatting:
+        <ul>
+          <li>\l, \c, \r, \j at the start of a line to align left, centre, right or justified</li>
+        </ul>
       </details>
       <p>If you want to add and display another lyric quickly, you can type it here and press enter:</p>
       <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea>
-        <button class="w3-btn w3-blue" type="button" id="add">Display</button><button class="w3-green w3-btn" id="deselect_lyric">End current lyric</button>
+        <button class="w3-btn w3-blue" type="button" id="add">Display</button><button class="w3-orange w3-btn" id="deselect_lyric">End current lyric</button>
+        <button class="w3-btn w3-green fit_to_screen" type="button">Fit text to video width</button>
         <button class="w3-btn w3-blue" id="split_lyric">Split selected lyric</button>
         <button class="w3-btn w3-blue" id="join_lyric">Join to next lyric</button></div>
         <div id="lyrics_array" class="lyrics_array"></div>
@@ -2474,14 +2713,14 @@ function adjust_range(){
             <label>Text colour:</label><input class="opt_control" type='color' id='text_colour' value='#ffffff'/>
             <label>Text size:</label><div class="percentage"><input type='range' min='0.1' max='20' step="0.1" value='5' class='slider' id='font_size_range'/>
             <input id="font_size" class="opt_control" type="number" min="0.1" max="100" value="5" size="1" /> % of width of video<span class="tooltiptext"></span></div>
-          </div><div><button type="button" id="fit_width" class="w3-btn w3-green">Fit to width</button>
+          </div><div><input id="wrap" class="w3-check opt_control" type="checkbox"/><label>Auto-wrap text? </label><button type="button" id="fit_width" class="w3-btn w3-green">Fit to width</button>
             <div id="size_warning"></div>
           </p><p>
             Font: <input id="font" class="opt_control" type="text" value='sans-serif' size="20"/> (You can type any on your system)
           </p>
           <p>
-            Align: <select id="text_align" class="opt_control"><option value="left">Left</option><option value="center" selected>Centred</option><option value="right">Right</option></select>
-            Vertical position: <select id="v_align" class="opt_control"><option value="top">Top</option><option value="middle" selected>Middle</option><option value="bottom">Bottom</option></select>
+            Align: <select id="text_align" class="opt_control"><option value="left">Left</option><option value="center" selected>Centred</option><option value="right">Right</option><option value="justify">Justified</option></select>
+            Vertical: <select id="v_align" class="opt_control"><option value="top">Top</option><option value="middle" selected>Middle</option><option value="bottom">Bottom</option></select>
             Style options: <input id="bold" class="w3-check opt_control" type="checkbox" value="false"/><label>Bold</label>
             <input id="italic" class="w3-check opt_control" type="checkbox" value="false"/><label>Italic</label>
           </p>
@@ -2516,6 +2755,9 @@ function adjust_range(){
               <input id="h_offset" type="number" class="opt_control" min='0' max='100' value="0" size="4" /> % of width of video<span class="tooltiptext"></span></div>
             </div>
             </p>
+            <div id="width_div"><span id="bg_width_text">Background width</span>: <div class="percentage"><input type='range' min='0' max='100' step="0.1" value='0' class='slider' id='bg_width_range' />
+              <input id="bg_width" class="opt_control" type="number" min='0' max='100' value="0.5" size="3"/> % of width of video<span class="tooltiptext"></span></div>
+            </div>
             <p>
               Background type:
               <select id="bg_type" class="opt_control">
@@ -2523,12 +2765,12 @@ function adjust_range(){
                 <option value="tight">Tight around text</option>
                 <option value="none">No background</option>
               </select>
-            </p><div id="bg_options" class="subpanel"><p><div>
+            </p>
+            <div class="subpanel"><p>
+            <div id="bg_options">
               Background colour: <input class="opt_control" type='color' id='bg_colour' value='#ffffff'/>
               Background opacity: <input type='range' min='0' max='1' value='0.5' step="0.1" class='slider' id='bg_opacity_range' />
               <input id="bg_opacity" class="opt_control" type="number" min='0' max='1' value="0.5" size="3"/>
-            </div></p><p><div id="width_div">Background width: <div class="percentage"><input type='range' min='0' max='100' step="0.1" value='0' class='slider' id='bg_width_range' />
-              <input id="bg_width" class="opt_control" type="number" min='0' max='100' value="0.5" size="3"/> % of width of video<span class="tooltiptext"></span></div>
             </div></p></div></div>
           </div>
         </p>
