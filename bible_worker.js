@@ -11,10 +11,10 @@ onmessage = function(event){
         console.log(response);
         return response.type;
         //if(response.type == 'basic') return 'basic';//response.text();
-        //else postMessage({
+        /* else postMessage({
           'type' : 'log',
           'data' : response.type,
-        });
+        });*/
       })
       .then(function(text){
         postMessage({
