@@ -2688,14 +2688,21 @@ function bible_version(){
 }
 
 function bible_passage(passage, version = 'NIV'){
+  var url = "https://www.biblegateway.com/passage/?search="+encodeURIComponent(passage)+'&version='+encodeURIComponent(version);
+
+  fetch(url, {method: 'get', mode: 'no-cors'})
+    .then(response => response.text())
+    .then(
+  /*return;
   $.ajax({
-    url:"https://www.biblegateway.com/passage/?search="+encodeURIComponent(passage)+'&version='+encodeURIComponent(version),
+    url: url,
     statusCode: {
       404: function() {
         alert( "page not found" );
       }
     }
-  }).done(function(result){
+  }).done(*/
+  function(result){
     var all = '';
     $(result).find('.passage-content *').each(function(){
       //console.log(this);
@@ -2758,7 +2765,7 @@ function bible_passage(passage, version = 'NIV'){
   <div class="w3-bar w3-black">
     <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Import</button>
     <button class="w3-bar-item w3-button tablink" id="place_tab" onclick="openTab(event, 'place_lyrics','place')">Place</button>
-    <button class="w3-bar-item w3-button tablink" id="verse_tab" style="display: none;" onclick="openTab(event, 'place_lyrics','verse')">Verse</button>
+    <button class="w3-bar-item w3-button tablink" id="verse_tab" onclick="openTab(event, 'place_lyrics','verse')">Verse</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'edit_lyrics')">Edit</button>
     <button class="w3-bar-item w3-button tablink" id="opt_tab" onclick="openTab(event, 'options')">Format</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'export')">Export</button>
