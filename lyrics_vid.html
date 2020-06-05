@@ -242,6 +242,9 @@
     $('.instructions').hide();
     $('#audio_settings').hide();
     $('.fit_to_screen').hide();
+    $('#bible_version').on('change', bible_version);
+    $('#bible_custom').hide();
+    $('#add_verse').on('click', add_verse);
     $('.options').hide();
     $('#float').on('click', float_video);
     $('.opt_control').on('change', change_opt);
@@ -507,7 +510,7 @@
     setup_styles();
   }
 
-  function openTab(evt, tabName) {
+  function openTab(evt, tabName, verse = 'place') {
     var i;
     var x = document.getElementsByClassName("tab_option");
     for (i = 0; i < x.length; i++) {
@@ -519,10 +522,18 @@
     }
 
     // Move lines control around
-
-
     document.getElementById(tabName).style.display = "block";
     evt.currentTarget.className += " w3-blue";
+
+    if(tabName == 'place_lyrics'){
+      if(verse == 'verse'){
+        $('.verse_opts').show();
+        $('.lyrics_opts').hide();
+      }else{
+        $('.verse_opts').hide();
+        $('.lyrics_opts').show();
+      }
+    }
   }
 
 
@@ -1013,10 +1024,14 @@
 
   function rescan_sub_lines(){
     var min = 1;
-    $('.line_text').each(function(i){
+    /*$('.line_text').each(function(i){
       var n = $(this).text().split(/[\n\r]/).length;
       if(n > min) min = n;
-    });
+    });*/
+    window.timecodes.forEach(function(tc){
+      var n = tc.text.split(/[\n\r]/).length;
+      if(n > min) min = n;
+    })
     $('#subtitle_lines_range').prop('min', min);
     $('#subtitle_lines').prop('min', min);
     if(window.opts._global.subtitle_lines < min){
@@ -1192,6 +1207,7 @@
 
   function update_list(){
     var html = '<table>';
+    rescan_sub_lines();
     window.timecodes.sort(function(a,b){return a.start - b.start;});
     window.timecodes.forEach(function(line, index){
       var end_time = time_to_hms(line.end);
@@ -2613,6 +2629,101 @@ function adjust_range(){
   $('#'+id).trigger('change');
 }
 
+function superscript(text){
+  return text;
+  /*var res = '';
+  for(let i = 0; i < text.length; i++){
+    var code = text.charCodeAt(i) + 0x2040;
+    //code = ('0000' + code.toString(16).toUpperCase()).slice(-4)
+    //console.log(text.charAt(i));
+    switch(text.charAt(i)){
+      case '1':
+        res = res.concat('\u00B9');
+        break;
+      case '2':
+        res = res.concat('\u00B2');
+        break;
+      case '3':
+        res = res.concat('\u00B3');
+        break;
+      case 'a':
+        res = res.concat('\u1d43');
+        break;
+      case 'b':
+        res = res.concat('\u1d47');
+        break;
+      case 'c':
+        res = res.concat('\u1d9c');
+        break;
+      case 'd':
+        res = res.concat('\u1d48');
+        break;
+      case '4': case '5': case '6': case '7': case '8': case '9':
+        res = res.concat(String.fromCharCode(text.charCodeAt(i) + 0x2040));
+        break;
+      default:
+        res = res.concat(text.charCodeAt(i));
+    }
+  }
+  return res;*/
+}
+
+function add_verse(){
+  var passage = $('#single_line').val();
+  if(passage == '') return;
+  var version = $('#bible_version').val();
+  if(version == 'custom') version = $('#bible_name').val();
+  bible_passage(passage, version);
+}
+
+function bible_version(){
+  if($('#bible_version').val() == 'custom') $('#bible_custom').show();
+  else $('#bible_custom').hide();
+}
+
+function bible_passage(passage, version = 'NIV'){
+  $.ajax({
+    url:"https://www.biblegateway.com/passage/?search="+encodeURIComponent(passage)+'&version='+encodeURIComponent(version),
+    statusCode: {
+      404: function() {
+        alert( "page not found" );
+      }
+    }
+  }).done(function(result){
+    var all = '';
+    $(result).find('.passage-content *').each(function(){
+      //console.log(this);
+      if(this.nodeType == 1 && $(this).hasClass('text') && $(this).parent('h3').length == 0){
+        var ch = '';
+        var num = '';
+        if(all.length > 0){
+          // Add chapters in middle
+          ch = $(this).find('.chapternum').text();
+          if(ch) ch = '\nChapter '+ch+'\n';
+        }
+        if($('#verse_numbers').is(':checked')) num = $(this).find('.versenum').text();
+        $(this).find('.versenum').remove();
+        $(this).find('.chapternum').remove();
+        $(this).find('.footnote').remove();
+        //console.log(superscript(num));
+        all += ch+superscript(num)+$(this).text()+' '; //TODO check newline ok
+      }
+    })
+    //console.log($(result));
+    $(result).find('.chapternum').each(function(){
+      var num = $(this).text();
+      $(this).text('Chapter '+num+'\n');
+    })
+    //$(result).find('.text').each( function(){
+    //  all += $(this).text()+' ';
+  //});
+    //all = all.slice(0, -7);
+    all += '\n\\r'+passage;
+    $('#single_line').val(all);
+    add_line();
+  });
+}
+
 </script>
 </head>
 <body>
@@ -2640,7 +2751,8 @@ function adjust_range(){
   <p />
   <div class="w3-bar w3-black">
     <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Import</button>
-    <button class="w3-bar-item w3-button tablink" id="place_tab" onclick="openTab(event, 'place_lyrics')">Place</button>
+    <button class="w3-bar-item w3-button tablink" id="place_tab" onclick="openTab(event, 'place_lyrics','place')">Place</button>
+    <button class="w3-bar-item w3-button tablink" id="verse_tab" onclick="openTab(event, 'place_lyrics','verse')">Verse</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'edit_lyrics')">Edit</button>
     <button class="w3-bar-item w3-button tablink" id="opt_tab" onclick="openTab(event, 'options')">Format</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'export')">Export</button>
@@ -2655,7 +2767,7 @@ function adjust_range(){
       <button class="w3-btn w3-blue" type="button" id="process">Process lyrics!</button>
     </div>
     <div id="place_lyrics" class="tab_option" style="display: none;">
-      <h2>Place subtitles</h2>
+      <h2 class="lyrics_opts">Place subtitles</h2><h2 class="verse_opts">Place Bible verse</h2>
       <details><summary>Click here for information on controls (placing lyrics, editing text, splitting and joining lines)</summary>
         Here you can:
         <ul>
@@ -2671,12 +2783,28 @@ function adjust_range(){
           <li>\l, \c, \r, \j at the start of a line to align left, centre, right or justified</li>
         </ul>
       </details>
-      <p>If you want to add and display another lyric quickly, you can type it here and press enter:</p>
+      <p class="lyrics_opts">If you want to add and display another lyric quickly, you can type it here and press enter:</p>
+      <p class="verse_opts">To add a Bible passage, enter the reference here and choose the Bible version on the right:</p>
       <div class="w3-row single_line_container"><textarea id="single_line" class="w3-quarter w3-input w3-border mousetrap" rows="1"></textarea>
-        <button class="w3-btn w3-blue" type="button" id="add">Display</button><button class="w3-orange w3-btn" id="deselect_lyric">End current lyric</button>
+        <span class="lyrics_opts"><button class="w3-btn w3-blue" type="button" id="add">Display</button><button class="w3-orange w3-btn" id="deselect_lyric">End current lyric</button>
         <button class="w3-btn w3-green fit_to_screen" type="button">Fit text to video width</button>
-        <button class="w3-btn w3-blue" id="split_lyric">Split selected lyric</button>
-        <button class="w3-btn w3-blue" id="join_lyric">Join to next lyric</button></div>
+        <button class="w3-btn w3-blue" id="split_lyric">Split selected subtitle</button>
+        <button class="w3-btn w3-blue" id="join_lyric">Join to next subtitle</button>
+      </span><span class="verse_opts">
+      <button class="w3-btn w3-blue" type="button" id="add_verse">Fetch verse and display</button>
+      <input id="verse_numbers" class="w3-check" type="checkbox"/><label>Show verse numbers? </label>
+      Bible version:
+      <select id="bible_version">
+        <option value="NIV">NIV</option>
+        <option value="GNT">GNT</option>
+        <option value="NRSV">NRSV</option>
+        <option value="CEV">CEV</option>
+        <option value="MSG">The Message</option>
+        <option value="custom">Custom</option>
+      </select>
+      <span id="bible_custom">Custom: <input id="bible_name" /></span>
+      </span>
+      </div>
         <div id="lyrics_array" class="lyrics_array"></div>
         <button class="w3-btn w3-black" type="button" id="clear_board">Empty lyrics board</button>
       </div>
