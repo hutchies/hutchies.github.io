@@ -2754,7 +2754,7 @@ function bible_passage(passage, version = 'NIV'){
   $.ajax({
     url: url,
     dataType: "jsonp",
-    jsonpCallback: bible_callback
+    jsonpCallback: bible_callback,
     statusCode: {
       404: function() {
         alert( "page not found" );
