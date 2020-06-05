@@ -292,6 +292,11 @@
     });
     $('#single_line').on('keydown', function(e){
       //console.log(count_occ($('#single_line').val(), '\n'));
+      if(e.which === 13 && $('.verse_opts').is(':visible')){
+        // In verse bit!
+        add_verse();
+        return false;
+      }
       if(e.which === 13 && count_occ($('#single_line').val(), '\n') >= window.opts._global.subtitle_lines - 1){
         add_line();
         return false;
@@ -1280,7 +1285,8 @@
   function edit_line(id, that){
     //$(this).off('click'); // To stop it refiring when you do stuff with the edit box
     if(that.html().match(/<textarea /)) return; // Don't bother if you've already got a textbox editing here
-    that.html('<textarea style="white-space: prewrap; width: 100%;" rows="'+window.opts._global.subtitle_lines+'" id="edit_line_'+id+'">'+that.text()+'</textarea>');
+    var width = that.width();
+    that.html('<textarea style="white-space: prewrap; width: '+width+'px;" rows="'+window.opts._global.subtitle_lines+'" id="edit_line_'+id+'">'+that.text()+'</textarea>');
     $('#edit_line_'+id).on('change blur', function() {
       $(this).parent().text($(this).val());
       if(window.selected_line == id){
