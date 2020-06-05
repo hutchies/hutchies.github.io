@@ -2738,14 +2738,14 @@ function bible_callback(json){
 }
 
 function bible_passage(passage, version = 'NIV'){
-  var api_key = '30a80e79b9aac1a77b8bdb334f03a03f';
+  //var api_key = '30a80e79b9aac1a77b8bdb334f03a03f';
   /*$.ajax({
     url: "http://api.biblia.com/v1/bible/parse?passage="+encodeURIComponent()
   })*/
   passage = passage.replace(/\s/g,'');
   passage = passage.replace(/:/g,'.');
 
-  var url = "https://api.biblia.com/v1/bible/content/"+version+".txt.json?passage="+encodeURIComponent(passage)+"&key=30a80e79b9aac1a77b8bdb334f03a03f&callback=?";///+api_key;
+  var url = "https://bible-api.com/"//"https://api.biblia.com/v1/bible/content/"+version+".txt.json?passage="+encodeURIComponent(passage)+"&key=30a80e79b9aac1a77b8bdb334f03a03f&callback=?";///+api_key;
   $.getJSON(url, function(result){
     bible_callback(result);
   });
@@ -2779,7 +2779,7 @@ function bible_passage(passage, version = 'NIV'){
   <div class="w3-bar w3-black">
     <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Import</button>
     <button class="w3-bar-item w3-button tablink" id="place_tab" onclick="openTab(event, 'place_lyrics','place')">Place</button>
-    <button class="w3-bar-item w3-button tablink" id="verse_tab" onclick="openTab(event, 'place_lyrics','verse')">Verse</button>
+    <button class="w3-bar-item w3-button tablink" id="verse_tab" style="display: none;" onclick="openTab(event, 'place_lyrics','verse')">Verse</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'edit_lyrics')">Edit</button>
     <button class="w3-bar-item w3-button tablink" id="opt_tab" onclick="openTab(event, 'options')">Format</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'export')">Export</button>
