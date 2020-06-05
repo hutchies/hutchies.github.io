@@ -181,8 +181,6 @@
     window.is_audio = false;
     window.isWorkerLoaded = false;
     window.worker = null;
-    window.bible_worker = null;
-    window.isbibleworkerloaded = false;
     window.ffmpeg_running = false;
     window.current_style = "default";
     window.percentage_fields = ['bg_width', 'h_offset', 'v_offset', 'h_margin', 'v_margin', 'font_size', 'video_size'];
@@ -2131,11 +2129,8 @@ function init_worker(){
     var message = event.data;
     if(message.type == "ready") {
 
-    } else if(message.type == 'found') {
-      show_passage(message.data, message.passage);
-    } else if(message.type == 'log') {
-      console.log('Log:');
-      console.log(message.data);
+    } else if(message.type == 'verse') {
+      show_passage(message.data);
     }
   }
   window.worker = new Worker("lyrics_worker.js");
@@ -2701,7 +2696,7 @@ function bible_version(){
   else $('#bible_custom').hide();
 }
 
-function show_passage(result, passage){
+function show_passage(result){
   var all = '';
   $(result).find('.passage-content *').each(function(){
     //console.log(this);
@@ -2736,19 +2731,16 @@ function show_passage(result, passage){
 }
 
 function bible_passage(passage, version = 'NIV'){
-  bible_worker.postMessage({
-    type: 'lookup',
-    passage: passage,
-    version: version
-  })
-  /*var url = "https://www.biblegateway.com/passage/?search="+encodeURIComponent(passage)+'&version='+encodeURIComponent(version);
+  var url = "https://api.biblia.com/v1/bible/content/"+encodeURIComponent(version)+".txt?passage="+encodeURIComponent(passage)+"&key=30a80e79b9aac1a77b8bdb334f03a03f";
 
-  fetch(url, {method: 'get', mode: 'no-cors'})
+  //"https://www.biblegateway.com/passage/?search="+encodeURIComponent(passage)+'&version='+encodeURIComponent(version);
+
+  fetch(url, {method: 'get'})
     .then(function(response){
-      console.log(response);
       return response.text();
-    })
-    .then(
+    }).then(function(text){
+      console.log(text);
+    });
   /*return;
   $.ajax({
     url: url,
@@ -2757,10 +2749,7 @@ function bible_passage(passage, version = 'NIV'){
         alert( "page not found" );
       }
     }
-  }).done(
-  function(result){
-
-  });*/
+  }).done(*/
 }
 
 </script>
