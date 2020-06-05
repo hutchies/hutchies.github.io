@@ -2133,6 +2133,9 @@ function init_worker(){
 
     } else if(message.type == 'found') {
       show_passage(message.data, message.passage);
+    } else if(message.type == 'error') {
+      Alert('error retrieving verse');
+      console.log(message.data);
     }
   }
   window.worker = new Worker("lyrics_worker.js");

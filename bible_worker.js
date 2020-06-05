@@ -9,7 +9,10 @@ onmessage = function(event){
     fetch(url, {method: 'get', mode: 'no-cors'})
       .then(function(response){
         if(response.type == 'basic') return response.text();
-        else return 'Error fetching verse';
+        else postMessage({
+          'type' : 'error',
+          'data' : response,
+        })
       })
       .then(function(text){
         postMessage({
