@@ -1556,8 +1556,17 @@
 
     function canvas_to_blob_promise(canvas, type = 'tiff'){
       return new Promise(function(resolve, reject){
-        canvas.toBlob(function(blob){
-          resolve(blob);
+        var c = canvas.toBlob(function(blob){
+          if(blob.type == 'image/'+type){
+            resolve(blob);
+          }else if(type == 'tiff'){ // Chrome since it can't do this
+            var c = canvas.toBlob(function(blob){
+              resolve(blob)
+            }, 'image/webp');
+          }else{
+            console.log('unable to produce correct image type');
+            resolve(blob); // Do it anyway, but complain
+          }
         }, 'image/'+type);
       });
     }
@@ -2208,8 +2217,6 @@ function browser_video(just_overlay, zip = false){
   var img_type = 'tiff'; //'tiff';
   var img_seq = false;
 
-  if(method == 'zoompan') img_seq = true;
-
   //if(zip) img_type = 'png'; // Less memory!
 
   //if(zip)
@@ -2393,16 +2400,6 @@ function browser_video(just_overlay, zip = false){
           // offset should be dealt with by suspending min-height
           args.push('-filter_complex','[0][1]overlay=x=0:y=0:repeatlast=0');
         }
-      }else if(method == 'zoompan'){
-        var input_args = '-i img-%d.'+img_type;
-        var filter_args = 'zoompan=d=0';
-        duration_list.forEach(function(e, i){
-          var frames = sec_to_frame(parseFloat(e.dur), fps).toFixed(0);
-          filter_args += "+'"+frames+"*eq(in,"+i+")'";
-        });
-        filter_args = '"'+filter_args+'"';
-        args.push(...input_args.split(' '));
-        args.push('-vf',filter_args);
       }else if(method == 'blank_fade'){
 
         var join_args = '';
