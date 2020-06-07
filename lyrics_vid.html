@@ -522,7 +522,7 @@
       x[i].style.display = "none";
     }
     tablinks = document.getElementsByClassName("tablink");
-    for (i = 0; i < x.length; i++) {
+    for (i = 0; i < tablinks.length; i++) {
       tablinks[i].className = tablinks[i].className.replace(" w3-blue", "");
     }
 
@@ -1388,7 +1388,7 @@
     var f = JSON.parse(file);
     var convert_fields = false;
     if(f.length > 0){
-      console.log('old');
+      //console.log('old');
       // Backwards-compatibility: pure subtitles
       window.timecodes = f;
     }else{
@@ -1406,19 +1406,30 @@
           f.opts = convert_fields_to_percentage(f.opts);
         }
         Object.keys(window.opts._global).forEach(function(o){
-          if(f.opts[o]) window.opts._global[o] = f.opts[o];
+          if(f.opts[o]) window.opts._global[o] = get_opt(o, f.opts[o]);
         });
         Object.keys(window.opts.default).forEach(function(o){
-          if(f.opts[o]) window.opts.default[o] = f.opts[o];
+          if(f.opts[o]) window.opts.default[o] = get_opt(o, f.opts[o]);
         });
       }
-      window.opts._global.bg_visible = (window.opts._global.bg_visible == 'true');
+      if(typeof window.opts._global.bg_visible == 'string') window.opts._global.bg_visible = (window.opts._global.bg_visible == 'true');
       window.timecodes = f.timecodes;
     }
     display_opts();
     set_opt_controls();
     update_list();
     if(current_lyric() != -1) $('#deselect_lyric').show();
+    //console.log(window.opts);
+    //console.log(overlay_height());
+  }
+
+  function get_opt(o, val){
+    if($('#'+o).attr('type') == 'number'){
+      if(typeof val == 'string') return parseFloat(val);
+    }else if($('#'+o).attr('type') == 'checkbox'){
+      if(typeof val == 'string') return (val == 'true');
+    }
+    return val;
   }
 
   function storageAvailable(type) {
@@ -1472,7 +1483,7 @@
           font_size: 5, // percent of screen height
           font: 'sans-serif',
           line_spacing: 1,
-          v_margin: 1,
+          v_margin: 0,
           v_offset: 0,
           h_offset: 0,
           h_margin: 1,
@@ -1543,11 +1554,11 @@
       set_opt_controls();
     }
 
-    function canvas_to_blob_promise(canvas){
+    function canvas_to_blob_promise(canvas, type = 'tiff'){
       return new Promise(function(resolve, reject){
         canvas.toBlob(function(blob){
           resolve(blob);
-        });
+        }, 'image/'+type);
       });
     }
 
@@ -1575,7 +1586,10 @@
       return Object.keys(window.opts).filter(function(s){
         if(s[0] == '_') return false; // filter out globals
         if(in_use == 'all') return true;
-        return window.timecodes.some(t => t.style == s);
+        return window.timecodes.some((t) => {
+          if(t.style) return t.style == s;
+          return s == 'default'; // For if no style is set
+        });
       });
     }
 
@@ -1648,7 +1662,7 @@
       var mh = 0;
       styles.forEach(function(s){
         var sh = 0;
-        window.timecodes.filter(tc => tc.style == s).forEach(function(tc){
+        window.timecodes.filter(tc => tc.style == s || s == 'default').forEach(function(tc){
           var h = get_sub_height(tc);
           if(h > sh) sh = h;
         });
@@ -1770,7 +1784,7 @@
   function min_height(){
     var def_height = overlay_height('default')+proportion('height', window.opts.default.v_offset);
     list_styles('in use').forEach(function(s){
-      if(!window.timecodes.some(t => t.style == s)) return; // Discount styles not actually included in lyrics
+      if(!window.timecodes.some(t => t.style == s || s == 'default')) return; // Discount styles not actually included in lyrics
       var h = overlay_height(s)+proportion('height', window.opts[s].v_offset);
       if(h > def_height) def_height = h;
     });
@@ -2073,12 +2087,12 @@ function text_start(align, s = 'default', bg_start, bg_width){
   return text_x;
 }
 
-  function canvas_to_ab_promise(line){
+  function canvas_to_ab_promise(line, type = 'tiff'){
     var canvas = document.createElement('CANVAS');
 
     draw_subtitle(line, canvas);
 
-    return canvas_to_blob_promise(canvas).then((blob) => {
+    return canvas_to_blob_promise(canvas, type).then((blob) => {
       return blob.arrayBuffer().then((ab) => {
         return {
           img: ab,
@@ -2088,37 +2102,14 @@ function text_start(align, s = 'default', bg_start, bg_width){
     });
   }
 
-  function blank_canvas_promise(){
+  function blank_canvas_promise(type = 'tiff'){
     var canvas = document.createElement('CANVAS');
     var ctx = canvas.getContext('2d');
 
     draw_subtitle({style: 'default', text: ''}, canvas, true); // To avoid duplication!
-    /*
-    canvas.height = canvas_height();
-    var y_orig = canvas.height - height;
-    if(window.opts._global.min_height && !isEven(canvas.height)){
-    //console.log(canvas.height);
-    canvas.height++;
-    y_orig++; // so it pushes it down slightly
-  }
-
-  canvas.width = $('#vid')[0].videoWidth;
-  if(window.opts._global.bg_visible){
-  var height = overlay_height() + window.opts.default.v_offset;
-  // Draw overlay background on blank canvas
-  var bg_start = 0;
-  var bg_end = canvas.width;
-  if(window.opts.default.bg_type == 'full'){
-  ctx.globalAlpha = opt(line, 'bg_opacity');
-  ctx.fillStyle = opt(line, 'bg_colour');
-  ctx.fillRect(bg_start, y_orig, bg_end, overlay_height(s));
-  ctx.globalAlpha = 1;
-}
-}*/
-
-return canvas_to_blob_promise(canvas).then((blob) => {
-  return blob.arrayBuffer();
-});
+    return canvas_to_blob_promise(canvas, type).then((blob) => {
+      return blob.arrayBuffer();
+    });
 }
 
 function init_worker(){
@@ -2133,7 +2124,7 @@ function init_worker(){
       show_passage(message.data);
     }
   }
-  window.worker = new Worker("lyrics_worker.js");
+  window.worker = new Worker("worker-asm.js");
   worker.onmessage = function (event) {
     var message = event.data;
     if (message.type == "ready") {
@@ -2177,13 +2168,21 @@ function home_ffmpeg(){
   $('#home_ffmpeg').prop('disabled', true);
   $('#home_ffmpeg').text('Preparing download...');
   var just_overlay = $('#just_overlay').is(':checked');
-  browser_video(just_overlay, true);
+  if(!browser_video(just_overlay, true)){
+    $('#home_ffmpeg').prop('disabled', false);
+    $('#home_ffmpeg').text('Download DIY materials for FFMPEG');
+  }
 }
 
 function round_to_frame(d, fps){
+  d = sec_to_frame(d, fps);
+  d = d / fps;
+  return d;
+}
+
+function sec_to_frame(d, fps){
   d = d * fps;
   d = Math.round(d);
-  d = d / fps;
   return d;
 }
 
@@ -2206,9 +2205,15 @@ function browser_video(just_overlay, zip = false){
   var method = 'concat'; // Could also be overlay?
   var fn = '';
   var stored = false;
+  var img_type = 'tiff'; //'tiff';
+  var img_seq = false;
+
+  if(method == 'zoompan') img_seq = true;
+
+  //if(zip) img_type = 'png'; // Less memory!
 
   //if(zip)
-  if(window.opts._global.fades) method = 'blank_fade';
+  if(window.opts._global.fades) method = 'blank_fade';//'zoompan'; //;
 
   if(window.timecodes.length < 1){
     alert('Nothing to export yet – add some subtitles!');
@@ -2236,27 +2241,27 @@ function browser_video(just_overlay, zip = false){
   if(!just_overlay) window.opts._global.min_height = false;
 
   // Don't do the whole encode
-  blank_canvas_promise().then(function(blank){
-    var png_promises = [];
+  blank_canvas_promise(img_type).then(function(blank){
+    var img_promises = [];
     var fps = 25;
     var single_frame = (1/fps);
     close_all_lines();
     window.timecodes.forEach(function(line){
-      png_promises.push(canvas_to_ab_promise(line));
+      img_promises.push(canvas_to_ab_promise(line, img_type));
       //console.log('added '+line.text);
     });
     if(!just_overlay){
       if(!window.vid_name){
         alert('No video loaded to overlay yet!');
-        return;
+        return false;
       }
       fn = window.vid_name.match(/\.(.+)$/);
       if(!fn){
         alert("Video has no extension: ffmpeg cannot process it!");
-        return;
+        return false;
       }
       fn = fn[1];
-      if(!zip) png_promises.push(fetch($('#video_here')[0].src).then(function(r){ // Only do this if you really need to
+      if(!zip) img_promises.push(fetch($('#video_here')[0].src).then(function(r){ // Only do this if you really need to
         return r.blob().then(function(b){
           return b.arrayBuffer().then((ab) => {
             return {
@@ -2274,14 +2279,15 @@ function browser_video(just_overlay, zip = false){
 
     window.opts._global.min_height = save_setting;
 
-    Promise.all(png_promises).then(function(blobs) {
+    Promise.all(img_promises).then(function(blobs) {
       //console.log('Blobbed');
       //console.log('Promise resolved');
       //var args = '-formats';
+      var bn = 'blank.'+img_type;
       var blank_data = new Uint8Array(blank);
       //download(blank_data, "blank.png", "image/png");
       var files = [{
-        name: 'blank.png',
+        name: bn,
         data: blank_data
       }];
       var concat_file = 'ffconcat version 1.0\n';
@@ -2307,6 +2313,14 @@ function browser_video(just_overlay, zip = false){
         output_type = $('#codec').val();
       }
 
+      var i_aug = 0;
+      blobs.forEach(function(blob){
+        blob.line.end = round_to_frame(blob.line.end, fps);
+        blob.line.start = round_to_frame(blob.line.start, fps)
+      });
+
+      blobs = blobs.filter(b => b.line.end > b.line.start); // Should get rid of empty ones
+
       blobs.forEach(function(blob, i){
 
         var data = new Uint8Array(blob.img);
@@ -2317,23 +2331,30 @@ function browser_video(just_overlay, zip = false){
           });
           return;
         }
-        var fn = 'img'+i+'.png';
-        files.push({name: fn, data: data});
-
-        blob.line.end = round_to_frame(blob.line.end, fps);
-        blob.line.start = round_to_frame(blob.line.start, fps)
 
         if(blob.line.start > position){
           var gap = blob.line.start - position;
-          duration_list.push({file:'blank.png', dur:gap.toFixed(3)});
+          if(img_seq){
+            n = i+i_aug;
+            i_aug++;
+            bn = 'img-'+n+'.'+img_type;
+            files.push({name: bn, data: blank_data});
+          }
+
+          duration_list.push({file: 'blank.'+img_type, dur:gap.toFixed(3)});
           gap -= single_frame;
-          concat_file += "file 'blank.png'\nduration "+gap.toFixed(3)+'\n';
-          concat_file += "file 'blank.png'\nduration "+single_frame.toFixed(3)+'\n';
+          concat_file += "file '"+bn+"'\nduration "+gap.toFixed(3)+'\n';
+          concat_file += "file '"+bn+"'\nduration "+single_frame.toFixed(3)+'\n';
           position = blob.line.start;
         }
 
+        var n = i+i_aug;
+        var fn = 'img-'+n+'.'+img_type;
+        files.push({name: fn, data: data});
+
         var dur = blob.line.end - blob.line.start;
-        if(dur > 0) duration_list.push({file: fn, dur: dur.toFixed(3)});
+        //if(dur > 0)
+        duration_list.push({file: fn, dur: dur.toFixed(3)});
         dur -= single_frame;
         position = blob.line.end;
         if(dur.toFixed(3) >  0){
@@ -2345,14 +2366,21 @@ function browser_video(just_overlay, zip = false){
 
       if(window.opts._global.bg_visible && position < $('#vid')[0].duration){
         // Pad to end
+        if(img_seq){
+          i_aug++;
+          n = i+i_aug;
+          bn = 'img-'+n+'.'+img_type;
+        }
+        files.push({name: bn, data: blank_data});
         var gap = $('#vid')[0].duration - position;
-        duration_list.push({file:'blank.png', dur: gap.toFixed(3)});
+
+        duration_list.push({file:'blank.'+img_type, dur: gap.toFixed(3)});
         gap -= single_frame;
         if(gap.toFixed(3) > 0){
-          concat_file += "file 'blank.png'\nduration "+gap.toFixed(3)+'\n';
+          concat_file += "file '"+bn+"\nduration "+gap.toFixed(3)+'\n';
           position += gap;
         }
-        concat_file += "file 'blank.png'\nduration "+single_frame.toFixed(3)+'\n';
+        concat_file += "file '"+bn+"\nduration "+single_frame.toFixed(3)+'\n';
       }
 
 
@@ -2365,6 +2393,16 @@ function browser_video(just_overlay, zip = false){
           // offset should be dealt with by suspending min-height
           args.push('-filter_complex','[0][1]overlay=x=0:y=0:repeatlast=0');
         }
+      }else if(method == 'zoompan'){
+        var input_args = '-i img-%d.'+img_type;
+        var filter_args = 'zoompan=d=0';
+        duration_list.forEach(function(e, i){
+          var frames = sec_to_frame(parseFloat(e.dur), fps).toFixed(0);
+          filter_args += "+'"+frames+"*eq(in,"+i+")'";
+        });
+        filter_args = '"'+filter_args+'"';
+        args.push(...input_args.split(' '));
+        args.push('-vf',filter_args);
       }else if(method == 'blank_fade'){
 
         var join_args = '';
@@ -2382,7 +2420,7 @@ function browser_video(just_overlay, zip = false){
         duration_list.forEach(function(e, i){
           var overlay_num = input_aug;
           var overlay_stream = '['+overlay_num+']';
-          if(e.file == 'blank.png' && i > 0 && duration_list[i-1].file != 'blank.png'){
+          if(e.file == 'blank.'+img_type && i > 0 && duration_list[i-1].file != 'blank.'+img_type){
             // Blank after non-blank
             //console.log('blank after non-blank',i);
             var fade_amount = fade_dur;
@@ -2392,7 +2430,7 @@ function browser_video(just_overlay, zip = false){
             }
             e.dur -= fade_amount;
             e.dur = e.dur.toFixed(3);
-          }if(e.file == 'blank.png' && i < duration_list.length - 1 && duration_list[i+1].file != 'blank.png'){
+          }if(e.file == 'blank.'+img_type && i < duration_list.length - 1 && duration_list[i+1].file != 'blank.'+img_type){
             // Blank before non-blank
             //console.log('blank before non-blank',i);
             var fade_amount = fade_dur;
@@ -2400,15 +2438,15 @@ function browser_video(just_overlay, zip = false){
             if(e.dur < fade_amount) fade_amount = e.dur;
             e.dur -= fade_amount;
             e.dur = e.dur.toFixed(3);
-          }else if(e.file != 'blank.png'){
+          }else if(e.file != 'blank.'+img_type){
           //  console.log('non-blank');
-            if(i > 0 && duration_list[i-1].file == 'blank.png'){
+            if(i > 0 && duration_list[i-1].file == 'blank.'+img_type){
               // Non-blank after blank
               //console.log('blank before');
               var fade_amount_1 = fade_dur;
               if(parseFloat(duration_list[i-1].dur) < fade_amount_1) fade_amount_1 = parseFloat(duration_list[i-1].dur);
               //console.log(fade_amount_1);
-              if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
+              if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.'+img_type){
                 // Blank sandwich!
                 var join = overlay_stream;
                 //console.log('fade in and output',i);
@@ -2465,7 +2503,7 @@ function browser_video(just_overlay, zip = false){
                   overlay_stream = new_overlay;
                 }
               }
-            }else if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.png'){
+            }else if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.'+img_type){
               // Non-blank before blank - just fade out
               //console.log('fade out',i);
               var fade_amount_2 = fade_dur;
@@ -2509,7 +2547,7 @@ function browser_video(just_overlay, zip = false){
             //input_args += '-loop 1 -t  1 -i '+e.file+' '; // just a placeholder TODO fix
           }
         });
-        input_aug--;
+        //input_aug--;
         join_args += 'concat=n='+input_aug+'[v]';
         var out_stream = '[v]';
 
@@ -2540,8 +2578,8 @@ function browser_video(just_overlay, zip = false){
       }
 
       var output_formats = {
-        prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 10 -alpha_bits 8 '+rate+'overlay.mov',
-        prores_noalpha: '-c:a copy -c:v prores_ks -profile:v standard -vendor ap10 -q:v 10 '+rate+'overlay.mov',
+        prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 9 -alpha_bits 8 '+rate+'overlay.mov',
+        prores_noalpha: '-c:a copy -c:v prores_ks -profile:v standard -vendor ap10 -q:v 11 '+rate+'overlay.mov',
         h264: '-strict -2 -c:a aac -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
         quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
         png: '-c:a copy -c:v png '+rate+'overlay.mov',
@@ -2557,6 +2595,7 @@ function browser_video(just_overlay, zip = false){
 
       if(zip){
         // Don't actually run FFMPEG in browser, instead export the files to do at home
+
         var command = 'ffmpeg';
         args.forEach(function(a, i){
           if(/[\s;&]/g.test(a)) a = '"' + a + '"'; // To escape spaces or anything else that bash might not like
@@ -2588,6 +2627,7 @@ function browser_video(just_overlay, zip = false){
           ffmpeg_start();
           // TODO check whether memory amounts below are needed!
           console.log('Launching ffmpeg with args '+args);
+          //args = ['-codecs'];
           window.worker.postMessage({
             type: 'command',
             arguments: args,
@@ -2601,6 +2641,7 @@ function browser_video(just_overlay, zip = false){
     });
 
   });
+  return true;
 }
 
 function hms_to_secs(text){
@@ -2899,7 +2940,7 @@ function bible_passage(passage, version = 'NIV'){
       </div><div class="w3-panel w3-cell">
         <div class="w3-container w3-blue"><h3>Layout</h3></div>
         <div id="layout_opts">
-          <p>Line spacing: <input type='range' min='0.5' max='2' step="0.1" value='1' class='slider' id='line_spacing_range'/><input id="line_spacing" class="opt_control" value="1" size="3" />
+          <p>Line spacing: <input type='range' min='0.5' max='2' step="0.1" value='1' class='slider' id='line_spacing_range'/><input id="line_spacing" type="number" class="opt_control" value="1" size="3" />
           </p><p><div class="percentage">Vertical margin: <input type='range' min='0' max='100' value='1' step="0.1" class='slider' id='v_margin_range'/>
             <input id="v_margin" type="number" min='0' max='200' class="opt_control" value="0" size="3" /> % of height of video<span class="tooltiptext"></span></div>
           </p><p><div class="percentage">Horizontal margin: <input type='range' min='0' max='100' value='1' step="0.1" class='slider' id='h_margin_range'/>
@@ -2963,10 +3004,8 @@ function bible_passage(passage, version = 'NIV'){
                   <select id="codec">
                     <option value="quicktime" selected>QuickTime animation (fast export, fairly widely supported)</option>
                     <option value="prores">ProRes 4444 (slower export, may be supported where QuickTime is not)</option>
-                    <option value="png">PNG video (should be fast, less compatible)</option>
                     <option value="ayuv">AYUV (very fast, apparently quite compatible on Windows but not Mac)</option>
                     <option value="v408">V408 (like AYUV but for Mac)</option>
-                    <option value="h264">H.264 (fast and very compatible, small file, no transparency)</option>
                   </select>
                 </p><p>
                   Frame-rate handling:
