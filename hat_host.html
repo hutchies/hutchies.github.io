@@ -351,7 +351,13 @@ function join_game(){
     var possible_words = window.players * window.words_per_player;
     $('#total_words').text(possible_words);
 
-    $('#round_number').text(data.round_number);
+    var round_info = data.round_number.toFixed(0);
+    if(data.round_number == 1) round_info += ' (Describe word, like Taboo)';
+    if(data.round_number == 2) round_info += ' (Mime word, like Charades)';
+    if(data.round_number == 3) round_info += ' (Describe using only 1 word)';
+    if(data.round_number > 3) round_info += ' (Normally game only has 3 rounds)';
+
+    $('#round_number').text(round_info);
 
     write_teams(data.teams);
 
@@ -441,7 +447,12 @@ function join_game(){
         //console.log("Transaction successfully committed!");
         $('#word_to_add').val('');
         window.words_left--;
+        var word_num = window.words_per_player - window.words_left + 1;
         $('#words_left').text(window.words_left);
+        $('#word_num').text(word_num);
+        if(word_num == 2) $('#word_type').text('a place');
+        if(word_num == 3) $('#word_type').text('an object');
+        if(word_num == 4) $('#word_type').text('anything you like');
         if(window.words_left == 0){
           setup_round();
         }
@@ -836,7 +847,7 @@ function join_game(){
 </div>
 
 <div id="adding_words" class="phase w3-container">
-  <div id="word_form"><p><label><b>Word to add (<span id="words_left">3</span> left):</b></label>
+  <div id="word_form"><p><label><b>Enter words one at a time, and press 'Add' after each one. </p><p>Word no. <span id="word_num">1</span> could be <span id="word_type">a name</span>. (<span id="words_left">3</span> words left):</b></label>
   <input id="word_to_add" class="w3-input w3-border" type="text"></p>
   <p><button id="add_word" class="w3-btn w3-teal">Add</button></p></div>
 </div>
