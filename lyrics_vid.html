@@ -180,6 +180,7 @@
     window.vid_name = '[novideo]';
     window.is_audio = false;
     window.isWorkerLoaded = false;
+    window.worker_promise = {};
     window.worker = null;
     window.ffmpeg_running = false;
     window.current_style = "default";
@@ -191,7 +192,7 @@
     });
     $('#clear_board').on('click', function(){
       $('#lyrics_array').html('');
-      end_lyric();
+      end_lyric(timecode());
     });
     $('#sub_file').on('change', function(evt){
       if(window.timecodes.length > 0){
@@ -259,7 +260,7 @@
     $('#join_lyric').on('click', join_selected);
     $('#split_lyric').hide();
     $('#deselect_lyric').hide();
-    $('#deselect_lyric').on('click', end_lyric);
+    $('#deselect_lyric').on('click', end_lyric_now);
     $('#join_lyric').hide();
     $('#show_log').on('click', function(){
       if($('#show_log').is(':checked')){
@@ -336,7 +337,7 @@
     });
     Mousetrap.bind('mod+z', undo);
     Mousetrap.bind('mod+shift+z', redo);
-    Mousetrap.bind(['del', 'backspace', 'esc'], end_lyric);
+    Mousetrap.bind(['del', 'backspace', 'esc'], end_lyric_now);
     $('#undo_button').click(undo);
     $('#redo_button').click(redo);
     $('#undo_button').hide();
@@ -418,6 +419,10 @@
     }else{
       $('#delete_style').prop('disabled', false);
     }
+  }
+
+  function end_lyric_now(){
+    end_lyric(timecode());
   }
 
   function make_style(){
@@ -1199,15 +1204,13 @@
     return i;
   }
 
-  function end_lyric(){
-    var t = timecode();
+  function end_lyric(t){
     var i = current_lyric(); // Find the unfinished timecode
     if(i == -1) return;
     window.timecodes[i].end = t;
     deselect();
     check_overlap(i);
     update_list();
-    return t; //To abut subsequent lyrics exactly
   }
 
   function update_list(){
@@ -1312,6 +1315,7 @@
 
   function click_line(evt){
     //console.log(window.selected_line);
+    var time = timecode();
     var id = $(this).attr('id').substring(11);
     var t = -1; // Use existing timecode
     if(evt.shiftKey){
@@ -1321,13 +1325,13 @@
     }
     if(window.selected_line == id){
       //Deselect this line
-      if(timecode() >= window.timecodes[current_lyric()].start){
+      if(time >= window.timecodes[current_lyric()].start){
         // Normal operation – end a lyric we started, even if it is 0-length (in which case it will automatically be deleted)
-        end_lyric();
+        end_lyric(time);
       }else{
         // We've jumped back before the start of the lyric, so maybe we want it to start earlier?
         add_undo();
-        window.timecodes[current_lyric()].start = timecode();
+        window.timecodes[current_lyric()].start = time;
         check_overlap(current_lyric());
         update_list();
       }
@@ -1338,10 +1342,10 @@
     if(window.selected_line != -1 ){
       // There was a previous line, so deselect them and set their end_time
       //$('#lyric_end_'+window.selected_line).text(timecode());
-      t = end_lyric();
+      end_lyric(time);
     }
     //$('#lyric_start_'+id).text(timecode());
-    push_lyric($(this).text(), t);
+    push_lyric($(this).text(), time);
     $(this).addClass('selected');
     window.selected_line = id;
     if($(this).text().match(/\n/)) $('#split_lyric').show();
@@ -2121,6 +2125,21 @@ function text_start(align, s = 'default', bg_start, bg_width){
     });
 }
 
+function launch_ffmpeg(params){
+  args = params.args;
+  files = params.files;
+
+  return new Promise(function (resolve, reject){
+    window.worker_promise = {resolve: resolve, reject: reject};
+    window.worker.postMessage({
+      type: 'command',
+      arguments: args,
+      TOTAL_MEMORY: 1073741824, // TODO check if needed with vbr, was 268435456
+      files: files
+    });
+  })
+}
+
 function init_worker(){
   // Adapted from videoconverter.js - https://github.com/bgrins/videoconverter.js/blob/master/demo/terminal.js
   //if(window.running_locally) return;
@@ -2147,21 +2166,15 @@ function init_worker(){
     } else if (message.type == "stderr") {
       log_it(message.data);
     } else if (message.type == "start") {
-      $('#ffmpeg_log').text("Worker has received command\n");
+      //$('#ffmpeg_log').text("Worker has received command\n");
     } else if (message.type == "done") {
-      ffmpeg_stop();
-      var buffers = message.data;
-      buffers.forEach(function(file) {
-        download(file.data, file.name, "video/quicktime");
-      });
-      if(storageAvailable('localStorage')){
-        // Delete autosave
-        localStorage.removeItem('autosave');
-      }
+      //console.log('done!',window.worker_promise.resolve);
+      if(window.worker_promise.resolve) window.worker_promise.resolve(message.data);
     }
   };
   worker.onerror = function(event){
-    alert('Error from video processor: '+event.message);
+    console.log('Error from video processor: '+event.message);
+    if(window.worker_promise.reject) window.worker_promise.reject(event.message.data);
   }
 }
 
@@ -2195,6 +2208,46 @@ function sec_to_frame(d, fps){
   return d;
 }
 
+async function chain_ffmpeg(params_list){
+  var results_list = [];
+  ffmpeg_start();
+  for(let i = 0; i < params_list.length; i++){
+    //console.log('Thread '+i,params_list[i]);
+    var r = await launch_ffmpeg(params_list[i]);
+    //if(i == 1) download(r[0].data, r[0].name, "video/quicktime");
+    var progress = Math.round(i / (params_list.length - 1) * 100).toString()+'%'
+    $('#ffmpeg_bar').width(progress);
+    $('#ffmpeg_bar').text(progress);
+    results_list.push({name: r[0].name, data: new Uint8Array(r[0].data)});
+  }
+  return results_list.flat();
+}
+
+async function concat_ffmpeg(params_list){
+  var results_file = '';
+  ffmpeg_start();
+  for(let i = 0; i < params_list.length; i++){
+    //console.log('Thread '+i,params_list[i]);
+    var r = await launch_ffmpeg(params_list[i]);
+    r = new Uint8Array(r[0].data).join('');
+    if(results_file != ''){
+      r = r.substring(/[\r\n]/.exec(r).index);
+    }
+    results_file += r;
+    //if(i == 1) download(r[0].data, r[0].name, "video/quicktime");
+    var progress = Math.round(i / (params_list.length - 1) * 100).toString()+'%'
+    $('#ffmpeg_bar').width(progress);
+    $('#ffmpeg_bar').text(progress);
+    //results_list.push({name: r[0].name, data: r[0].data});
+  }
+  return {name: 'input.y4m', data: new Uint8Array(results_file)};
+}
+
+function min(a, b){
+  if(a > b) return b;
+  return a;
+}
+
 
 function close_all_lines(){
   deselect();
@@ -2216,8 +2269,42 @@ function browser_video(just_overlay, zip = false){
   var stored = false;
   var img_type = 'tiff'; //'tiff';
   var img_seq = false;
+  var fps = 25;
+  var single_frame = (1/fps);
+  var output_type = $('#codec').val();
+
+  //var start_time = new Date()
+
+  if(method == 'promises') img_seq = true;
 
   //if(zip) img_type = 'png'; // Less memory!
+
+  var rate_settings = {
+    rate: '-r '+fps+' ',
+    cfr: '-r '+fps+' -vsync cfr ',
+    vfr: '-r '+fps+' -vsync vfr ',
+    drop: '-r '+fps+' -vsync drop ',
+    none: ' '
+  }
+  var rate = '';
+  if(method == 'concat' || method == 'promises'){
+    rate = rate_settings[$('#rate').val()];
+  }
+
+
+  var output_formats = {
+    prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 9 -alpha_bits 8 '+rate+'overlay.mov',
+    prores_noalpha: '-c:a copy -c:v prores_ks -profile:v standard -vendor ap10 -q:v 11 '+rate+'overlay.mov',
+    h264: '-strict -2 -c:a aac -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
+    quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
+    png: '-c:a copy -c:v png '+rate+'overlay.mov',
+    vp8: '-c:a copy -c:v libvpx -pix_fmt yuva420p -crf 0 -metadata:s:v:0 alphamode="1" '+rate+'overlay.webm',
+    hevc: '-c:a copy -c:v libx265 -crf 0 -preset ultrafast '+rate+'overlay.mp4',
+    ayuv: '-c:a copy -c:v ayuv '+rate+'overlay.avi',
+    v408: '-c:a copy -c:v v408 '+rate+'overlay.mov'
+  };
+
+  var chosen_format = output_formats[output_type];
 
   //if(zip)
   if(window.opts._global.fades) method = 'blank_fade';//'zoompan'; //;
@@ -2250,8 +2337,6 @@ function browser_video(just_overlay, zip = false){
   // Don't do the whole encode
   blank_canvas_promise(img_type).then(function(blank){
     var img_promises = [];
-    var fps = 25;
-    var single_frame = (1/fps);
     close_all_lines();
     window.timecodes.forEach(function(line){
       img_promises.push(canvas_to_ab_promise(line, img_type));
@@ -2301,7 +2386,7 @@ function browser_video(just_overlay, zip = false){
       //var sources = [];
       var args = [];
       var args_opening = '-nostdin -debug_ts'
-      var output_type = 'quicktime';
+
       var duration_list = [];
       args.push(...args_opening.split(' '));
 
@@ -2348,7 +2433,7 @@ function browser_video(just_overlay, zip = false){
             files.push({name: bn, data: blank_data});
           }
 
-          duration_list.push({file: 'blank.'+img_type, dur:gap.toFixed(3)});
+          duration_list.push({file: bn, dur:gap.toFixed(3)});
           gap -= single_frame;
           concat_file += "file '"+bn+"'\nduration "+gap.toFixed(3)+'\n';
           concat_file += "file '"+bn+"'\nduration "+single_frame.toFixed(3)+'\n';
@@ -2381,7 +2466,7 @@ function browser_video(just_overlay, zip = false){
         files.push({name: bn, data: blank_data});
         var gap = $('#vid')[0].duration - position;
 
-        duration_list.push({file:'blank.'+img_type, dur: gap.toFixed(3)});
+        duration_list.push({file: bn, dur: gap.toFixed(3)});
         gap -= single_frame;
         if(gap.toFixed(3) > 0){
           concat_file += "file '"+bn+"\nduration "+gap.toFixed(3)+'\n';
@@ -2400,6 +2485,158 @@ function browser_video(just_overlay, zip = false){
           // offset should be dealt with by suspending min-height
           args.push('-filter_complex','[0][1]overlay=x=0:y=0:repeatlast=0');
         }
+      }else if(method == 'promises'){
+        var ffmpeg_params = [];
+        var output_file = chosen_format.split(' ').slice(-1);
+
+        var new_durations = duration_list.filter(f => f.file.startsWith('img'));
+        var fade_dur = window.opts._global.fade_dur;
+        var fades = [];
+        var last_fade = 0;
+
+        new_durations.forEach(function(e,i){
+          var curr_dur = parseFloat(e.dur);
+          var fd = fade_dur;
+          if(i > 0) curr_dur -= last_fade;
+          var next_dur = fade_dur;
+          if(i < new_durations.length-1){
+            next_dur = parseFloat(new_durations[i+1].dur);
+          }
+          if(fd > curr_dur || fd > next_dur) fd = min(curr_dur, next_dur);
+          if(last_fade > fd){
+            var avg = (last_fade + fd)/2;
+            fades[fades.length - 1] = avg;
+            fd = avg;
+          }
+          fades.push(fd);
+        });
+
+        var last_fade = 0;
+        console.log(fades);
+
+        new_durations.forEach(function(e,i){
+          //var new_file = e.file.replace('tiff','mov');
+          //new_file = new_file.replace('webp','mov');
+          var dur = parseFloat(e.dur);
+          var fd = fades.shift();
+          dur -= last_fade;
+
+
+          var out_time = dur - fd;
+          out_time = out_time.toFixed(3);
+          fd = fd.toFixed(3);
+          dur = dur.toFixed(3);
+          var static_leafname = e.file.replace(/\..+/, '');
+          var fade_leafname = e.file.replace(/\..+/, 'f');
+
+          // At this point then, the static image lasts out_time, and the fade lasts fd. So just add those for now.
+          var static_args_string = "-loop 1 -t "+out_time+" -i "+e.file+' '+chosen_format.replace('overlay', static_leafname);
+
+          var specific_files = [ files.find(element => element.name == e.file) ];
+
+          if(i < new_durations.length-1){
+            // Add filters here
+            fade_args_string = '-loop 1 -t '+fd+' -i '+e.file+' -loop 1 -t '+fd+' -i '+new_durations[i+1].file+" -filter_complex [0]alphaextract,fade=t=out:d="+fd+"[a0];[0][a0]alphamerge[f0];[1]alphaextract,fade=t=in:d="+fd+"[a1];[1][a1]alphamerge[f1];[f0][f1]overlay"   //' -vf zoompan=d='+fd+':fps=1/'+fd+',framerate='+fps+':interp_start=0:interp_end=255:scene=100';
+            specific_files.push(files.find(element => element.name == new_durations[i+1].file));
+          }else{
+            var fade_args_string = "-loop 1 -t "+fd+" -i "+e.file+' -filter_complex fade=t=out:d='+fd+':alpha=1';
+          }
+
+          var static_list = static_args_string.split(' ');
+          if(out_time > 0) ffmpeg_params.push({args: static_list, files: [files.find(element => element.name == e.file)] });
+
+          var fade_list = fade_args_string.split(' ');
+
+
+          var fade_output = chosen_format.replace('overlay', fade_leafname);
+          fade_list.push(...fade_output.split(' '));
+          ffmpeg_params.push({args: fade_list, files: specific_files});
+
+          /*var filter_args = '[0]format=yuva444p,fade=t=out:st='+out_time+':d='+fd;
+          var dur_args = "-loop 1 -t "+dur+" -i "+e.file;
+          if(i < new_durations.length-1){
+            dur_args += ' -loop 1 -t '+dur+' -i '+new_durations[i+1].file; //[0]format=yuva444p,fade=t=out:st='+out_time+':d='+fd+'[f0];
+            var filter_args = "[0][1]blend=all_mode=overlay:all_expr='A*(1-if(gte(T,"+out_time+"),1,(T - "+out_time+")/"+fd+"))+B*((if(gte(T,"+out_time+"),1,(T - "+out_time+")/"+fd+")))'";//:enable='between(t\\,"+out_time+"\\,"+dur+")'";
+          }
+          var format_args = chosen_format.replace('overlay', e.file.replace(/\..+/, ''));
+
+          args_list = [];
+          args_list.push(...dur_args.split(' '));
+
+          // fade
+          args_list.push('-filter_complex');
+          args_list.push(filter_args);
+
+
+          args_list.push(...format_args.split(' '));
+
+          //+" -r "+fps+" -vsync vfr -c:v qtrle -pix_fmt bgra "+new_file;
+          //var dur_args = "-loop 1 -t "+e.dur+" -i "+e.file+" -r "+fps+" -vsync vfr -f yuv4mpegpipe "+new_file;
+          //console.log(dur_args)
+          //var args_list = dur_args.split(' ');
+          var specific_file = files.find(element => element.name == e.file);
+          var these_files = [ specific_file ];
+          if(i < new_durations.length-1){
+            these_files.push(files.find(element => element.name == new_durations[i+1].file));
+            //console.log(these_files);
+          }
+          ffmpeg_params.push({args: args_list, files: these_files});*/
+        })
+
+        chain_ffmpeg(ffmpeg_params).then(function(results){
+
+          //download(results[0].data, results[0].name, 'video/quicktime');
+          var concat_file = '';
+          var concat_args = '';
+          var size_sum = 0;
+          var count = 0;
+          //files = []; // Free up all those old files
+          results.filter(f => f.name.startsWith('img')).forEach(function(f){
+            concat_file += "file '"+f.name+"'\n";
+            concat_args += ' -f avi -i '+f.name;
+            files.push(f);
+            size_sum += f.data.byteLength;
+            count++;
+          })
+          var avg = size_sum / count; // / duration_list.reduce((total, e) => {return total + parseFloat(e.dur)});
+          console.log('Average file size per sec', avg);
+          //console.log(files);
+          //console.log(concat_file);
+          var concat_data = new Uint8Array(concat_file);
+          files.push({name: 'concat.txt', data: concat_file});
+          var concat_format = '-f concat -i concat.txt';
+          args.push(...concat_format.split(' '));
+          //args.push(...concat_args.split(' '));
+          /*args.push('-filter_complex');
+          var filter_args = 'concat=n='+duration_list.length;
+          if(!just_overlay){
+            var streams = '';
+            duration_list.forEach(function(e, i){
+              var s = i+1;
+              streams += '['+s+']';
+            })
+            // offset should be dealt with by suspending min-height
+            filter_args = streams+filter_args+'[v];[0][v]overlay=x=0:y=0:repeatlast=0';
+          }
+          args.push(filter_args);*/
+          //args.push(...chosen_format.split(' '));
+          var out_format = '-c:a copy -c:v copy '+output_file;
+          args.push(...out_format.split(' '));
+          ffmpeg_start();
+          console.log('Launching ffmpeg with args '+args.join(' '));
+
+          launch_ffmpeg({args: args, files: files}).then(function(buffers){
+            ffmpeg_stop();
+            buffers.forEach(function(file) {
+              download(file.data, file.name, "video/quicktime");
+            });
+            if(storageAvailable('localStorage')){
+              // Delete autosave
+              localStorage.removeItem('autosave');
+            }
+          });
+        });
+
       }else if(method == 'blank_fade'){
 
         var join_args = '';
@@ -2562,33 +2799,8 @@ function browser_video(just_overlay, zip = false){
 
       //console.log(data);
       //var avi_args =  '-nostdin -loop 1 -i img.png -c:v huffyuv -t 15 out.avi';
-      var rate_settings = {
-        rate: '-r '+fps+' ',
-        cfr: '-r '+fps+' -vsync cfr ',
-        vfr: '-r '+fps+' -vsync vfr ',
-        drop: '-r '+fps+' -vsync drop ',
-        none: ' '
-      }
-      var rate = '';
-      if(method == 'concat'){
-        rate = rate_settings[$('#rate').val()];
-      }
 
-      var output_formats = {
-        prores: '-c:a copy -c:v prores_ks -profile:v 4444 -vendor ap10 -pix_fmt yuva444p10le -q:v 9 -alpha_bits 8 '+rate+'overlay.mov',
-        prores_noalpha: '-c:a copy -c:v prores_ks -profile:v standard -vendor ap10 -q:v 11 '+rate+'overlay.mov',
-        h264: '-strict -2 -c:a aac -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p '+rate+'overlay.mp4',
-        quicktime: '-c:a copy -c:v qtrle -vendor ap10 -pix_fmt argb '+rate+'overlay.mov',
-        png: '-c:a copy -c:v png '+rate+'overlay.mov',
-        vp8: '-c:a copy -c:v libvpx -pix_fmt yuva420p -crf 0 -metadata:s:v:0 alphamode="1" '+rate+'overlay.webm',
-        hevc: '-c:a copy -c:v libx265 -crf 0 -preset ultrafast '+rate+'overlay.mp4',
-        ayuv: '-c:a copy -c:v ayuv '+rate+'overlay.avi',
-        v408: '-c:a copy -c:v v408 '+rate+'overlay.mov'
-      };
-
-      var chosen_format = output_formats[output_type];
-
-      args.push(...chosen_format.split(' '));
+      if(method != 'promises') args.push(...chosen_format.split(' '));
 
       if(zip){
         // Don't actually run FFMPEG in browser, instead export the files to do at home
@@ -2619,17 +2831,21 @@ function browser_video(just_overlay, zip = false){
           $('#home_ffmpeg').prop('disabled', false);
           $('#home_ffmpeg').text('Download DIY materials for FFMPEG');
         });
-      }else{
+      }else if(method != 'promises'){
         if(ffmpeg_ready()){
           ffmpeg_start();
           // TODO check whether memory amounts below are needed!
           console.log('Launching ffmpeg with args '+args);
           //args = ['-codecs'];
-          window.worker.postMessage({
-            type: 'command',
-            arguments: args,
-            TOTAL_MEMORY: 1073741824, // TODO check if needed with vbr, was 268435456
-            files: files
+          launch_ffmpeg({args: args, files: files}).then(function(buffers){
+            ffmpeg_stop();
+            buffers.forEach(function(file) {
+              download(file.data, file.name, "video/quicktime");
+            });
+            if(storageAvailable('localStorage')){
+              // Delete autosave
+              localStorage.removeItem('autosave');
+            }
           });
         }else{
           alert('FFMPEG is not loaded yet! Please wait and try again once it has loaded.');
