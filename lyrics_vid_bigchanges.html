@@ -547,8 +547,6 @@
       //console.log(l.style, style);
     });
     //console.log(window.timecodes);
-    setup_styles();
-    set_style('default');
   }
 
   function set_style(style){
@@ -562,7 +560,7 @@
         update_lyrics();
       }
     }
-    //display_opts(); // Shouldn't be needed?
+    setup_styles();
     opt_controls(style);
     check_text_width();
     //set_opt_controls();
@@ -619,21 +617,23 @@
 
   function opt_controls(style){
     for(o in window.opts[style]){
-      if($('#'+o).attr('type') == 'checkbox'){
+      //console.log(o);
+      var el = document.getElementById(o);
+      if(!el) continue;
+      if(el.getAttribute('type') == 'checkbox'){
         if(window.opts[style][o]){
-          $('#'+o).prop('checked', true);
+          el.checked = true;
         }else{
-          $('#'+o).prop('checked', false);
+          el.checked = false;
         }
       }else{
-        $('#'+o).val(window.opts[style][o]);
-        if($('#'+o+'_range').length > 0){
-          $('#'+o+'_range').val(window.opts[style][o]);
+        el.setAttribute('value',window.opts[style][o]);
+        let r = document.getElementById(o+'_range');
+        if(r) r.value = window.opts[style][o];
         }
       }
       opt_constraints(o, window.opts[style][o]);
     }
-  }
 
   function set_opt_controls(){
     opt_controls(window.current_style);
@@ -835,6 +835,7 @@
       }
       return true;
     });
+
     if(window.timecodes.length != intermediate.length) redrawing = true;
     intermediate = intermediate.map(function(tc, tc_i){
       // Overlapping with start
@@ -851,6 +852,7 @@
       return tc;
     });
     if(redrawing){
+          //console.log('co', window.timecodes.length, intermediate.length);
       window.timecodes = intermediate;
       update_list();
     }
@@ -2192,15 +2194,17 @@
 
       var s = line.style || 'default';
       var cc = get_cached_canvas(line, s);
-      if(cc && cc.canvas){
+      if(cc && cc.canvas && cc.canvas.width == window.video.videoWidth){ // Redo when we reload
         if(end_canvas){
           end_canvas.width = window.video.videoWidth;
           end_canvas.height = canvas_height(); //cc.canvas.height;
+          //console.log('ec', end_canvas.width, end_canvas.height);
           var y_off = end_canvas.height - cc.canvas.height;
           if(y_off < 0){
             console.log('negative!');
           }
           else if(y_off > 0) console.log('postive!');
+          //console.log(cc.canvas.width);
           end_ctx.clearRect(0, 0, end_canvas.width, end_canvas.height);
           //console.log(end_ctx,cc.canvas);
           end_ctx.drawImage(cc.canvas, 0, y_off);
@@ -2247,15 +2251,16 @@
     canvas.width = window.video.videoWidth;
     if(canvas.height == 0 || canvas.width == 0) return; // Something wrong eg. video not loaded yet
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+
+    if(window.is_audio) video_placeholder();
+
+    //console.log('drawing');
     if(end_canvas){
       if(end_canvas.width != canvas.width) end_canvas.width = canvas.width;
       if(end_canvas.height != canvas.height) end_canvas.height = canvas.height;
       end_ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-
-    if(window.is_audio) video_placeholder();
-
-    //console.log('drawing');
 
     if(line.text == '' && !window.opts._global.bg_visible) return; // No need to do any drawing
     // Draw background
@@ -2387,6 +2392,7 @@
 
     if(end_canvas){
       end_ctx.drawImage(canvas, 0, 0);
+      //console.log(end_canvas.width, window.video.videoWidth);
     }
     add_cached_canvas(line, canvas);
 
@@ -3125,6 +3131,7 @@ function browser_video(just_overlay, zip = false){
         });
         var export_zip = new JSZip();
         files.forEach(function(f){
+
           export_zip.file(f.name, f.data);
         });
         export_zip.generateAsync({type: "uint8array"}).then(function(f){
