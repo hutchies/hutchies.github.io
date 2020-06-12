@@ -511,10 +511,13 @@
     if (sub.width) delete sub.width;
     if (sub.wrap) delete sub.wrap;
     var c = get_cached_canvas(sub);
-
+    console.log(sub);
     if(c){
       c.users.splice(c.users.indexOf(sub));
-      if(c.users.length == 0) delete window.cached_canvases[sub.style || 'default'][sub.text];
+      if(c.users.length == 0){
+        delete window.cached_canvases[sub.style || 'default'][sub.text];
+        //console.log('deleted');
+      }
     }
   }
 
@@ -609,6 +612,8 @@
   }
 
   function dec_cached_canvas(line){
+    let text=line.text;
+    let style = line.stye || 'default';
     if(window.cached_canvases[style] && window.cached_canvases[style][text]){
       window.cached_canvases[style][text].users.splice(window.cached_canvases[style][text].users.indexOf(line));
       if(window.cached_canvases[style][text].users.length == 0) delete window.cached_canvases[style][text];
@@ -1254,6 +1259,7 @@
     //$('.line_text').on('click', click_line);
     var c_i = current_lyric();
     window.timecodes[c_i].text = split[0];
+    clear_cache(window.timecodes[c_i]);
     $('#text_'+c_i).text(split[0]);
     $('#join_lyric').show();
     $('#split_lyric').hide();
@@ -1270,6 +1276,7 @@
         i++;
         text = text + '\n' + $('#lyric_text_'+i).text();
         var c_i = current_lyric();
+        clear_cache(window.timecodes[c_i]);
         window.timecodes[c_i].text = text;
         $('#text_'+c_i).text(split[0]);
       }
@@ -1473,6 +1480,7 @@
     $('#edit_'+id).on('change blur', function() {
       if(window.timecodes[id].text != $(this).val()){
         add_undo();
+        clear_cache(window.timecodes[id]);
         window.timecodes[id].text = $(this).val();
       }
       $(this).parent().text(window.timecodes[id].text);
@@ -1483,6 +1491,7 @@
       if(e.which === 13 && count_occ($(this).val(), '\n') >= window.opts._global.subtitle_lines - 1){
         if(window.timecodes[id].text != $(this).val()){
           add_undo();
+          clear_cache(window.timecodes[id]);
           window.timecodes[id].text = $(this).val();
         }
         $(this).parent().text(window.timecodes[id].text);
@@ -1526,6 +1535,7 @@
         $(this).parent().text($(this).val());
         if(window.selected_line == id){
           var c_i = current_lyric();
+          clear_cache(window.timecodes[id]);
           window.timecodes[c_i].text = $(this).val();
           $('#text_'+c_i).val(window.timecodes[c_i].text);
         }
@@ -2214,6 +2224,10 @@
         return;
       }
 
+      if(canvas_height() == 0) return; // No point if nowt to draw
+      //console.log('new');
+
+
     // Save for future reuse
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
@@ -2262,7 +2276,12 @@
       end_ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
 
-    if(line.text == '' && !window.opts._global.bg_visible) return; // No need to do any drawing
+    if(line.text == '' && !window.opts._global.bg_visible){
+      console.log('caching');
+      add_cached_canvas(line, canvas);
+      return;
+    }
+    // No need to do any drawing
     // Draw background
     //console.log('drawing text fresh;');
 
