@@ -173,6 +173,7 @@
   <script src="jszip.min.js"></script>
   <script>
   $(document).ready(function() {
+    window.raf_callback = null;
     window.selected_line = -1;
     window.timecodes = [];
     window.ids = 0;
@@ -232,7 +233,8 @@
         //$('#video_proportions').show();
         window.video = document.getElementById('vid');
         $('#vid').on('canplay', vid_ready); // Reinstate events
-        $('#vid').on('timeupdate', timeupdate); // Reinstate events
+        //$('#vid').on('timeupdate', timeupdate); // Reinstate events
+        vid_events();
         $('#audio_settings').hide();
       }else if(f.type.match('audio.*')){
         window.is_audio = true;
@@ -241,7 +243,8 @@
         window.video.videoWidth = 1024; // Placeholder to stop breakage
         window.video.videoHeight = 768; // Placeholder to stop breakage
         $('#vid').on('canplay', vid_ready); // Reinstate events
-        $('#vid').on('timeupdate', timeupdate); // Reinstate events
+        vid_events();
+        //$('#vid').on('timeupdate', timeupdate); // Reinstate events
         window.video = document.getElementById('vid');
         $('#audio_settings').show();
         $('.resize_vid').on('change', resize_vid_for_audio);
@@ -256,10 +259,12 @@
     $('#vid').on('canplay', vid_ready);
     Object.defineProperty(HTMLMediaElement.prototype, 'playing', {
         get: function(){
+          //console.log(this.currentTime, this.paused, this.ended, this.readyState);
           return !!(this.currentTime > 0 && !this.paused && !this.ended && this.readyState > 2);
         }
     })
-    $('#vid').on('timeupdate', timeupdate);
+    //$('#vid').on('timeupdate', timeupdate);
+    vid_events();
     $('#home_ffmpeg').on('click', home_ffmpeg);
     $('#export_srt').on('click', export_srt);
     $('#export_ass').on('click', export_ass);
@@ -506,12 +511,28 @@
     display_opts();
   }
 
+  function vid_events(){
+    $('#vid').on('play', start_syncing);
+    $('#vid').on('pause', stop_syncing);
+    $('#vid').on('seeking', sync_lyrics);
+    $('#vid').on('seeked', sync_lyrics);
+  }
+
+  function start_syncing(){
+    window.raf_callback = window.requestAnimationFrame(timeupdate);
+  }
+
+  function stop_syncing(){
+    if(window.raf_callback) window.cancelAnimationFrame(window.raf_callback);
+    window.raf_callback = null;
+  }
+
   function clear_cache(sub){
     if (sub.height) delete sub.height;
     if (sub.width) delete sub.width;
     if (sub.wrap) delete sub.wrap;
     var c = get_cached_canvas(sub);
-    console.log(sub);
+    //console.log(sub);
     if(c){
       c.users.splice(c.users.indexOf(sub));
       if(c.users.length == 0){
@@ -527,6 +548,16 @@
       if(!get_cached_canvas(e)) draw_subtitle(e, null);
     })
     //console.log(window.cached_canvases);
+  }
+
+  function prerender_lyrics_board(){
+    var lines = document.querySelectorAll('.line_text');
+    lines.forEach(function(l){
+      list_styles('all').forEach(function(s){
+        var e = {text: l.textContent, style: s};
+        if(!get_cached_canvas(e)) draw_subtitle(e, null);
+      });
+    });
   }
 
   function clear_style_cache(style, resize = true){
@@ -632,7 +663,9 @@
           el.checked = false;
         }
       }else{
-        el.setAttribute('value',window.opts[style][o]);
+        //console.log('value of',o,window.opts[style][o], el)
+        //el.setAttribute('value',window.opts[style][o]);
+        el.value = window.opts[style][o]
         let r = document.getElementById(o+'_range');
         if(r) r.value = window.opts[style][o];
         }
@@ -1210,6 +1243,7 @@
     $('#lyrics_array').html(existing+inside);
     rescan_sub_lines();
     //$('.line_text').on('click', click_line);
+    prerender_lyrics_board();
     var evt = new MouseEvent('click', {view: window, bubbles: true, cancelable: true});
     $('#place_tab')[0].dispatchEvent(evt);
   }
@@ -1340,9 +1374,15 @@
 
   function timeupdate(){
     var time = timecode();
-    if(time == window.last_timecode) return; // No duplication
-    window.last_timecode = time;
-    sync_lyrics();
+    if(time != window.last_timecode){// No duplication
+      window.last_timecode = time;
+      sync_lyrics();
+    }
+    if(window.video.playing){
+      window.raf_callback = window.requestAnimationFrame(timeupdate);
+    }else{
+      window.raf_callback = null;
+    }
   }
 
   function sync_lyrics(){
@@ -1411,6 +1451,7 @@
       check_overlap(len);
       update_list();
     }
+    sync_lyrics(); // Don't wait til next update!
     return t;
   }
 
@@ -1837,14 +1878,22 @@
     }
 
     function list_styles(in_use = 'all'){
-      return Object.keys(window.opts).filter(function(s){
-        if(s[0] == '_') return false; // filter out globals
-        if(in_use == 'all') return true;
-        return window.timecodes.some((t) => {
-          if(t.style) return t.style == s;
-          return s == 'default'; // For if no style is set
-        });
-      });
+      var list = Object.keys(window.opts)
+      var ret_list = []
+      if(in_use == 'all'){
+        for(let i = 0; i < list.length; i++){
+          if(list[i][0] == '_') continue;
+          ret_list.push(list[i]);
+        }
+        return ret_list;
+      }else{
+        // Get from timecodes instead
+        var ret_set = new Set();
+        for(let i = 0; i < window.timecodes.length; i++){
+          ret_set.add(window.timecodes[i].style || 'default');
+        }
+        return Array.from(ret_set);
+      }
     }
 
 
@@ -2211,9 +2260,9 @@
           //console.log('ec', end_canvas.width, end_canvas.height);
           var y_off = end_canvas.height - cc.canvas.height;
           if(y_off < 0){
-            console.log('negative!');
+            //console.log('negative!');
           }
-          else if(y_off > 0) console.log('postive!');
+          else if(y_off > 0) //console.log('positive!');
           //console.log(cc.canvas.width);
           end_ctx.clearRect(0, 0, end_canvas.width, end_canvas.height);
           //console.log(end_ctx,cc.canvas);
@@ -2277,7 +2326,7 @@
     }
 
     if(line.text == '' && !window.opts._global.bg_visible){
-      console.log('caching');
+      //console.log('caching');
       add_cached_canvas(line, canvas);
       return;
     }
