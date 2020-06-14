@@ -173,6 +173,7 @@
   <script src="jszip.min.js"></script>
   <script>
   $(document).ready(function() {
+    $('#verse_tab').hide();
     window.raf_callback = null;
     window.selected_line = -1;
     window.timecodes = [];
@@ -203,6 +204,7 @@
 
     window.percentage_fields = ['bg_width', 'h_offset', 'v_offset', 'h_margin', 'v_margin', 'font_size', 'video_size'];
     window.preview_line = {start: 0, end: 0, text: ''};
+    check_cors();
     $('#process').on('click', process_lyrics);
     $('#clear').on('click', function(){
       $('#lyrics').val('');
@@ -531,15 +533,7 @@
     if (sub.height) delete sub.height;
     if (sub.width) delete sub.width;
     if (sub.wrap) delete sub.wrap;
-    var c = get_cached_canvas(sub);
-    //console.log(sub);
-    if(c){
-      c.users.splice(c.users.indexOf(sub));
-      if(c.users.length == 0){
-        delete window.cached_canvases[sub.style || 'default'][sub.text];
-        //console.log('deleted');
-      }
-    }
+    delete_cached_canvas(sub);
   }
 
   function prerender(){
@@ -635,20 +629,13 @@
     let text = line.text;
     let style = line.style || 'default';
     if(!window.cached_canvases[style]) window.cached_canvases[style] = {};
-    if(!window.cached_canvases[style][text]){
-      window.cached_canvases[style][text] = { canvas: canvas, users: [line]};
-    }else{
-      window.cached_canvases[style][text].users.push(line);
-    }
+    window.cached_canvases[style][text] = { canvas: canvas};
   }
 
-  function dec_cached_canvas(line){
-    let text=line.text;
+  function delete_cached_canvas(line){
+    let text = line.text;
     let style = line.stye || 'default';
-    if(window.cached_canvases[style] && window.cached_canvases[style][text]){
-      window.cached_canvases[style][text].users.splice(window.cached_canvases[style][text].users.indexOf(line));
-      if(window.cached_canvases[style][text].users.length == 0) delete window.cached_canvases[style][text];
-    }
+    if(window.cached_canvases[style] && window.cached_canvases[style][text]) delete window.cached_canvases[style][text];
   }
 
   function opt_controls(style){
@@ -699,10 +686,22 @@
         $('.verse_opts').show();
         $('.lyrics_opts').hide();
       }else{
+        prerender_lyrics_board();
+        prerender();
         $('.verse_opts').hide();
         $('.lyrics_opts').show();
       }
     }
+  }
+
+  async function check_cors(){
+    fetch("https://www.biblegateway.com", {method: 'get'})
+      .then(function(response){
+        console.log(response);
+        return response.type;
+      }).then(function(text){
+        console.log(text);
+      });
   }
 
 
@@ -1058,14 +1057,6 @@
       }
       opt_constraints(opt, window.opts[style][opt]);
       display_opts(); // Only refresh on change
-      if(!slider){
-        prerender(); // Don't slow us down whilst doing slider
-      }else{
-        $('#'+opt+'_range').on('mouseup', function(e){
-          prerender();
-          $(this).off('mouseup');
-        });
-      }
     }
   }
 
@@ -1243,7 +1234,6 @@
     $('#lyrics_array').html(existing+inside);
     rescan_sub_lines();
     //$('.line_text').on('click', click_line);
-    prerender_lyrics_board();
     var evt = new MouseEvent('click', {view: window, bubbles: true, cancelable: true});
     $('#place_tab')[0].dispatchEvent(evt);
   }
@@ -2268,8 +2258,6 @@
           //console.log(end_ctx,cc.canvas);
           end_ctx.drawImage(cc.canvas, 0, y_off);
         }
-        //console.log(cc);
-        if(cc.users.indexOf(line) == -1) cc.users.push(line);
         return;
       }
 
@@ -3028,6 +3016,7 @@ function browser_video(just_overlay, zip = false){
         var input_args = '';
         var overlay_args = '';
         var fade_dur = window.opts._global.fade_dur;
+        var fade_min = 10;
         var total_dur = 0;
         var input_aug = (just_overlay) ? 0 : 1;
         var reduced_blank = false;
@@ -3038,7 +3027,7 @@ function browser_video(just_overlay, zip = false){
         duration_list.forEach(function(e, i){
           var overlay_num = input_aug;
           var overlay_stream = '['+overlay_num+']';
-          if(e.file == 'blank.'+window.img_type && i > 0 && duration_list[i-1].file != 'blank.'+window.img_type){
+          if(e.file == 'blank.'+window.img_type && i > 0 && duration_list[i-1].file != 'blank.'+window.img_type && parseFloat(e.dur) > fade_min){
             // Blank after non-blank
             //console.log('blank after non-blank',i);
             var fade_amount = fade_dur;
@@ -3048,7 +3037,7 @@ function browser_video(just_overlay, zip = false){
             }
             e.dur -= fade_amount;
             e.dur = e.dur.toFixed(3);
-          }if(e.file == 'blank.'+window.img_type && i < duration_list.length - 1 && duration_list[i+1].file != 'blank.'+window.img_type){
+          }if(e.file == 'blank.'+window.img_type && i < duration_list.length - 1 && duration_list[i+1].file != 'blank.'+window.img_type && parseFloat(e.dur) > fade_min){
             // Blank before non-blank
             //console.log('blank before non-blank',i);
             var fade_amount = fade_dur;
@@ -3058,13 +3047,13 @@ function browser_video(just_overlay, zip = false){
             e.dur = e.dur.toFixed(3);
           }else if(e.file != 'blank.'+window.img_type){
           //  console.log('non-blank');
-            if(i > 0 && duration_list[i-1].file == 'blank.'+window.img_type){
+            if(i > 0 && duration_list[i-1].file == 'blank.'+window.img_type && parseFloat(duration_list[i-1].dur) > fade_min){
               // Non-blank after blank
               //console.log('blank before');
               var fade_amount_1 = fade_dur;
               if(parseFloat(duration_list[i-1].dur) < fade_amount_1) fade_amount_1 = parseFloat(duration_list[i-1].dur);
               //console.log(fade_amount_1);
-              if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.'+window.img_type){
+              if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.'+window.img_type && parseFloat(duration_list[i+1].dur) > fade_min){
                 // Blank sandwich!
                 var join = overlay_stream;
                 //console.log('fade in and output',i);
@@ -3121,7 +3110,7 @@ function browser_video(just_overlay, zip = false){
                   overlay_stream = new_overlay;
                 }
               }
-            }else if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.'+window.img_type){
+            }else if(i < duration_list.length - 1 && duration_list[i+1].file == 'blank.'+window.img_type && parseFloat(duration_list[i+1].dur) > fade_min){
               // Non-blank before blank - just fade out
               //console.log('fade out',i);
               var fade_amount_2 = fade_dur;
@@ -3419,7 +3408,7 @@ function bible_passage(passage, version = 'NIV'){
   <div class="w3-bar w3-black">
     <button class="w3-bar-item w3-button tablink w3-blue" onclick="openTab(event, 'add_lyrics')">Import</button>
     <button class="w3-bar-item w3-button tablink" id="place_tab" onclick="openTab(event, 'place_lyrics','place')">Place</button>
-    <button class="w3-bar-item w3-button tablink" id="verse_tab" style="display: none;" onclick="openTab(event, 'place_lyrics','verse')">Verse</button>
+    <button class="w3-bar-item w3-button tablink" id="verse_tab" onclick="openTab(event, 'place_lyrics','verse')">Verse</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'edit_lyrics')">Edit</button>
     <button class="w3-bar-item w3-button tablink" id="opt_tab" onclick="openTab(event, 'options')">Format</button>
     <button class="w3-bar-item w3-button tablink" onclick="openTab(event, 'export')">Export</button>
