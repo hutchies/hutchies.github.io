@@ -199,12 +199,13 @@
     window.isWorkerLoaded = false;
     window.worker_promise = {};
     window.worker = null;
+    window.current_canvas = null;
     window.ffmpeg_running = false;
     window.cached_sizes = {width: 0, height: 0};
     window.current_style = "default";
 
     window.percentage_fields = ['bg_width', 'h_offset', 'v_offset', 'h_margin', 'v_margin', 'font_size', 'video_size'];
-    window.preview_line = {start: 0, end: 0, text: ''};
+    window.preview_line = {start: 0, end: 0, text: '', style: 'default'};
     check_cors();
     $('#process').on('click', process_lyrics);
     $('#clear').on('click', function(){
@@ -292,6 +293,10 @@
     $('#join_lyric').on('click', join_selected);
     $('#split_lyric').hide();
     $('#deselect_lyric').hide();
+    $('#select_all_lines').on('click', select_all_lines);
+    $('#clear_selection').on('click', clear_selection);
+    $('#delete_selected').on('click', delete_selected);
+    $('#style_selected').on('change', style_selected);
     $('#lyrics_array').on('mousedown', '.line_text', click_line);
     $('#list').on('click', '.delete', delete_sub);
     $('#list').on('click', '.lyrics_text', edit_lyric);
@@ -502,6 +507,7 @@
     //console.log(style_options());
     $('.lyrics_style').html(style_options());
     $('#styles_list').html(style_options(name));
+    $('#style_selected').html(style_options(name));
     set_style(name);
     //update_list?
   }
@@ -660,6 +666,49 @@
       }
       opt_constraints(o, window.opts[style][o]);
     }
+
+  function select_all_lines(){
+    var lines = document.querySelectorAll('.lyrics_text');
+    if(lines.length == 0) return;
+    lines.forEach(function(l){
+      $(l).addClass('highlighted');
+    });
+    $('#selected_options').show();
+  }
+
+  function clear_selection(){
+    var lines = document.querySelectorAll('.highlighted');
+    lines.forEach(function(l){
+      $(l).removeClass('highlighted');
+    });
+    $('#selected_options').hide();
+  }
+
+  function delete_selected(){
+    if(!confirm('Are you sure you want to delete the selected lyrics?')) return;
+    var lines = document.querySelectorAll('.highlighted');
+    var to_remove = [];
+    lines.forEach(function(l){
+      var id = l.id.substring(5);
+      if(current_lyric() == id) deselect();
+      to_remove.push(id);
+    });
+    to_remove = to_remove.sort(function(a,b){return b - a});
+    to_remove.forEach((i) => {window.timecodes.splice(i, 1);});
+    update_list();
+  }
+
+  function style_selected(){
+    var style = $('#style_selected').val();
+    var lines = document.querySelectorAll('.highlighted');
+    lines.forEach(function(l){
+      var id = l.id.substring(5);
+      clear_cache(window.timecodes[id]); // Before changing style
+      window.timecodes[id].style = style;
+      $('#style_'+id).val(style);
+    });
+    sync_lyrics();
+  }
 
   function set_opt_controls(){
     opt_controls(window.current_style);
@@ -1383,7 +1432,7 @@
     //console.log('sl', window.timecodes);
     if(window.timecodes.length < 1){
       //$('#preview').text('');
-      window.preview_line = { start: 0, end: 0, text: ''};
+      window.preview_line = { start: 0, end: 0, text: '', style: window.current_style};
       preview_canvas();
       //console.log('slearly', window.timecodes);
       return;
@@ -1403,7 +1452,7 @@
     }else{
       // No lyrics here
       //$('#preview').text('');
-      window.preview_line = {start: 0, end: 0, text: ''};
+      window.preview_line = {start: 0, end: 0, text: '', style: window.current_style};
       preview_canvas();
     }
     //console.log('sle', window.timecodes);
@@ -1542,12 +1591,13 @@
     var id = $(this).attr('id').substring(6);
     add_undo();
     if(window.selected_line != -1 && current_lyric() == id){
-      window.timecodes[id].style = $(this).val();
       clear_cache(window.timecodes[id]);
+      window.timecodes[id].style = $(this).val();
       set_style($(this).val()); // This is the current one
+      sync_lyrics();
     }else{
-      window.timecodes[id].style = $(this).val();
       clear_cache(window.timecodes[id]);
+      window.timecodes[id].style = $(this).val();
       //size_canvas(); // In case of changing height
     }
   }
@@ -2248,6 +2298,7 @@
       var s = line.style || 'default';
       var cc = get_cached_canvas(line, s);
       if(cc && cc.canvas && cc.canvas.width == window.video.videoWidth){ // Redo when we reload
+        if(cc.canvas === window.current_canvas) return;
         if(end_canvas){
           end_canvas.width = window.video.videoWidth;
           end_canvas.height = canvas_height(); //cc.canvas.height;
@@ -2455,6 +2506,7 @@
       //console.log(end_canvas.width, window.video.videoWidth);
     }
     add_cached_canvas(line, canvas);
+    window.current_canvas = canvas;
 
   }
 
@@ -3465,7 +3517,8 @@ function bible_passage(passage, version = 'NIV'){
               <li>Click on times to jump to them in the video;</li>
               <li>Click on subtitle text to edit it;</li>
               <li>Shift-click to set to current time;</li>
-              <li>Shift-alt-click to set to current time and 'ripple' all subsequent subtitles backwards or forwards to compensate (useful if you've trimmed the start of your video or added a clip in the middle).</li>
+              <li>Shift-alt-click to set to current time and 'ripple' all subsequent subtitles backwards or forwards to compensate (useful if you've trimmed the start of your video or added a clip in the middle);</li>
+              <li>Shift click or drag to select multiple lyrics so you can delete or restyle them.</li>
             </ul>
             You can undo changes by pressing ctrl/cmd-Z, and redo them with shift-ctrl/cmd-Z. (Or press the buttons that appear!)
           </details>
@@ -3474,8 +3527,12 @@ function bible_passage(passage, version = 'NIV'){
           <button class="w3-btn w3-blue" id="undo_button">Undo</button>
           <button class="w3-btn w3-blue" id="redo_button">Redo</button>
         </div>
-        <div id="selected_options">Change style of selected lyrics:<select id="style_selected"></select>
-        <button class="w3-btn w3-red" id="delete_selected">Delete selected lyrics</button></div>
+        <div>
+        <button class="w3-btn w3-blue" id="select_all_lines">Select all lyrics</button>
+        <span id="selected_options">
+        <button class="w3-btn w3-green" id="clear_selection">Clear selection</button>
+        Change style of selected lyrics:<select id="style_selected"></select>
+        <button class="w3-btn w3-red" id="delete_selected">Delete selected lyrics</button></span></div>
         <div id="list" class="lyrics_array" style="font-family: monospace; white-space:pre;"></div>
         <button class="w3-btn w3-red" id="delete_all" type="button">Delete all subtitles</button>
       </div>
