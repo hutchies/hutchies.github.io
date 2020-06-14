@@ -688,6 +688,7 @@
       }else{
         prerender_lyrics_board();
         prerender();
+        //console.log(window.cached_canvases);
         $('.verse_opts').hide();
         $('.lyrics_opts').show();
       }
@@ -697,10 +698,12 @@
   async function check_cors(){
     fetch("https://www.biblegateway.com", {method: 'get'})
       .then(function(response){
-        console.log(response);
+        //console.log(response);
         return response.type;
       }).then(function(text){
-        console.log(text);
+        $('#verse_tab').show();
+      }).catch((error) =>{
+        console.log("no cors");
       });
   }
 
