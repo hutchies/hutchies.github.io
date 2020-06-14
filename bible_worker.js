@@ -8,18 +8,19 @@ onmessage = function(event){
 
     fetch(url, {method: 'get', mode: 'no-cors'})
       .then(function(response){
-        console.log(response);
-        return response.type;
+        //console.log(response);
+        return response.text();
         //if(response.type == 'basic') return 'basic';//response.text();
         /* else postMessage({
           'type' : 'log',
           'data' : response.type,
         });*/
       })
-      .then(function(text){
+      .then(function(data){
+        //console.log(data);
         postMessage({
           'type' : 'found',
-          'data' : text,
+          'data' : data,
           'passage': passage
         })
       });

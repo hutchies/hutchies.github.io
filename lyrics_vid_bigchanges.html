@@ -182,6 +182,7 @@
     window.video = document.getElementById('vid');
     window.last_timecode = -1;
     window.redo_buffer = [];
+    window.bible_worker_loaded = false;
     window.prev_list_length = 0;
     window.test_canvas = document.createElement('CANVAS');
     //window.running_locally = false;
@@ -2521,9 +2522,9 @@ function init_worker(){
   bible_worker.onmessage = function (event) {
     var message = event.data;
     if(message.type == "ready") {
-
-    } else if(message.type == 'verse') {
-      show_passage(message.data);
+      window.bible_worker_loaded = true;
+    } else if(message.type == "found") {
+      show_passage(message.passage, message.data);
     }
   }
   window.worker = new Worker("worker-asm.js");
@@ -3328,8 +3329,9 @@ function bible_version(){
   else $('#bible_custom').hide();
 }
 
-function show_passage(result){
+function show_passage(passage, result){
   var all = '';
+  //console.log(result);
   $(result).find('.passage-content *').each(function(){
     //console.log(this);
     if(this.nodeType == 1 && $(this).hasClass('text') && $(this).parent('h3').length == 0){
@@ -3362,25 +3364,12 @@ function show_passage(result){
   add_line();
 }
 
-function bible_callback(json){
-  var all = json;//JSON.parse(json);
-  var passage = $('#single_line').val();
-  $('#single_line').val(all);
-  add_line();
-}
-
 function bible_passage(passage, version = 'NIV'){
-  //var api_key = '30a80e79b9aac1a77b8bdb334f03a03f';
-  /*$.ajax({
-    url: "http://api.biblia.com/v1/bible/parse?passage="+encodeURIComponent()
-  })*/
-  passage = passage.replace(/\s/g,'');
-  passage = passage.replace(/:/g,'.');
-
-  var url = "https://bible-api.com/"//"https://api.biblia.com/v1/bible/content/"+version+".txt.json?passage="+encodeURIComponent(passage)+"&key=30a80e79b9aac1a77b8bdb334f03a03f&callback=?";///+api_key;
-  $.getJSON(url, function(result){
-    bible_callback(result);
-  });
+  window.bible_worker.postMessage({
+    type: 'lookup',
+    passage: passage,
+    version: version
+  })
 }
 
 </script>
