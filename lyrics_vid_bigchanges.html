@@ -528,10 +528,12 @@
   }
 
   function start_syncing(){
+    console.log('playing');
     window.raf_callback = window.requestAnimationFrame(timeupdate);
   }
 
   function stop_syncing(){
+    console.log('paused');
     if(window.raf_callback) window.cancelAnimationFrame(window.raf_callback);
     window.raf_callback = null;
   }
@@ -554,6 +556,7 @@
   function prerender_lyrics_board(){
     var lines = document.querySelectorAll('.line_text');
     lines.forEach(function(l){
+      //console.log(l.textContent);
       list_styles('all').forEach(function(s){
         var e = {text: l.textContent, style: s};
         if(!get_cached_canvas(e)) draw_subtitle(e, null);
@@ -1417,15 +1420,18 @@
 
   function timeupdate(){
     var time = timecode();
+    //console.log(time, window.last_timecode);
     if(time != window.last_timecode){// No duplication
       window.last_timecode = time;
       sync_lyrics();
     }
-    if(window.video.playing){
+    window.raf_callback = window.requestAnimationFrame(timeupdate);
+    /*if(window.video.playing){
+      console.log('playing');
       window.raf_callback = window.requestAnimationFrame(timeupdate);
     }else{
       window.raf_callback = null;
-    }
+    }*/
   }
 
   function sync_lyrics(){
@@ -2294,11 +2300,16 @@
   function draw_subtitle(line, end_canvas, blank = false){
     var end_ctx = null;
     if(end_canvas) end_ctx = end_canvas.getContext('2d');
+    //console.log(line.text, 'drawing');
 
       var s = line.style || 'default';
       var cc = get_cached_canvas(line, s);
       if(cc && cc.canvas && cc.canvas.width == window.video.videoWidth){ // Redo when we reload
-        if(cc.canvas === window.current_canvas) return;
+        //console.log(window.current_canvas);
+        /*if(cc.canvas === window.current_canvas){
+          console.log('same');
+          return;
+        }*/
         if(end_canvas){
           end_canvas.width = window.video.videoWidth;
           end_canvas.height = canvas_height(); //cc.canvas.height;
@@ -2313,6 +2324,8 @@
           //console.log(end_ctx,cc.canvas);
           end_ctx.drawImage(cc.canvas, 0, y_off);
         }
+        //console.log('redrew',line.text);
+        //if(line.text == '') console.log('(blank)')
         return;
       }
 
@@ -2369,8 +2382,9 @@
     }
 
     if(line.text == '' && !window.opts._global.bg_visible){
-      //console.log('caching');
+      //console.log('caching blank');
       add_cached_canvas(line, canvas);
+      window.current_canvas = canvas;
       return;
     }
     // No need to do any drawing
@@ -2416,8 +2430,9 @@
       ctx.globalAlpha = 1;
     }
 
-    if(blank) return;
-
+    if(blank){
+      return;
+    }
     translate += proportion('height', opt(line,'v_margin'));
 
     // Draw text
@@ -2505,6 +2520,7 @@
       end_ctx.drawImage(canvas, 0, 0);
       //console.log(end_canvas.width, window.video.videoWidth);
     }
+    //console.log('cahced');
     add_cached_canvas(line, canvas);
     window.current_canvas = canvas;
 
