@@ -2920,11 +2920,12 @@
 
                     if (!just_overlay) {
                         args.push('-i', window.vid_name); // First one
-                        if (fn == 'mov') {
+                        /*if (fn == 'mov') {
                             output_type = 'prores_noalpha'; // Presume Apple video in a ProRes container
                         } else {
                             output_type = 'h264'; // Anything else presume H.264
-                        }
+                        }*/
+                        output_type = 'h264';
                     } else {
                         output_type = $('#codec').val();
                     }
