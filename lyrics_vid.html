@@ -2819,7 +2819,7 @@
                 v408: '-c:a copy -c:v v408 ' + rate + 'overlay.mov'
             };
 
-            var chosen_format = output_formats[output_type];
+            var chosen_format;
 
             //if(zip)
             if (window.opts._global.fades) method = 'blank_fade'; //'zoompan'; //;
@@ -2928,6 +2928,8 @@
                     } else {
                         output_type = $('#codec').val();
                     }
+
+                    chosen_format = output_formats[output_type];
 
                     var i_aug = 0;
                     blobs.forEach(function(blob) {
