@@ -3381,6 +3381,7 @@
                             type: "uint8array"
                         }).then(function(f) {
                             download(f, 'diy_overlay.zip', 'application/zip');
+                            command = command.replace(/filter_complex\s+([^\s]+])\s+/g, 'filter_complex "$1" '); // For zsh
                             $('#ffmpeg_command').val(command);
                             $('#ffmpeg_command')[0].select();
                             $('#ffmpeg_command')[0].setSelectionRange(0, 99999);
