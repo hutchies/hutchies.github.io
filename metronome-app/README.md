@@ -85,6 +85,19 @@ The map is stored in the URL fragment, so it never reaches a server and links wo
 
 The text syntax beat gzipped JSON on two counts. It is already compact: a typical map is shorter as text than its compressed JSON was. It also keeps one canonical format, so the URL, the text editor and saved maps are all the same thing. Compression uses the browser's built-in `CompressionStream`, so pako is no longer needed.
 
+### Install and offline
+
+The app is a Progressive Web App: open it in a browser and choose "Add to Home Screen" (iOS: Share → Add to Home Screen; Android: the install prompt or ⋮ → Install app). It then opens full screen with its own icon and works with no connection.
+
+- `public/manifest.webmanifest` and the icons in `public/` make it installable. `scripts/icons.mjs` regenerates the icons (needs Playwright).
+- `sw/sw.js` is the service worker. The `service-worker` plugin in `vite.config.ts` writes it into the build with the list of files to precache and a version derived from them, so each deploy replaces the old cache. Pages load network-first so updates arrive promptly, app files come from the cache, and other origins (the group-sync server) are left alone.
+
+### Battery
+
+- The display only redraws while something moves (playback, a drag, a fading flash) and briefly after any change, and at most ~60 times a second. A stopped metronome draws nothing.
+- The AudioContext is suspended 5 s after playback stops and resumed on Play, unless the device is in a group, whose clock sync needs it running.
+- In dark mode the focus view uses a true-black canvas, which costs almost nothing on OLED screens. The edge flash is a plain border that only changes opacity.
+
 ## Architecture
 
 ```

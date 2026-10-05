@@ -21,6 +21,8 @@ import type { WorkletMessage } from './worklet';
 const LEAD = 0.06;
 /** Lead time for tap releases: as small as safely possible. */
 const TAP_LEAD = 0.025;
+/** Idle time after stopping before the audio thread is suspended. */
+const IDLE_SUSPEND_MS = 5000;
 
 export interface CountInInfo {
   /** Audio times of count-in clicks. */
@@ -45,6 +47,13 @@ export class Engine {
   private wakeLock: { release(): Promise<void> } | null = null;
   /** Called whenever transport state changes. */
   onChange: () => void = () => {};
+  /**
+   * Keep the audio clock running while idle (group sync needs it). Otherwise
+   * the AudioContext is suspended a few seconds after playback stops, so a
+   * stopped metronome uses next to no battery.
+   */
+  keepAlive = false;
+  private idleTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** Must be called from a user gesture the first time (autoplay policy). */
   async start(): Promise<void> {
@@ -67,7 +76,29 @@ export class Engine {
       })();
     }
     await this.ready;
+    clearTimeout(this.idleTimer);
     if (this.ctx!.state !== 'running') await this.ctx!.resume();
+  }
+
+  /** Suspend the audio thread once nothing is playing for a while. */
+  private scheduleIdle() {
+    clearTimeout(this.idleTimer);
+    if (this.state.playing || this.keepAlive) return;
+    this.idleTimer = setTimeout(() => {
+      if (this.state.playing || this.keepAlive || this.ctx?.state !== 'running') return;
+      void this.ctx.suspend();
+    }, IDLE_SUSPEND_MS);
+  }
+
+  /** Allow or stop idle suspension (e.g. when joining or leaving a group). */
+  setKeepAlive(on: boolean) {
+    this.keepAlive = on;
+    if (on) {
+      clearTimeout(this.idleTimer);
+      if (this.ctx && this.ctx.state !== 'running') void this.ctx.resume();
+    } else {
+      this.scheduleIdle();
+    }
   }
 
   private post(msg: WorkletMessage, transfer: Transferable[] = []) {
@@ -164,7 +195,8 @@ export class Engine {
   }
 
   private apply(next: TransportState, notify = true) {
-    this.state = withPrev(next, this.state);
+    // A suspended clock never reaches the anchor, so idle changes apply at once.
+    this.state = this.running ? withPrev(next, this.state) : { ...next, prev: undefined };
     this.post({ type: 'state', state: this.state });
     if (notify) this.onChange();
   }
@@ -213,6 +245,7 @@ export class Engine {
     this.post({ type: 'preroll', times: [], levels: [] });
     this.apply({ ...this.state, playing: false, anchorScore: score, anchorTime: t });
     this.releaseWakeLock();
+    this.scheduleIdle();
   }
 
   /** Stop immediately and park at a score position. */
@@ -223,6 +256,7 @@ export class Engine {
     this.post({ type: 'state', state: this.state });
     this.onChange();
     this.releaseWakeLock();
+    this.scheduleIdle();
   }
 
   /** Change tempo rate, loop region, etc. while keeping position continuous. */
@@ -270,6 +304,7 @@ export class Engine {
     this.onChange();
     if (state.playing) this.requestWakeLock();
     else this.releaseWakeLock();
+    this.scheduleIdle();
   }
 
   /** Schedules standalone clicks at absolute audio times (e.g. a countdown). */

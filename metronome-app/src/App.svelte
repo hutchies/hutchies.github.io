@@ -27,6 +27,11 @@
   /** Room code from a join link, waiting for the user to tap Join. */
   let joinInvite = $state<{ code: string; hostKey?: string; server?: string } | null>(null);
 
+  // Group sync needs the audio clock running; otherwise it may sleep when idle.
+  $effect(() => {
+    app.engine.setKeepAlive(!!app.group);
+  });
+
   // Keep the engine's copy of the timeline and loop in step.
   $effect(() => {
     const tl = app.timeline;
