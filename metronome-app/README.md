@@ -24,11 +24,13 @@ The build uses relative paths, so `dist/` can be served from any sub-path, such 
 
 ## Using it
 
-- **Builder** (left panel): add blocks of bars, pauses and repeats. Empty fields carry on from the previous block, shown as grey placeholders.
+- **Blocks** (left panel, or the Edit tab on phones): one compact row per block of bars, pause or repeat: mark, × number of bars, metre and tempo (tap the note symbol to change the beat unit). Empty fields carry on from the previous block, shown as grey placeholders. The ⋯ button on a row opens rit./accel., renumbering, and move, loop, duplicate, repeat and delete.
 - **Text** (left panel): the same map in a compact syntax (below). Both views edit the same piece.
+- **Focus view**: the ⛶ button above the display (or F) shows only the click strip, fullscreen where the browser allows it. On tall (portrait) screens the strip wraps onto 2–3 rows, read like lines of text: the playhead is on the top row and each row continues where the one above ends (Settings → Focus view rows to fix the number). Corner buttons toggle the edge flash and mute. Tap anywhere to play or pause; Esc or the corner button leaves it.
+- **Silent playback**: Settings → Visual beat flash → Screen edges lights the edges of the screen on every beat (brighter on downbeats), in any view; combine it with Mute clicks.
 - **Display**: drag to move the start point, Ctrl/⌘+scroll or pinch to zoom, and tap it to continue from a pause.
 - **Sections**: jump to a rehearsal mark, or loop it.
-- **Keys**: Space play/pause/continue, Esc stop, ←/→ bar, [/] mark, L loop, −/+/0 tempo. Page-turner pedals (PgDn/↓/Enter) continue from pauses.
+- **Keys**: Space play/pause/continue, Esc stop (or leave focus view), F focus view, ←/→ bar, [/] mark, L loop, −/+/0 tempo. Page-turner pedals (PgDn/↓/Enter) continue from pauses.
 
 ### Text syntax
 

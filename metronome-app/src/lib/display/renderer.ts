@@ -51,7 +51,16 @@ export interface ViewOptions {
   /** Playhead position as a fraction of width. */
   playhead: number;
   showSubdivisions: boolean;
+  /**
+   * Wrap the strip onto this many stacked rows, read like lines of text: the
+   * playhead is on the top row and each row below continues where the one
+   * above ends. Used to fill tall (portrait) screens.
+   */
+  rows?: number;
 }
+
+/** Vertical space between wrapped rows. */
+const ROW_GAP = 14;
 
 export class Renderer {
   theme: Theme;
@@ -87,9 +96,45 @@ export class Renderer {
     ctx.fillRect(0, 0, w, h);
     if (w === 0 || h === 0) return;
 
+    const rows = Math.max(1, Math.floor(view.rows ?? 1));
+    if (rows === 1) {
+      this.drawRow(tl, frame, view, h, true);
+      return;
+    }
+    const rowH = (h - ROW_GAP * (rows - 1)) / rows;
+    // Each row shows the next stretch of the same strip, one screen-width later.
+    const rowSpan = w / view.pxPerSecond;
+    const loop = frame.loop;
+    const inLoop = !!loop && frame.score >= loop.start - 1e-6 && frame.score < loop.end && !frame.countIn;
+    for (let r = 0; r < rows; r++) {
+      let score = frame.score + r * rowSpan;
+      // Rows past the loop end carry on from the loop start, as playback will.
+      if (inLoop && loop!.end > loop!.start) {
+        const len = loop!.end - loop!.start;
+        while (score >= loop!.end) score -= len;
+      }
+      const y = r * (rowH + ROW_GAP);
+      if (r > 0) {
+        ctx.fillStyle = th.barShade;
+        ctx.fillRect(0, y - ROW_GAP, w, ROW_GAP);
+      }
+      ctx.save();
+      ctx.translate(0, y);
+      ctx.beginPath();
+      ctx.rect(0, 0, w, rowH);
+      ctx.clip();
+      this.drawRow(tl, r === 0 ? frame : { ...frame, score, flash: undefined }, view, rowH, r === 0);
+      ctx.restore();
+    }
+  }
+
+  /** One strip of height h at the current origin; only the primary row carries the playhead. */
+  private drawRow(tl: Timeline, frame: Frame, view: ViewOptions, h: number, primary: boolean) {
+    const { ctx, w, theme: th } = this;
+
     const px = w * view.playhead;
     const pps = view.pxPerSecond;
-    const lanes = this.lanes();
+    const lanes = this.lanes(h);
 
     const loop = frame.loop;
     const pos = frame.score;
@@ -128,13 +173,15 @@ export class Renderer {
 
     if (frame.countIn) this.drawCountIn(frame, xOf, lanes);
 
+    if (!primary) return;
+
     // Dim the past.
     ctx.fillStyle = th.bg;
     ctx.globalAlpha = 0.45;
     ctx.fillRect(0, 0, px, h);
     ctx.globalAlpha = 1;
 
-    this.drawPlayhead(frame, px, lanes);
+    this.drawPlayhead(frame, px, lanes, h);
 
     if (frame.held) {
       const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 180);
@@ -149,8 +196,7 @@ export class Renderer {
     }
   }
 
-  private lanes() {
-    const h = this.h;
+  private lanes(h: number) {
     const top = 6;
     const markLane = top;
     const tempoLane = top + 26;
@@ -350,8 +396,8 @@ export class Renderer {
     });
   }
 
-  private drawPlayhead(frame: Frame, px: number, lanes: ReturnType<Renderer['lanes']>) {
-    const { ctx, theme: th, h } = this;
+  private drawPlayhead(frame: Frame, px: number, lanes: ReturnType<Renderer['lanes']>, h: number) {
+    const { ctx, theme: th } = this;
     let glow = 0;
     let level = 1;
     if (frame.flash) {
