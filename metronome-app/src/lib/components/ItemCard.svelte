@@ -7,7 +7,7 @@
   import Icon from './Icon.svelte';
   import ItemCard from './ItemCard.svelte';
 
-  let { item, depth = 0 }: { item: Item; depth?: number } = $props();
+  let { item }: { item: Item } = $props();
 
   const UNITS: { v: NoteValue; sym: string; uk: string; us: string }[] = [
     { v: { base: 1, dots: 0 }, sym: '𝅝', uk: 'semibreve', us: 'whole' },
@@ -21,19 +21,22 @@
   ];
   const unitKey = (v: NoteValue) => `${v.base}.${v.dots}`;
   const unitLabel = (u: (typeof UNITS)[number]) => `${u.sym} ${app.settings.british ? u.uk : u.us}`;
+  const unitSym = (v: NoteValue) => UNITS.find((u) => unitKey(u.v) === unitKey(v))?.sym ?? '♩';
 
   const range = $derived(app.barsForItem(item.id));
   const firstBar = $derived(range ? app.timeline.bars[range.from] : undefined);
-  const rangeText = $derived.by(() => {
-    if (!range) return '';
+  // Bar numbers covered by the first pass, e.g. [5, 8].
+  const span = $derived.by(() => {
+    if (!range) return null;
     const bars = app.timeline.bars;
-    const a = bars[range.from];
-    // Bars in the first pass only.
     let last = range.from;
     while (last + 1 <= range.to && bars[last + 1].number > bars[last].number) last++;
-    const b = bars[last];
-    return a.number === b.number ? `Bar ${a.number}` : `Bars ${a.number}–${b.number}`;
+    return [bars[range.from].number, bars[last].number] as const;
   });
+  const rangeText = $derived(span ? (span[0] === span[1] ? `Bar ${span[0]}` : `Bars ${span[0]}–${span[1]}`) : '');
+  const shortRange = $derived(span ? (span[0] === span[1] ? `${span[0]}` : `${span[0]}–${span[1]}`) : '');
+  /** Extra options and actions, shown on demand to keep the list compact. */
+  let open = $state(false);
   const selected = $derived(app.selectedId === item.id);
   const playingHere = $derived(
     !!range && app.status !== 'stopped' && app.currentBar >= range.from && app.currentBar <= range.to,
@@ -99,9 +102,18 @@
     return wholesPerSecond(item.tempoTo) < wholesPerSecond(from) ? 'rit' : 'accel';
   });
 
-  function select() {
+  function select(e: MouseEvent) {
+    // Clicks inside a nested card belong to that card.
+    if ((e.target as Element).closest('.card') !== e.currentTarget) return;
     app.selectedId = item.id;
     if (range && app.status === 'stopped') app.seekBar(range.from);
+  }
+
+  function setMark(v: string) {
+    if (item.kind === 'repeat') return;
+    v = v.trim().replace(/\s+/g, '-').replace(/[:,|]/g, '');
+    if (v) item.mark = v;
+    else delete item.mark;
   }
 
   const canJoin = $derived(tree.canJoinPrevious(app.piece.items, item.id));
@@ -111,120 +123,105 @@
   class="card {item.kind}"
   class:selected
   class:playing={playingHere}
-  style:--depth={depth}
   onclickcapture={select}
   role="group"
   aria-label={rangeText || item.kind}
 >
-  <div class="head">
+  <div class="row">
     {#if item.kind === 'bars'}
-      <span class="kind"><Icon name="bars" size={16} /> {rangeText}</span>
-    {:else if item.kind === 'pause'}
-      <span class="kind"><Icon name="pauseItem" size={16} /> Pause</span>
-    {:else}
-      <span class="kind"><Icon name="repeat" size={16} /> Repeat</span>
-    {/if}
-    <span class="spacer"></span>
-    <div class="tools">
-      <button class="icon small" title="Move up" aria-label="Move up" onclick={() => tree.move(app.piece.items, item.id, -1)}><Icon name="up" size={18} /></button>
-      <button class="icon small" title="Move down" aria-label="Move down" onclick={() => tree.move(app.piece.items, item.id, 1)}><Icon name="down" size={18} /></button>
-      {#if range}
-        <button class="icon small" title="Loop this" aria-label="Loop this" onclick={() => app.loopSection(range.from, range.to)}><Icon name="loop" size={16} /></button>
-      {/if}
-      <details class="menu">
-        <summary class="icon small" title="More" aria-label="More actions">⋯</summary>
-        <div class="menu-body">
-          <button onclick={() => tree.duplicate(app.piece.items, item.id)}><Icon name="copy" size={16} /> Duplicate</button>
-          {#if item.kind !== 'repeat'}
-            <button onclick={() => tree.wrapInRepeat(app.piece.items, item.id)}><Icon name="repeat" size={16} /> Wrap in repeat</button>
-          {:else}
-            <button onclick={() => tree.unwrap(app.piece.items, item.id)}><Icon name="repeat" size={16} /> Remove repeat (keep contents)</button>
-          {/if}
-          {#if item.kind === 'bars'}
-            {#if item.barNumber === undefined}
-              <button onclick={() => item.kind === 'bars' && (item.barNumber = firstBar?.number ?? 1)}># Renumber from here</button>
-            {:else}
-              <button onclick={() => item.kind === 'bars' && delete item.barNumber}># Automatic bar numbers</button>
-            {/if}
-          {/if}
-          {#if canJoin}
-            <button onclick={() => tree.joinPrevious(app.piece.items, item.id)}><Icon name="up" size={16} /> Move into repeat above</button>
-          {/if}
-          <button class="danger" onclick={() => tree.remove(app.piece.items, item.id)}><Icon name="trash" size={16} /> Delete</button>
-        </div>
-      </details>
-    </div>
-  </div>
-
-  {#if item.kind === 'bars'}
-    <div class="fields">
-      <label class="f mark">
-        <span>Mark</span>
-        <input
-          type="text"
-          value={item.mark ?? ''}
-          placeholder="–"
-          maxlength="12"
-          oninput={(e) => {
-            const v = e.currentTarget.value.trim().replace(/\s+/g, '-').replace(/[:,|]/g, '');
-            if (v) item.mark = v;
-            else delete item.mark;
-          }}
-        />
+      <span class="where" title={rangeText}>{shortRange}</span>
+      <input class="mark" type="text" value={item.mark ?? ''} placeholder="mark" maxlength="12" aria-label="Rehearsal mark" title="Rehearsal mark" oninput={(e) => setMark(e.currentTarget.value)} />
+      <label class="count" title="Number of bars">
+        <span aria-hidden="true">×</span>
+        <input type="number" inputmode="numeric" min="1" max="999" aria-label="Bars" value={item.bars} oninput={(e) => item.kind === 'bars' && (item.bars = Math.max(1, Number(e.currentTarget.value) || 1))} />
       </label>
-      <label class="f bars">
-        <span>Bars</span>
-        <input type="number" min="1" max="999" value={item.bars} oninput={(e) => (item.bars = Math.max(1, Number(e.currentTarget.value) || 1))} />
-      </label>
-      <label class="f metre">
-        <span>Metre</span>
-        <input
-          type="text"
-          class:bad={metreBad}
-          bind:value={metreText}
-          placeholder={effMetre ? metreToText(effMetre) : '4/4'}
-          oninput={(e) => setMetre(e.currentTarget.value)}
-          title="e.g. 4/4, 7/8, 3+2+2/8"
-          inputmode="text"
-        />
-      </label>
-      <div class="f tempo">
-        <span>Tempo</span>
-        <div class="row">
-          <select
-            aria-label="Beat unit"
-            value={unitKey(item.tempo?.unit ?? effTempo?.unit ?? { base: 4, dots: 0 })}
-            onchange={(e) => setUnit(e.currentTarget.value)}
-            class:inherited={!item.tempo}
-          >
+      <input
+        class="metre"
+        type="text"
+        class:bad={metreBad}
+        bind:value={metreText}
+        placeholder={effMetre ? metreToText(effMetre) : '4/4'}
+        oninput={(e) => setMetre(e.currentTarget.value)}
+        aria-label="Metre"
+        title="Metre, e.g. 4/4, 7/8, 3+2+2/8"
+        autocapitalize="off"
+        autocomplete="off"
+      />
+      <div class="tempo" title="Tempo">
+        <span class="unit" class:inherited={!item.tempo}>
+          {unitSym(item.tempo?.unit ?? effTempo?.unit ?? { base: 4, dots: 0 })}
+          <select aria-label="Beat unit" value={unitKey(item.tempo?.unit ?? effTempo?.unit ?? { base: 4, dots: 0 })} onchange={(e) => setUnit(e.currentTarget.value)}>
             {#each UNITS as u}
               <option value={unitKey(u.v)}>{unitLabel(u)}</option>
             {/each}
           </select>
-          <span class="eq">=</span>
-          <input
-            type="number"
-            min="1"
-            max="1000"
-            step="any"
-            aria-label="Beats per minute"
-            value={item.tempo ? item.tempo.bpm : ''}
-            placeholder={effTempo ? formatNumber(effTempo.bpm) : '120'}
-            oninput={(e) => setBpm(e.currentTarget.value)}
-          />
-        </div>
+        </span>
+        <span class="eq">=</span>
+        <input
+          type="number"
+          inputmode="decimal"
+          min="1"
+          max="1000"
+          step="any"
+          aria-label="Beats per minute"
+          value={item.tempo ? item.tempo.bpm : ''}
+          placeholder={effTempo ? formatNumber(effTempo.bpm) : '120'}
+          oninput={(e) => setBpm(e.currentTarget.value)}
+        />
       </div>
-      <div class="f glide">
-        <span>Change</span>
-        <div class="row">
-          <select aria-label="Tempo change" value={glideKind} onchange={(e) => setGlide(e.currentTarget.value)}>
-            <option value="none">steady</option>
-            <option value="rit">rit. to</option>
-            <option value="accel">accel. to</option>
-          </select>
+      {#if item.tempoTo && !open}
+        <span class="glide-tag" title="{glideKind === 'rit' ? 'rit.' : 'accel.'} to {formatNumber(item.tempoTo.bpm)}">{glideKind === 'rit' ? '↘' : '↗'}{formatNumber(item.tempoTo.bpm)}</span>
+      {/if}
+    {:else if item.kind === 'pause'}
+      <span class="where" title="Pause"><Icon name="pauseItem" size={16} /></span>
+      <input class="mark" type="text" value={item.mark ?? ''} placeholder="mark" maxlength="12" aria-label="Rehearsal mark" title="Rehearsal mark" oninput={(e) => setMark(e.currentTarget.value)} />
+      <select
+        class="wait"
+        aria-label="Continue"
+        value={item.seconds === undefined ? 'tap' : 'timed'}
+        onchange={(e) => {
+          if (item.kind !== 'pause') return;
+          if (e.currentTarget.value === 'tap') delete item.seconds;
+          else item.seconds = 2;
+        }}
+      >
+        <option value="tap">Wait for tap</option>
+        <option value="timed">Wait for…</option>
+      </select>
+      {#if item.seconds !== undefined}
+        <label class="secs">
+          <input type="number" inputmode="decimal" min="0.1" step="0.1" aria-label="Seconds" value={item.seconds} oninput={(e) => item.kind === 'pause' && (item.seconds = Math.max(0.1, Number(e.currentTarget.value) || 1))} />
+          <span aria-hidden="true">s</span>
+        </label>
+      {/if}
+    {:else}
+      <span class="where" title="Repeat"><Icon name="repeat" size={16} /></span>
+      <span class="kind">Repeat</span>
+      <label class="count" title="Times played in total">
+        <span aria-hidden="true">×</span>
+        <input type="number" inputmode="numeric" min="1" max="99" aria-label="Times played" value={item.times} oninput={(e) => item.kind === 'repeat' && (item.times = Math.max(1, Number(e.currentTarget.value) || 1))} />
+      </label>
+    {/if}
+    <span class="spacer"></span>
+    <button class="icon small more" class:on={open} aria-expanded={open} aria-label="Options" title="Options" onclick={() => (open = !open)}><Icon name="more" size={18} /></button>
+  </div>
+
+  {#if open}
+    <div class="extra">
+      {#if item.kind === 'bars'}
+        <div class="opt">
+          <span class="lbl">Tempo</span>
+          <div class="seg" role="radiogroup" aria-label="Tempo change">
+            <button class:on={glideKind === 'none'} aria-pressed={glideKind === 'none'} onclick={() => setGlide('none')}>steady</button>
+            <button class:on={glideKind === 'rit'} aria-pressed={glideKind === 'rit'} onclick={() => setGlide('rit')}>rit.</button>
+            <button class:on={glideKind === 'accel'} aria-pressed={glideKind === 'accel'} onclick={() => setGlide('accel')}>accel.</button>
+          </div>
           {#if item.tempoTo}
+            <span class="eq">to</span>
             <input
+              class="bpm"
               type="number"
+              inputmode="decimal"
               min="1"
               step="any"
               aria-label="Target tempo"
@@ -236,78 +233,56 @@
             />
           {/if}
         </div>
-      </div>
-{#if item.barNumber !== undefined}
-        <label class="f num">
-          <span>Bar no.</span>
-          <input
-            type="number"
-            value={item.barNumber}
-            oninput={(e) => {
-              const v = e.currentTarget.value;
-              if (item.kind === 'bars' && v !== '') item.barNumber = Math.round(Number(v));
-            }}
-          />
-        </label>
-      {/if}
-    </div>
-    {#if item.tempoTo && effTempo}
-      <div class="hint">{glideKind === 'rit' ? 'Slowing' : 'Speeding up'} from {tempoToText(item.tempo ?? effTempo, app.settings.british)} to {tempoToText(item.tempoTo, app.settings.british)} across the block</div>
-    {/if}
-  {:else if item.kind === 'pause'}
-    <div class="fields">
-      <label class="f mark">
-        <span>Mark</span>
-        <input
-          type="text"
-          value={item.mark ?? ''}
-          placeholder="–"
-          maxlength="12"
-          oninput={(e) => {
-            const v = e.currentTarget.value.trim().replace(/\s+/g, '-').replace(/[:,|]/g, '');
-            if (v) item.mark = v;
-            else delete item.mark;
-          }}
-        />
-      </label>
-      <div class="f">
-        <span>Continue</span>
-        <select
-          value={item.seconds === undefined ? 'tap' : 'timed'}
-          onchange={(e) => {
-            if (item.kind !== 'pause') return;
-            if (e.currentTarget.value === 'tap') delete item.seconds;
-            else item.seconds = 2;
-          }}
-        >
-          <option value="tap">when tapped</option>
-          <option value="timed">after a time</option>
-        </select>
-      </div>
-      {#if item.seconds !== undefined}
-        <label class="f bars">
-          <span>Seconds</span>
-          <input type="number" min="0.1" step="0.1" value={item.seconds} oninput={(e) => item.kind === 'pause' && (item.seconds = Math.max(0.1, Number(e.currentTarget.value) || 1))} />
-        </label>
-      {/if}
-    </div>
-  {:else}
-    <div class="fields">
-      <label class="f bars">
-        <span>Play</span>
-        <div class="row">
-          <input type="number" min="1" max="99" value={item.times} oninput={(e) => item.kind === 'repeat' && (item.times = Math.max(1, Number(e.currentTarget.value) || 1))} />
-          <span class="eq">times</span>
+        <div class="opt">
+          <span class="lbl">Numbers</span>
+          <div class="seg" role="radiogroup" aria-label="Bar numbers">
+            <button class:on={item.barNumber === undefined} aria-pressed={item.barNumber === undefined} onclick={() => item.kind === 'bars' && delete item.barNumber}>auto</button>
+            <button class:on={item.barNumber !== undefined} aria-pressed={item.barNumber !== undefined} onclick={() => item.kind === 'bars' && item.barNumber === undefined && (item.barNumber = firstBar?.number ?? 1)}>from</button>
+          </div>
+          {#if item.barNumber !== undefined}
+            <input
+              class="bpm"
+              type="number"
+              inputmode="numeric"
+              aria-label="First bar number"
+              value={item.barNumber}
+              oninput={(e) => {
+                const v = e.currentTarget.value;
+                if (item.kind === 'bars' && v !== '') item.barNumber = Math.round(Number(v));
+              }}
+            />
+          {/if}
         </div>
-      </label>
+      {/if}
+      <div class="actions">
+        <button class="icon small" title="Move up" aria-label="Move up" onclick={() => tree.move(app.piece.items, item.id, -1)}><Icon name="up" /></button>
+        <button class="icon small" title="Move down" aria-label="Move down" onclick={() => tree.move(app.piece.items, item.id, 1)}><Icon name="down" /></button>
+        {#if range}
+          <button class="icon small" title="Loop this" aria-label="Loop this" onclick={() => app.loopSection(range.from, range.to)}><Icon name="loop" size={18} /></button>
+        {/if}
+        <button class="icon small" title="Duplicate" aria-label="Duplicate" onclick={() => tree.duplicate(app.piece.items, item.id)}><Icon name="copy" size={18} /></button>
+        {#if item.kind !== 'repeat'}
+          <button class="icon small" title="Wrap in repeat" aria-label="Wrap in repeat" onclick={() => tree.wrapInRepeat(app.piece.items, item.id)}><Icon name="repeat" size={18} /></button>
+        {:else}
+          <button class="text" title="Remove the repeat but keep its contents" onclick={() => tree.unwrap(app.piece.items, item.id)}>Unwrap</button>
+        {/if}
+        {#if canJoin}
+          <button class="text" title="Move into the repeat above" onclick={() => tree.joinPrevious(app.piece.items, item.id)}>Into repeat</button>
+        {/if}
+        <span class="spacer"></span>
+        <button class="icon small danger" title="Delete" aria-label="Delete" onclick={() => tree.remove(app.piece.items, item.id)}><Icon name="trash" size={18} /></button>
+      </div>
     </div>
+  {/if}
+
+  {#if item.kind === 'repeat'}
     <div class="children">
       {#each item.items as child (child.id)}
-        <ItemCard item={child} depth={depth + 1} />
+        <ItemCard item={child} />
       {/each}
       <div class="add-inside">
-        <button class="ghost" onclick={() => item.kind === 'repeat' && item.items.push(tree.newBlock())}>+ Bars</button>
-        <button class="ghost" onclick={() => item.kind === 'repeat' && item.items.push(tree.newPause())}>+ Pause</button>
+        <button class="ghost" onclick={() => item.kind === 'repeat' && item.items.push(tree.newBlock())}>+ bars</button>
+        <button class="ghost" onclick={() => item.kind === 'repeat' && item.items.push(tree.newPause())}>+ pause</button>
       </div>
     </div>
   {/if}
@@ -317,157 +292,310 @@
   .card {
     background: var(--c-surface);
     border: 1px solid var(--c-border);
-    border-radius: 10px;
-    padding: 0.5rem 0.6rem 0.6rem;
+    border-radius: 8px;
+    padding: 0.3rem 0.3rem 0.3rem 0;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    border-left: 4px solid var(--c-border);
+    gap: 0.3rem;
+    position: relative;
     transition: border-color 120ms, box-shadow 120ms;
   }
   .card.selected {
     border-color: var(--c-accent);
-    box-shadow: 0 0 0 1px var(--c-accent);
   }
-  .card.playing {
-    border-left-color: var(--c-playhead);
+  /* Bar under the playhead: a slim marker on the left edge. */
+  .card::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: transparent;
+  }
+  .card.playing::before {
+    background: var(--c-playhead);
+  }
+  .card.pause::before {
+    background: var(--c-hold);
+    opacity: 0.6;
   }
   .card.repeat {
     background: var(--c-surface-2);
-  }
-  .card.pause {
-    border-left-color: var(--c-hold);
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.85rem;
-  }
-  .kind {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: var(--c-muted);
-    font-weight: 600;
-  }
-  .spacer {
-    flex: 1;
-  }
-  .tools {
-    display: flex;
-    gap: 0.1rem;
-    align-items: center;
-  }
-  .fields {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem 0.6rem;
-    align-items: flex-end;
-  }
-  .f {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    font-size: 0.75rem;
-    color: var(--c-muted);
-  }
-  .f > span {
-    padding-left: 2px;
   }
   .row {
     display: flex;
     align-items: center;
     gap: 0.3rem;
+    min-height: 2rem;
   }
-  .eq {
+  .where {
+    width: 2.6rem;
+    flex: none;
+    display: inline-flex;
+    justify-content: flex-end;
+    padding-right: 0.15rem;
     color: var(--c-muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
   }
-  .mark input {
-    width: 3.5rem;
+  /* Borderless "chip" inputs: quiet until touched. */
+  .row input,
+  .row select,
+  .extra input {
+    border: 1px solid transparent;
+    background: var(--c-surface-2);
+    border-radius: 6px;
+    padding: 0.2rem 0.3rem;
+    height: 1.9rem;
+    min-width: 0;
+  }
+  /* Spinners waste space; phones show a number pad anyway. */
+  .card input[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .card input::-webkit-inner-spin-button,
+  .card input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .card.repeat > .row input {
+    background: var(--c-surface);
+  }
+  .row input:hover,
+  .row select:hover,
+  .extra input:hover {
+    border-color: var(--c-border);
+  }
+  .row input:focus,
+  .extra input:focus {
+    border-color: var(--c-accent);
+    outline: none;
+    background: var(--c-surface);
+  }
+  .mark {
+    width: 2.5rem;
+    flex: none;
     font-weight: 700;
     text-align: center;
   }
-  .bars input,
-  .num input {
-    width: 4.2rem;
+  .mark::placeholder {
+    font-weight: 400;
+    font-size: 0.7rem;
   }
-  .metre input {
-    width: 5.5rem;
-    font-weight: 600;
-  }
-  .tempo input,
-  .glide input {
-    width: 4.6rem;
-  }
-  .tempo select {
-    max-width: 9.5rem;
-  }
-  select.inherited {
+  .count {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
     color: var(--c-muted);
   }
-  input.bad {
-    border-color: var(--c-danger);
-    outline-color: var(--c-danger);
+  .count {
+    flex: none;
   }
-  .hint {
+  .count input {
+    width: 2.4rem;
+    text-align: center;
+  }
+  .metre {
+    flex: 3 0 4.6rem;
+    width: 4.6rem;
+    letter-spacing: -0.02em;
+    max-width: 6.5rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .tempo {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .tempo {
+    flex: none;
+  }
+  .tempo input {
+    width: 3.4rem;
+    padding-inline: 0.15rem;
+    text-align: center;
+  }
+  .unit {
+    position: relative;
+    width: 1.6rem;
+    height: 1.9rem;
+    display: grid;
+    place-items: center;
+    font-size: 1.15rem;
+    border-radius: 6px;
+    background: var(--c-surface-2);
+  }
+  .card.repeat > .row .unit {
+    background: var(--c-surface);
+  }
+  .unit.inherited {
+    color: var(--c-muted);
+  }
+  /* The real select sits invisibly over the symbol so the native picker opens on tap. */
+  .unit select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .eq {
+    color: var(--c-muted);
+    font-size: 0.85rem;
+  }
+  .glide-tag {
     font-size: 0.75rem;
     color: var(--c-muted);
-    font-style: italic;
+    white-space: nowrap;
+  }
+  .wait {
+    flex: 0 1 9.5rem;
+    min-width: 0;
+  }
+  .secs {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--c-muted);
+  }
+  .secs input {
+    width: 3.2rem;
+    text-align: center;
+  }
+  .kind {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .more {
+    flex: none;
+    color: var(--c-muted);
+  }
+  .more.on {
+    background: var(--c-surface-2);
+    color: var(--c-fg);
+  }
+  .extra {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.3rem 0 0 3.2rem;
+    border-top: 1px dashed var(--c-border);
+    margin-top: 0.1rem;
+  }
+  .opt {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .lbl {
+    width: 4.2rem;
+    font-size: 0.75rem;
+    color: var(--c-muted);
+  }
+  .bpm {
+    width: 3.6rem;
+    text-align: center;
+  }
+  .seg {
+    display: inline-flex;
+    background: var(--c-surface-2);
+    padding: 2px;
+    border-radius: 7px;
+  }
+  .card.repeat > .extra .seg {
+    background: var(--c-surface);
+  }
+  .seg button {
+    border: none;
+    background: none;
+    padding: 0.15rem 0.55rem;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    color: var(--c-muted);
+  }
+  .seg button.on {
+    background: var(--c-surface);
+    color: var(--c-fg);
+    box-shadow: var(--shadow-sm);
+  }
+  .card.repeat > .extra .seg button.on {
+    background: var(--c-surface-2);
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+    margin-left: -0.3rem;
+  }
+  .actions .text {
+    border: none;
+    background: none;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.45rem;
+    color: var(--c-muted);
+  }
+  .actions .text:hover {
+    background: var(--c-surface-2);
+    color: var(--c-fg);
+  }
+  input.bad {
+    border-color: var(--c-danger) !important;
+  }
+  .danger {
+    color: var(--c-danger);
   }
   .children {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    padding-left: 0.6rem;
+    gap: 0.3rem;
+    margin-left: 0.9rem;
+    padding-left: 0.4rem;
     border-left: 3px double var(--c-fg);
-    margin-left: 0.2rem;
   }
   .add-inside {
     display: flex;
-    gap: 0.4rem;
+    gap: 0.3rem;
   }
-  .menu {
-    position: relative;
+  .add-inside button {
+    padding: 0.15rem 0.6rem;
   }
-  .menu summary {
-    list-style: none;
-    cursor: pointer;
-    font-weight: 700;
-    display: grid;
-    place-items: center;
-  }
-  .menu summary::-webkit-details-marker {
-    display: none;
-  }
-  .menu-body {
-    position: absolute;
-    right: 0;
-    top: 100%;
-    z-index: 20;
-    background: var(--c-surface);
-    border: 1px solid var(--c-border);
-    border-radius: 8px;
-    box-shadow: var(--shadow);
-    display: flex;
-    flex-direction: column;
-    padding: 0.3rem;
-    min-width: 13rem;
-  }
-  .menu-body button {
-    justify-content: flex-start;
-    border: none;
-    background: none;
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    padding: 0.45rem 0.6rem;
-    text-align: left;
-  }
-  .menu-body button:hover {
-    background: var(--c-surface-2);
-  }
-  .danger {
-    color: var(--c-danger);
+  /* Narrow phones: give the metre room by trimming the decorations. */
+  @media (max-width: 400px) {
+    .row {
+      gap: 0.2rem;
+    }
+    .where {
+      width: 2.3rem;
+      font-size: 0.7rem;
+    }
+    .tempo .eq {
+      display: none;
+    }
+    .tempo input {
+      width: 3rem;
+    }
+    .mark {
+      width: 2.5rem;
+    }
+    .count input {
+      width: 2rem;
+    }
+    .more {
+      width: 26px;
+    }
+    .extra {
+      padding-left: 0.6rem;
+    }
   }
 </style>

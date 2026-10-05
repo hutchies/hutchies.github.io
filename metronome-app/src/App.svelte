@@ -86,7 +86,12 @@
         app.toggle();
         break;
       case 'Escape':
-        app.stop();
+        if (app.focus) app.setFocus(false);
+        else app.stop();
+        break;
+      case 'f':
+      case 'F':
+        app.setFocus(!app.focus);
         break;
       case 'ArrowLeft':
         e.preventDefault();
@@ -132,24 +137,29 @@
       <span>Metronome</span>
     </div>
     <div class="title" title={app.piece.title}>{app.piece.title || 'Untitled'}</div>
+    <div class="seg tabs mobile-only" role="tablist">
+      <button role="tab" aria-selected={mobileTab === 'play'} class:on={mobileTab === 'play'} onclick={() => (mobileTab = 'play')}>Play</button>
+      <button role="tab" aria-selected={mobileTab === 'edit'} class:on={mobileTab === 'edit'} onclick={() => (mobileTab = 'edit')}>Edit</button>
+    </div>
     <nav>
       <button class="icon" onclick={() => (showLibrary = true)} title="Open / save" aria-label="Library"><Icon name="folder" /></button>
       <button class="icon" onclick={() => (showShare = true)} title="Share link" aria-label="Share"><Icon name="share" /></button>
       <button class="icon" onclick={() => (showSettings = true)} title="Settings" aria-label="Settings"><Icon name="settings" /></button>
-      <button class="icon" onclick={() => (showKeys = true)} title="Keyboard shortcuts" aria-label="Help"><Icon name="help" /></button>
+      <button class="icon help" onclick={() => (showKeys = true)} title="Keyboard shortcuts" aria-label="Help"><Icon name="help" /></button>
     </nav>
   </header>
 
-  <div class="tabs mobile-only" role="tablist">
-    <button role="tab" aria-selected={mobileTab === 'play'} class:on={mobileTab === 'play'} onclick={() => (mobileTab = 'play')}>Play</button>
-    <button role="tab" aria-selected={mobileTab === 'edit'} class:on={mobileTab === 'edit'} onclick={() => (mobileTab = 'edit')}>Edit</button>
-  </div>
-
   <main>
     <aside class="editor" class:hide-mobile={mobileTab !== 'edit'}>
-      <div class="seg" role="tablist" aria-label="Editor mode">
-        <button role="tab" aria-selected={editorMode === 'builder'} class:on={editorMode === 'builder'} onclick={() => (editorMode = 'builder')}>Builder</button>
-        <button role="tab" aria-selected={editorMode === 'text'} class:on={editorMode === 'text'} onclick={() => (editorMode = 'text')}>Text</button>
+      <div class="edhead">
+        <label class="ptitle">
+          <span class="sr">Title</span>
+          <input type="text" placeholder="Untitled piece" bind:value={app.piece.title} />
+        </label>
+        <div class="seg" role="tablist" aria-label="Editor mode">
+          <button role="tab" aria-selected={editorMode === 'builder'} class:on={editorMode === 'builder'} onclick={() => (editorMode = 'builder')}>Blocks</button>
+          <button role="tab" aria-selected={editorMode === 'text'} class:on={editorMode === 'text'} onclick={() => (editorMode = 'text')}>Text</button>
+        </div>
       </div>
       <div class="editor-body">
         {#if editorMode === 'builder'}
@@ -198,6 +208,7 @@
       <tr><td><kbd>Esc</kbd></td><td>Stop and return to the start point</td></tr>
       <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next bar</td></tr>
       <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Previous / next rehearsal mark</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Focus view: just the click strip (Esc to leave)</td></tr>
       <tr><td><kbd>L</kbd></td><td>Loop on / off</td></tr>
       <tr><td><kbd>−</kbd> <kbd>+</kbd> <kbd>0</kbd></td><td>Tempo −5% / +5% / reset</td></tr>
       <tr><td><kbd>PgDn</kbd> <kbd>↓</kbd> <kbd>Enter</kbd></td><td>Continue from a pause (works with page-turner pedals)</td></tr>
@@ -215,8 +226,9 @@
   header {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.5rem 1rem;
+    gap: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    padding-top: max(0.35rem, env(safe-area-inset-top));
     border-bottom: 1px solid var(--c-border);
     background: var(--c-surface);
   }
@@ -239,38 +251,62 @@
   }
   nav {
     display: flex;
-    gap: 0.2rem;
+    gap: 0.1rem;
   }
   main {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(22rem, 30rem) 1fr;
+    grid-template-columns: minmax(20rem, 26rem) 1fr;
   }
   .editor {
     border-right: 1px solid var(--c-border);
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
+  }
+  .edhead {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem 0.25rem;
+  }
+  .ptitle {
+    flex: 1;
+    min-width: 0;
+  }
+  .ptitle input {
+    width: 100%;
+    font-size: 1.1rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+    background: transparent;
+    padding: 0.25rem 0.35rem;
+  }
+  .ptitle input:hover,
+  .ptitle input:focus {
+    border-color: var(--c-border);
+    background: var(--c-surface);
   }
   .editor-body {
     flex: 1;
     overflow: auto;
-    padding: 0.5rem 0.9rem 0;
+    padding: 0.25rem 0.75rem 0;
   }
   .seg {
     display: flex;
-    margin: 0.75rem 0.9rem 0;
+    flex: none;
     background: var(--c-surface-2);
-    padding: 3px;
-    border-radius: 9px;
+    padding: 2px;
+    border-radius: 8px;
   }
   .seg button {
-    flex: 1;
     border: none;
     background: none;
-    padding: 0.35rem;
-    border-radius: 7px;
+    padding: 0.2rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
     font-weight: 600;
     color: var(--c-muted);
   }
@@ -282,10 +318,12 @@
   .player {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.6rem;
     padding: 0.75rem 1rem 1rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
     min-height: 0;
     min-width: 0;
+    overflow-y: auto;
   }
   .sections {
     display: flex;
@@ -347,27 +385,32 @@
     font-size: 0.85rem;
     margin: 0;
   }
+  /* Keyboard shortcuts mean little on touch screens. */
+  @media (hover: none) and (pointer: coarse) {
+    .help {
+      display: none;
+    }
+  }
   @media (max-width: 860px) {
     main {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
+    }
+    header {
+      gap: 0.5rem;
+      padding-left: max(0.5rem, env(safe-area-inset-left));
+      padding-right: max(0.25rem, env(safe-area-inset-right));
+    }
+    .title,
+    .brand span {
+      display: none;
     }
     .tabs {
       display: flex;
-      border-bottom: 1px solid var(--c-border);
+      margin-right: auto;
     }
     .tabs button {
-      flex: 1;
-      border: none;
-      border-radius: 0;
-      background: none;
-      padding: 0.6rem;
-      font-weight: 600;
-      color: var(--c-muted);
-      border-bottom: 2px solid transparent;
-    }
-    .tabs button.on {
-      color: var(--c-fg);
-      border-bottom-color: var(--c-accent);
+      padding: 0.35rem 1rem;
+      font-size: 0.95rem;
     }
     .hide-mobile {
       display: none !important;
@@ -375,8 +418,9 @@
     .editor {
       border-right: none;
     }
-    .brand span {
-      display: none;
+    .player {
+      padding: 0.5rem 0.75rem;
+      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
     }
   }
 </style>

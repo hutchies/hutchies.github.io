@@ -87,6 +87,8 @@ export class AppState {
   loopRange = $state<{ from: number; to: number } | null>(null);
   /** Item selected in the builder (for highlighting). */
   selectedId = $state<string | null>(null);
+  /** Focus view: only the rolling click strip, filling the screen. */
+  focus = $state(false);
 
   timeline: Timeline = $derived(compile(this.piece, { subdivide: this.settings.subdivide }));
 
@@ -225,6 +227,25 @@ export class AppState {
     }
     if (this.status === 'stopped' || this.status === 'paused') void this.play();
     else this.pause();
+  }
+
+  /** Enter or leave the focus view, taking the page fullscreen where the browser allows it. */
+  setFocus(on: boolean) {
+    if (this.focus === on) return;
+    this.focus = on;
+    const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
+    const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+    try {
+      if (on && !doc.fullscreenElement && !doc.webkitFullscreenElement) {
+        if (root.requestFullscreen) root.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+        else root.webkitRequestFullscreen?.();
+      } else if (!on && (doc.fullscreenElement || doc.webkitFullscreenElement)) {
+        if (doc.exitFullscreen) doc.exitFullscreen().catch(() => {});
+        else doc.webkitExitFullscreen?.();
+      }
+    } catch {
+      /* fullscreen unavailable (e.g. iPhone): the focus view still fills the window */
+    }
   }
 
   tap(): boolean {

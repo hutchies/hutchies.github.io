@@ -4,6 +4,7 @@
   import { Renderer, type Frame, type Theme } from '../display/renderer';
   import { barAt, lowerBound } from '../model/compile';
   import { positionAt } from '../audio/transport';
+  import Icon from './Icon.svelte';
 
   let wrap: HTMLDivElement;
   let canvas: HTMLCanvasElement;
@@ -93,7 +94,7 @@
 
     if (drag) score = lastScore;
 
-    const highlight = app.selectedId ? app.barsForItem(app.selectedId) : null;
+    const highlight = app.selectedId && !app.focus ? app.barsForItem(app.selectedId) : null;
     return {
       score,
       flash,
@@ -177,6 +178,29 @@
     };
   });
 
+  // Brief hint when entering the focus view.
+  let showHint = $state(false);
+  $effect(() => {
+    if (!app.focus) return;
+    showHint = true;
+    const t = setTimeout(() => (showHint = false), 2500);
+    return () => clearTimeout(t);
+  });
+
+  // Leaving browser fullscreen (Esc, system back gesture) also leaves the focus view.
+  $effect(() => {
+    const onFs = () => {
+      const d = document as Document & { webkitFullscreenElement?: Element };
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) app.setFocus(false);
+    };
+    document.addEventListener('fullscreenchange', onFs);
+    document.addEventListener('webkitfullscreenchange', onFs);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFs);
+      document.removeEventListener('webkitfullscreenchange', onFs);
+    };
+  });
+
   function canDrag() {
     return app.status === 'stopped' || app.status === 'paused';
   }
@@ -186,7 +210,11 @@
       app.tap();
       return;
     }
-    if (!canDrag()) return;
+    if (!canDrag()) {
+      // In the focus view the whole strip is the play/pause button.
+      if (app.focus) app.toggle();
+      return;
+    }
     canvas.setPointerCapture(e.pointerId);
     drag = { x: e.clientX, score: lastScore, moved: false };
   }
@@ -206,6 +234,10 @@
     let target: number;
     if (drag.moved) {
       target = lastScore;
+    } else if (app.focus) {
+      drag = null;
+      app.toggle();
+      return;
     } else {
       const rect = canvas.getBoundingClientRect();
       target = lastFrame ? renderer.scoreAtX(e.clientX - rect.left, lastFrame, view()) : lastScore;
@@ -232,7 +264,7 @@
   }
 </script>
 
-<div class="display" class:held={app.status === 'held'}>
+<div class="display" class:held={app.status === 'held'} class:focus={app.focus}>
   <div class="readout" aria-live="off">
     <div class="cell">
       <span class="k">Bar</span>
@@ -247,6 +279,9 @@
     {#if markText}
       <div class="cell mark"><span class="v">{markText}</span></div>
     {/if}
+    <button class="icon small focus-btn" onclick={() => app.setFocus(true)} title="Focus view: just the click strip (F)" aria-label="Focus view">
+      <Icon name="expand" size={18} />
+    </button>
   </div>
   <div class="canvas-wrap" bind:this={wrap}>
     <canvas
@@ -259,6 +294,12 @@
       aria-label="Rolling beat display. Drag to move the start point; tap to continue from a pause."
     ></canvas>
     <div class="flash" style:opacity={flashOpacity * 0.45}></div>
+    {#if app.focus}
+      <button class="icon exit" onclick={() => app.setFocus(false)} title="Leave focus view (Esc)" aria-label="Leave focus view">
+        <Icon name="shrink" />
+      </button>
+      <div class="hint" class:show={showHint}>Tap to play or pause · drag to move</div>
+    {/if}
   </div>
 </div>
 
@@ -268,16 +309,20 @@
     flex-direction: column;
     gap: 0.5rem;
     min-height: 0;
-    flex: 1 1 auto;
+    flex: 1 0 auto;
     max-height: calc(min(440px, 55vh) + 3rem);
   }
   .readout {
     display: flex;
     align-items: center;
-    gap: 1.25rem;
+    gap: 0.5rem 1.25rem;
     padding: 0 0.25rem;
     min-height: 2.5rem;
     flex-wrap: wrap;
+  }
+  .focus-btn {
+    margin-left: auto;
+    color: var(--c-muted);
   }
   .cell {
     display: flex;
@@ -349,6 +394,60 @@
     height: 100%;
     touch-action: none;
     cursor: grab;
+  }
+  @media (max-height: 500px) {
+    .canvas-wrap {
+      min-height: 150px;
+    }
+  }
+  /* Focus view: the strip fills the whole screen. */
+  .display.focus {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    max-height: none;
+    background: var(--c-canvas);
+  }
+  .focus .readout {
+    display: none;
+  }
+  .focus .canvas-wrap {
+    max-height: none;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+  }
+  .focus.held .canvas-wrap {
+    box-shadow: inset 0 0 0 4px var(--c-hold);
+  }
+  .exit {
+    position: absolute;
+    top: max(0.5rem, env(safe-area-inset-top));
+    right: max(0.5rem, env(safe-area-inset-right));
+    opacity: 0.35;
+    background: var(--c-surface-2);
+  }
+  .exit:hover,
+  .exit:focus-visible {
+    opacity: 1;
+  }
+  .hint {
+    position: absolute;
+    left: 50%;
+    bottom: max(1.5rem, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    background: var(--c-fg);
+    color: var(--c-bg);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 400ms;
+  }
+  .hint.show {
+    opacity: 0.85;
   }
   .flash {
     position: absolute;
