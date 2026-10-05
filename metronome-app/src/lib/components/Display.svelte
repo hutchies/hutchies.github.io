@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { app } from '../state/app.svelte';
   import { Renderer, type Frame, type Theme } from '../display/renderer';
-  import { barAt, lowerBound } from '../model/compile';
+  import { barAt, lowerBound, LEVEL_BAR, LEVEL_BEAT, LEVEL_COUNT_BAR, LEVEL_COUNT_BEAT } from '../model/compile';
   import { positionAt } from '../audio/transport';
   import Icon from './Icon.svelte';
 
@@ -17,6 +17,10 @@
   let beatIndex = $state(-1);
   let markText = $state('');
   let flashOpacity = $state(0);
+  let edgeOpacity = $state(0);
+  let edgeStrong = $state(false);
+  let canvasW = 0;
+  let canvasH = 0;
 
   function readTheme(): Theme {
     const cs = getComputedStyle(wrap);
@@ -45,11 +49,20 @@
   let lastScore = 0;
   let lastFrame: Frame | null = null;
 
+  /** Rows for the focus view: wrap the strip so tall screens aren't one stretched lane. */
+  function rows() {
+    if (!app.focus) return 1;
+    if (app.settings.focusRows > 0) return app.settings.focusRows;
+    const n = Math.round((canvasH / Math.max(1, canvasW)) * 1.2);
+    return Math.max(1, Math.min(3, n, Math.floor(canvasH / 180)));
+  }
+
   function view() {
     return {
       pxPerSecond: app.settings.pxPerSecond,
       playhead: app.settings.playhead,
       showSubdivisions: app.settings.subdivide > 1,
+      rows: rows(),
     };
   }
 
@@ -143,17 +156,23 @@
       else break;
     }
     if (markText !== mk) markText = mk;
-    const fo =
-      app.settings.flashScreen && f.flash && (f.flash.level === 0 || f.flash.level === 4)
-        ? Math.max(0, Math.exp(-f.flash.age / 0.08))
-        : 0;
+    const lv = f.flash?.level;
+    const strong = lv === LEVEL_BAR || lv === LEVEL_COUNT_BAR;
+    const onBeat = strong || lv === LEVEL_BEAT || lv === LEVEL_COUNT_BEAT;
+    const fo = app.settings.flash === 'display' && f.flash && strong ? Math.exp(-f.flash.age / 0.08) : 0;
     if (Math.abs(fo - flashOpacity) > 0.02) flashOpacity = fo;
+    // Screen edges light up on every beat, brighter and wider on the downbeat.
+    const eo = app.settings.flash === 'edges' && f.flash && onBeat ? Math.exp(-f.flash.age / (strong ? 0.16 : 0.11)) : 0;
+    if (Math.abs(eo - edgeOpacity) > 0.02 || (eo === 0 && edgeOpacity !== 0)) edgeOpacity = eo;
+    if (onBeat && edgeStrong !== strong) edgeStrong = strong;
   }
 
   onMount(() => {
     renderer = new Renderer(canvas, readTheme());
     const ro = new ResizeObserver(() => {
       const r = wrap.getBoundingClientRect();
+      canvasW = r.width;
+      canvasH = r.height;
       renderer.resize(r.width, r.height);
     });
     ro.observe(wrap);
@@ -200,6 +219,11 @@
       document.removeEventListener('webkitfullscreenchange', onFs);
     };
   });
+
+  function toggleEdges() {
+    app.settings.flash = app.settings.flash === 'edges' ? 'off' : 'edges';
+    app.persistSettings();
+  }
 
   function canDrag() {
     return app.status === 'stopped' || app.status === 'paused';
@@ -264,6 +288,10 @@
   }
 </script>
 
+{#if app.settings.flash === 'edges'}
+  <div class="edges" class:strong={edgeStrong} style:opacity={edgeOpacity} aria-hidden="true"></div>
+{/if}
+
 <div class="display" class:held={app.status === 'held'} class:focus={app.focus}>
   <div class="readout" aria-live="off">
     <div class="cell">
@@ -295,9 +323,17 @@
     ></canvas>
     <div class="flash" style:opacity={flashOpacity * 0.45}></div>
     {#if app.focus}
-      <button class="icon exit" onclick={() => app.setFocus(false)} title="Leave focus view (Esc)" aria-label="Leave focus view">
-        <Icon name="shrink" />
-      </button>
+      <div class="focus-tools">
+        <button class="icon" class:on={app.settings.flash === 'edges'} aria-pressed={app.settings.flash === 'edges'} onclick={toggleEdges} title="Flash the screen edges on each beat" aria-label="Edge flash">
+          <Icon name="edges" />
+        </button>
+        <button class="icon" class:on={app.settings.muted} aria-pressed={app.settings.muted} onclick={() => app.toggleMute()} title={app.settings.muted ? 'Unmute clicks' : 'Mute clicks'} aria-label="Mute">
+          <Icon name={app.settings.muted ? 'muted' : 'sound'} />
+        </button>
+        <button class="icon" onclick={() => app.setFocus(false)} title="Leave focus view (Esc)" aria-label="Leave focus view">
+          <Icon name="shrink" />
+        </button>
+      </div>
       <div class="hint" class:show={showHint}>Tap to play or pause · drag to move</div>
     {/if}
   </div>
@@ -420,16 +456,36 @@
   .focus.held .canvas-wrap {
     box-shadow: inset 0 0 0 4px var(--c-hold);
   }
-  .exit {
+  .focus-tools {
     position: absolute;
     top: max(0.5rem, env(safe-area-inset-top));
     right: max(0.5rem, env(safe-area-inset-right));
+    display: flex;
+    gap: 0.35rem;
+  }
+  .focus-tools button {
     opacity: 0.35;
     background: var(--c-surface-2);
   }
-  .exit:hover,
-  .exit:focus-visible {
+  .focus-tools button:hover,
+  .focus-tools button:focus-visible {
     opacity: 1;
+  }
+  .focus-tools button.on {
+    opacity: 0.8;
+    background: var(--c-accent);
+    color: var(--c-on-accent);
+  }
+  /* Beat cue around the edges of the screen, for silent playback. */
+  .edges {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 8px var(--c-accent), inset 0 0 28px 8px var(--c-accent);
+  }
+  .edges.strong {
+    box-shadow: inset 0 0 0 14px var(--c-playhead), inset 0 0 44px 14px var(--c-playhead);
   }
   .hint {
     position: absolute;
