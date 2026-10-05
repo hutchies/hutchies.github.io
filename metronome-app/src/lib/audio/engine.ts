@@ -119,14 +119,40 @@ export class Engine {
   audibleTime(): number {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== 'running') return this.now - this.visualOffset;
+    return this.contextTimeHeardAt(performance.now());
+  }
+
+  /**
+   * The AudioContext time whose output is heard at a given performance.now()
+   * time (ms), allowing for output latency and the user's calibration.
+   */
+  contextTimeHeardAt(perfMs: number): number {
+    const ctx = this.ctx;
+    if (!ctx) return perfMs / 1000 - this.visualOffset;
     let t: number;
-    const ts = ctx.getOutputTimestamp?.();
-    if (ts && ts.contextTime !== undefined && ts.performanceTime !== undefined && ts.contextTime > 0) {
-      t = ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+    const ts = this.outputTimestamp();
+    if (ts) {
+      t = ts.contextTime + (perfMs - ts.performanceTime) / 1000;
     } else {
-      t = ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
+      t = ctx.currentTime + (perfMs - performance.now()) / 1000 - (ctx.outputLatency || ctx.baseLatency || 0);
     }
     return t - this.visualOffset;
+  }
+
+  /**
+   * The context's output timestamp, once the browser provides a usable one
+   * (shortly after the context starts). Until then the latency estimate is
+   * coarser.
+   */
+  outputTimestamp(): { contextTime: number; performanceTime: number } | null {
+    const ts = this.ctx?.getOutputTimestamp?.();
+    if (!ts || ts.contextTime === undefined || ts.performanceTime === undefined || !(ts.contextTime > 0)) return null;
+    return { contextTime: ts.contextTime, performanceTime: ts.performanceTime };
+  }
+
+  /** True once the AudioContext exists and is running. */
+  get running(): boolean {
+    return this.ctx?.state === 'running';
   }
 
   position(t = this.audibleTime()): Position {
@@ -229,6 +255,27 @@ export class Engine {
     if (!this.state.playing || pos.frozen?.kind !== 'hold') return false;
     this.apply({ ...this.state, anchorTime: t, anchorScore: pos.frozen.at, releaseAtAnchor: true });
     return true;
+  }
+
+  /**
+   * Adopts a transport state computed elsewhere (group sync), with its times
+   * already in this AudioContext's clock. The count-in, if any, replaces the
+   * current one.
+   */
+  adopt(state: TransportState, countIn: CountInInfo | null) {
+    this.countIn = countIn && countIn.times.length ? countIn : null;
+    this.post({ type: 'preroll', times: countIn?.times ?? [], levels: countIn?.levels ?? [] });
+    this.state = state;
+    this.post({ type: 'state', state });
+    this.onChange();
+    if (state.playing) this.requestWakeLock();
+    else this.releaseWakeLock();
+  }
+
+  /** Schedules standalone clicks at absolute audio times (e.g. a countdown). */
+  beeps(times: number[], levels: number[]) {
+    this.countIn = null;
+    this.post({ type: 'preroll', times, levels });
   }
 
   private async requestWakeLock() {

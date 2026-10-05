@@ -3,6 +3,9 @@
   import Icon from './Icon.svelte';
 
   const playing = $derived(app.status === 'playing' || app.status === 'countin' || app.status === 'held');
+  /** Following a group: the leader controls playback. */
+  const locked = $derived(app.following);
+  const lockedTitle = 'The leader controls playback';
 
   function countInValue() {
     const c = app.settings.countIn;
@@ -26,37 +29,47 @@
   });
 </script>
 
-<div class="transport">
+<div class="transport" class:locked>
   <div class="group main">
-    <button class="icon" onclick={() => app.stop()} title="Stop and return to start point (Esc)" aria-label="Stop">
+    <button class="icon" onclick={() => app.stop()} disabled={locked} title={locked ? lockedTitle : 'Stop and return to start point (Esc)'} aria-label="Stop">
       <Icon name="stop" />
     </button>
-    <button class="icon" onclick={() => app.stepMark(-1)} title="Previous mark ([)" aria-label="Previous mark">
+    <button class="icon" onclick={() => app.stepMark(-1)} disabled={!app.canSeek} title="Previous mark ([)" aria-label="Previous mark">
       <Icon name="prev" />
     </button>
     {#if app.status === 'held'}
-      <button class="play tap" onclick={() => app.tap()} title="Continue (Space, or tap the display)">
-        <Icon name="tap" size={26} /> <span>Tap</span>
+      <button
+        class="play tap"
+        onclick={() => (locked ? app.continueAlone() : app.tap())}
+        title={locked
+          ? "Waiting for the leader. Tap to continue on your own (if your map pauses where the leader's doesn't)"
+          : app.leading
+            ? 'Continue, for everyone (Space, or tap the display)'
+            : 'Continue (Space, or tap the display)'}
+      >
+        <Icon name="tap" size={26} /> <span>{locked ? 'Continue alone' : 'Tap'}</span>
       </button>
     {:else}
       <button
         class="play"
         class:active={playing}
         onclick={() => app.toggle()}
-        title="Play / pause (Space)"
+        disabled={locked}
+        title={locked ? lockedTitle : app.leading ? 'Play / pause for everyone (Space)' : 'Play / pause (Space)'}
         aria-label={playing ? 'Pause' : 'Play'}
       >
         <Icon name={playing ? 'pause' : 'play'} size={30} />
       </button>
     {/if}
-    <button class="icon" onclick={() => app.stepMark(1)} title="Next mark (])" aria-label="Next mark">
+    <button class="icon" onclick={() => app.stepMark(1)} disabled={!app.canSeek} title="Next mark (])" aria-label="Next mark">
       <Icon name="next" />
     </button>
     <button
       class="toggle"
       class:on={app.loopOn}
       onclick={() => (app.loopOn = !app.loopOn)}
-      title="Loop (L)"
+      disabled={locked}
+      title={locked ? lockedTitle : 'Loop (L)'}
       aria-pressed={app.loopOn}
     >
       <Icon name="loop" size={18} /> {loopLabel}
@@ -65,7 +78,7 @@
 
   <div class="group tempo">
     <label for="tempo-range" class="lbl">Tempo</label>
-    <button class="icon small" onclick={() => app.setTempoPercent(app.settings.tempoPercent - 5)} aria-label="Slower">
+    <button class="icon small" onclick={() => app.setTempoPercent(app.settings.tempoPercent - 5)} disabled={locked} aria-label="Slower">
       <Icon name="minus" size={16} />
     </button>
     <input
@@ -74,14 +87,15 @@
       min="25"
       max="200"
       step="1"
-      value={app.settings.tempoPercent}
+      value={app.tempoPercent}
+      disabled={locked}
       oninput={(e) => app.setTempoPercent(Number(e.currentTarget.value))}
     />
-    <button class="icon small" onclick={() => app.setTempoPercent(app.settings.tempoPercent + 5)} aria-label="Faster">
+    <button class="icon small" onclick={() => app.setTempoPercent(app.settings.tempoPercent + 5)} disabled={locked} aria-label="Faster">
       <Icon name="plus" size={16} />
     </button>
-    <button class="pct" onclick={() => app.setTempoPercent(100)} title="Reset to 100%">
-      {app.settings.tempoPercent}%
+    <button class="pct" onclick={() => app.setTempoPercent(100)} disabled={locked} title={locked ? "The leader's tempo" : 'Reset to 100%'}>
+      {app.tempoPercent}%
     </button>
   </div>
 
@@ -148,6 +162,10 @@
     50% {
       transform: scale(1.06);
     }
+  }
+  .locked .pct:disabled {
+    opacity: 1;
+    cursor: default;
   }
   .pct {
     min-width: 4rem;

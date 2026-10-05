@@ -105,6 +105,12 @@ button {
 button:hover {
   border-color: var(--c-muted);
 }
+button:disabled,
+input:disabled,
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,

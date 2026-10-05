@@ -41,6 +41,8 @@ export interface Frame {
   /** Count-in in progress: clicks as score offsets relative to start. */
   countIn?: { start: number; offsets: number[]; levels: number[]; remaining: number };
   held: boolean;
+  /** Text shown at a tap-hold (default "Tap to continue"). */
+  holdText?: string;
   ended: boolean;
   /** Bar indices to highlight (e.g. the block selected in the editor). */
   highlight?: { from: number; to: number } | null;
@@ -186,7 +188,7 @@ export class Renderer {
     if (frame.held) {
       const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 180);
       ctx.globalAlpha = pulse;
-      this.label(px + 14, lanes.beatTop + (lanes.beatBottom - lanes.beatTop) / 2, 'Tap to continue', th.hold, 18, 'left', 'middle', 'bold');
+      this.label(px + 14, lanes.beatTop + (lanes.beatBottom - lanes.beatTop) / 2, frame.holdText ?? 'Tap to continue', th.hold, 18, 'left', 'middle', 'bold');
       ctx.globalAlpha = 1;
     }
     if (frame.countIn && frame.countIn.remaining > 0) {

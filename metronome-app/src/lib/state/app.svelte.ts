@@ -4,6 +4,8 @@ import { barAt, compile, countIn, type CountInSpec, type Timeline } from '../mod
 import { decodeLocation, encodePiece } from '../model/share';
 import { parse, serialize, type SyntaxError } from '../model/syntax';
 import type { Item, Piece } from '../model/types';
+import type { GroupSession, JoinOptions } from '../sync/group.svelte';
+import { DEFAULT_SERVER } from '../sync/session';
 
 export type Status = 'stopped' | 'countin' | 'playing' | 'held' | 'paused';
 
@@ -18,6 +20,11 @@ export interface Settings {
   visualOffsetMs: number;
   british: boolean;
   theme: 'auto' | 'light' | 'dark';
+  /** Group sync: PocketBase server URL. */
+  syncServer: string;
+  /** Group sync: how this player appears to the others. */
+  groupName: string;
+  groupPart: string;
   /** Visual beat cue: none, the whole display (downbeats), or the screen edges (every beat). */
   flash: 'off' | 'display' | 'edges';
   /** Silence the clicks (for following the display or the edge flash alone). */
@@ -36,6 +43,9 @@ const DEFAULT_SETTINGS: Settings = {
   visualOffsetMs: 0,
   british: true,
   theme: 'auto',
+  syncServer: DEFAULT_SERVER,
+  groupName: '',
+  groupPart: '',
   flash: 'off',
   muted: false,
   focusRows: 0,
@@ -121,6 +131,24 @@ export class AppState {
 
   engine = new Engine();
 
+  /** The group this device is playing with, if any. */
+  group = $state.raw<GroupSession | null>(null);
+
+  /** In a group, and this device controls playback. */
+  get leading(): boolean {
+    return !!this.group?.isLeader;
+  }
+
+  /** In a group, and someone else controls playback. */
+  get following(): boolean {
+    return !!this.group && !this.group.isLeader;
+  }
+
+  /** Tempo percentage in force: the leader's when following. */
+  get tempoPercent(): number {
+    return this.following ? (this.group?.playback?.tempoPercent ?? 100) : this.settings.tempoPercent;
+  }
+
   constructor() {
     this.applySound();
     this.engine.visualOffset = this.settings.visualOffsetMs / 1000;
@@ -142,7 +170,8 @@ export class AppState {
   }
 
   loadText(text: string) {
-    this.stop();
+    // In a group, playback carries on: the cue log is replayed against the new map.
+    if (!this.group) this.stop();
     this.setText(text);
     if (!this.errors.length) this.syncText();
     this.startPoint = 0;
@@ -215,6 +244,7 @@ export class AppState {
   }
 
   async play() {
+    if (this.following) return;
     const tl = this.timeline;
     if (!tl.bars.length) return;
     let from = this.startPoint;
@@ -226,6 +256,10 @@ export class AppState {
       from = this.loopRegion.start;
     }
     if (from >= tl.duration - 1e-6) from = 0;
+    if (this.leading) {
+      this.group!.start(from);
+      return;
+    }
     const bar = barAt(tl, from);
     const ci = countIn(tl, bar, this.settings.countIn);
     this.status = ci.duration > 0 ? 'countin' : 'playing';
@@ -238,12 +272,26 @@ export class AppState {
   }
 
   pause() {
-    if (this.status === 'stopped' || this.status === 'paused') return;
+    if (this.status === 'stopped' || this.status === 'paused' || this.following) return;
+    if (this.leading) {
+      this.group!.pause();
+      return;
+    }
     this.engine.pause();
     this.status = 'paused';
   }
 
   stop() {
+    if (this.following) return;
+    if (this.leading) {
+      this.group!.stop();
+      return;
+    }
+    this.halt();
+  }
+
+  /** Stop this device only (also used when the piece ends). */
+  halt() {
     this.engine.park(this.startPoint);
     this.status = 'stopped';
   }
@@ -277,26 +325,50 @@ export class AppState {
   }
 
   tap(): boolean {
-    if (this.status !== 'held') return false;
+    if (this.status !== 'held' || this.following) return false;
+    if (this.leading) {
+      this.group!.release();
+      return true;
+    }
     return this.engine.release();
   }
 
+  /**
+   * Following a group: continue from a pause on this device only. Normally
+   * the leader releases pauses; this is the way out when this map pauses
+   * somewhere the leader's doesn't. (Deliberately not on Space or pedals.)
+   */
+  continueAlone() {
+    if (this.status === 'held' && this.following) this.group!.releaseLocally();
+  }
+
   setTempoPercent(p: number) {
+    if (this.following) return;
     this.settings.tempoPercent = Math.max(10, Math.min(300, Math.round(p)));
-    this.engine.update({ rate: this.rate });
+    if (this.leading) this.group!.update({ tempoPercent: this.settings.tempoPercent });
+    else this.engine.update({ rate: this.rate });
     this.persistSettings();
+  }
+
+  /** Whether the user may move the start point right now. */
+  get canSeek(): boolean {
+    return !this.following || this.status === 'stopped' || this.status === 'paused';
   }
 
   /** Move the start point (and the parked playhead) to a bar. */
   seekBar(index: number) {
     const bars = this.timeline.bars;
-    if (!bars.length) return;
+    if (!bars.length || !this.canSeek) return;
     const i = Math.max(0, Math.min(index, bars.length - 1));
     this.startPoint = bars[i].start;
     this.currentBar = i;
     if (this.status === 'stopped' || this.status === 'paused') {
       this.engine.park(this.startPoint);
       this.status = 'stopped';
+      if (this.leading) this.group!.seek(this.startPoint);
+    } else if (this.leading) {
+      // Jump while playing: everyone restarts from there.
+      this.group!.start(this.startPoint);
     } else {
       // Jump while playing: restart from there (with count-in).
       this.engine.park(this.startPoint);
@@ -306,12 +378,14 @@ export class AppState {
   }
 
   seekScore(score: number) {
+    if (!this.canSeek) return;
     const tl = this.timeline;
     const s = Math.max(0, Math.min(score, tl.duration));
     this.startPoint = s;
     this.engine.park(s);
     this.status = 'stopped';
     this.currentBar = Math.max(0, barAt(tl, s));
+    if (this.leading) this.group!.seek(s);
   }
 
   /** Jump to previous/next rehearsal mark (or bar if none). */
@@ -362,6 +436,38 @@ export class AppState {
       to: (i + 1 < marks.length ? marks[i + 1].barIndex : tl.bars.length) - 1,
     })).filter((s) => s.to >= s.from);
   });
+
+  /* ---------- group ---------- */
+
+  /** Create (no code) or join a room. Call from a user gesture, so audio can start. */
+  async joinGroup(opts: Omit<JoinOptions, 'server'> & { server?: string }) {
+    // Start audio first, while we still have the user's tap: followers play
+    // without one. Without a tap (rejoining after a reload) this never
+    // resolves, so don't wait long; the group bar offers "Enable sound".
+    const audio = this.engine.start().catch(() => {});
+    await Promise.race([audio, new Promise((r) => setTimeout(r, 1500))]);
+    await this.leaveGroup();
+    const server = (opts.server || this.settings.syncServer || DEFAULT_SERVER).trim();
+    this.halt();
+    // Loaded on demand: solo players never download the PocketBase client.
+    const { GroupSession } = await import('../sync/group.svelte');
+    const g = new GroupSession(this, { ...opts, server });
+    this.group = g;
+    try {
+      await g.connect();
+    } catch (e) {
+      if (this.group === g) this.group = null;
+      throw e;
+    }
+  }
+
+  async leaveGroup() {
+    const g = this.group;
+    if (!g) return;
+    this.group = null;
+    this.halt();
+    await g.leave();
+  }
 
   loopSection(from: number, to: number) {
     this.loopRange = { from, to };
