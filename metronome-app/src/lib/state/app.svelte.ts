@@ -20,12 +20,17 @@ export interface Settings {
   visualOffsetMs: number;
   british: boolean;
   theme: 'auto' | 'light' | 'dark';
-  flashScreen: boolean;
   /** Group sync: PocketBase server URL. */
   syncServer: string;
   /** Group sync: how this player appears to the others. */
   groupName: string;
   groupPart: string;
+  /** Visual beat cue: none, the whole display (downbeats), or the screen edges (every beat). */
+  flash: 'off' | 'display' | 'edges';
+  /** Silence the clicks (for following the display or the edge flash alone). */
+  muted: boolean;
+  /** Rows in the focus view: 0 picks by screen shape (more rows in portrait). */
+  focusRows: number;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -38,10 +43,12 @@ const DEFAULT_SETTINGS: Settings = {
   visualOffsetMs: 0,
   british: true,
   theme: 'auto',
-  flashScreen: false,
   syncServer: DEFAULT_SERVER,
   groupName: '',
   groupPart: '',
+  flash: 'off',
+  muted: false,
+  focusRows: 0,
 };
 
 export const EXAMPLE = `# Example: mixed metres
@@ -57,6 +64,16 @@ export interface LibraryEntry {
   title: string;
   text: string;
   updated: number;
+}
+
+function loadSettings(): Settings {
+  const s = load<Settings & { flashScreen?: boolean }>('metronome.settings', DEFAULT_SETTINGS);
+  // Earlier versions had a single on/off "flash on downbeats".
+  if ('flashScreen' in s) {
+    if (s.flashScreen && s.flash === 'off') s.flash = 'display';
+    delete s.flashScreen;
+  }
+  return s;
 }
 
 function load<T>(key: string, fallback: T): T {
@@ -84,7 +101,7 @@ export class AppState {
   errors = $state<SyntaxError[]>([]);
   editingText = $state(false);
 
-  settings = $state<Settings>(load('metronome.settings', DEFAULT_SETTINGS));
+  settings = $state<Settings>(loadSettings());
   library = $state<LibraryEntry[]>(loadLibrary());
 
   status = $state<Status>('stopped');
@@ -97,6 +114,8 @@ export class AppState {
   loopRange = $state<{ from: number; to: number } | null>(null);
   /** Item selected in the builder (for highlighting). */
   selectedId = $state<string | null>(null);
+  /** Focus view: only the rolling click strip, filling the screen. */
+  focus = $state(false);
 
   timeline: Timeline = $derived(compile(this.piece, { subdivide: this.settings.subdivide }));
 
@@ -131,7 +150,7 @@ export class AppState {
   }
 
   constructor() {
-    this.engine.setSound($state.snapshot(this.settings.sound));
+    this.applySound();
     this.engine.visualOffset = this.settings.visualOffsetMs / 1000;
   }
 
@@ -183,8 +202,19 @@ export class AppState {
 
   persistSettings() {
     save('metronome.settings', $state.snapshot(this.settings));
-    this.engine.setSound($state.snapshot(this.settings.sound));
+    this.applySound();
     this.engine.visualOffset = this.settings.visualOffsetMs / 1000;
+  }
+
+  private applySound() {
+    const sound = $state.snapshot(this.settings.sound);
+    if (this.settings.muted) sound.volume = 0;
+    this.engine.setSound(sound);
+  }
+
+  toggleMute() {
+    this.settings.muted = !this.settings.muted;
+    this.persistSettings();
   }
 
   /* ---------- library ---------- */
@@ -273,6 +303,25 @@ export class AppState {
     }
     if (this.status === 'stopped' || this.status === 'paused') void this.play();
     else this.pause();
+  }
+
+  /** Enter or leave the focus view, taking the page fullscreen where the browser allows it. */
+  setFocus(on: boolean) {
+    if (this.focus === on) return;
+    this.focus = on;
+    const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
+    const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+    try {
+      if (on && !doc.fullscreenElement && !doc.webkitFullscreenElement) {
+        if (root.requestFullscreen) root.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+        else root.webkitRequestFullscreen?.();
+      } else if (!on && (doc.fullscreenElement || doc.webkitFullscreenElement)) {
+        if (doc.exitFullscreen) doc.exitFullscreen().catch(() => {});
+        else doc.webkitExitFullscreen?.();
+      }
+    } catch {
+      /* fullscreen unavailable (e.g. iPhone): the focus view still fills the window */
+    }
   }
 
   tap(): boolean {

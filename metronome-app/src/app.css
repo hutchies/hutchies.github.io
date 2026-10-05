@@ -187,3 +187,12 @@ input::placeholder {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+/* iOS zooms the page into any focused field smaller than 16px. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

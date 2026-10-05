@@ -27,6 +27,8 @@
       </select>
       <label for="vol">Volume</label>
       <input id="vol" type="range" min="0" max="1" step="0.01" bind:value={s.sound.volume} oninput={save} />
+      <label for="mute">Mute clicks</label>
+      <input id="mute" type="checkbox" bind:checked={s.muted} onchange={save} />
       <label for="sub">Subdivide pulses</label>
       <select id="sub" value={s.subdivide} onchange={(e) => setSubdivide(Number(e.currentTarget.value))}>
         <option value={1}>Off</option>
@@ -66,8 +68,19 @@
       <input id="zoom" type="range" min="30" max="600" step="1" bind:value={s.pxPerSecond} oninput={save} />
       <label for="ph">Playhead position</label>
       <input id="ph" type="range" min="0.08" max="0.6" step="0.01" bind:value={s.playhead} oninput={save} />
-      <label for="flash">Flash on downbeats</label>
-      <input id="flash" type="checkbox" bind:checked={s.flashScreen} onchange={save} />
+      <label for="flash">Visual beat flash</label>
+      <select id="flash" bind:value={s.flash} onchange={save}>
+        <option value="off">Off</option>
+        <option value="display">Display, on downbeats</option>
+        <option value="edges">Screen edges, every beat</option>
+      </select>
+      <label for="rows">Focus view rows</label>
+      <select id="rows" value={s.focusRows} onchange={(e) => { app.settings.focusRows = Number(e.currentTarget.value); save(); }}>
+        <option value={0}>Auto (more in portrait)</option>
+        <option value={1}>1</option>
+        <option value={2}>2</option>
+        <option value={3}>3</option>
+      </select>
       <label for="theme">Theme</label>
       <select id="theme" bind:value={s.theme} onchange={save}>
         <option value="auto">Match system</option>

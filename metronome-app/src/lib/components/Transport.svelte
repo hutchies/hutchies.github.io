@@ -99,18 +99,18 @@
     </button>
   </div>
 
-  <div class="group">
-    <label for="countin" class="lbl">Count-in</label>
+  <div class="group countin">
+    <label for="countin" class="sr">Count-in</label>
     <select id="countin" value={countInValue()} onchange={(e) => setCountIn(e.currentTarget.value)}>
-      <option value="0">None</option>
-      <option value="1q">1 beat</option>
-      <option value="2q">2 beats</option>
-      <option value="3q">3 beats</option>
-      <option value="4q">4 beats</option>
-      <option value="1b">1 bar</option>
-      <option value="2b">2 bars</option>
-      <option value="3b">3 bars</option>
-      <option value="4b">4 bars</option>
+      <option value="0">No count-in</option>
+      <option value="1q">Count-in: 1 beat</option>
+      <option value="2q">Count-in: 2 beats</option>
+      <option value="3q">Count-in: 3 beats</option>
+      <option value="4q">Count-in: 4 beats</option>
+      <option value="1b">Count-in: 1 bar</option>
+      <option value="2b">Count-in: 2 bars</option>
+      <option value="3b">Count-in: 3 bars</option>
+      <option value="4b">Count-in: 4 bars</option>
     </select>
   </div>
 </div>
@@ -178,9 +178,27 @@
   @media (max-width: 600px) {
     .transport {
       justify-content: center;
+      gap: 0.5rem 0.75rem;
+    }
+    .main {
+      width: 100%;
+      justify-content: center;
+    }
+    .tempo {
+      flex: 1;
+      min-width: 0;
+    }
+    .tempo .lbl {
+      display: none;
     }
     .tempo input {
-      width: 110px;
+      flex: 1;
+      min-width: 60px;
+      width: auto;
+    }
+    .pct {
+      min-width: 3.4rem;
+      padding: 0.3rem 0.4rem;
     }
   }
 </style>
