@@ -12,6 +12,14 @@ npm run check     # svelte-check / TypeScript
 npm run build     # static site in dist/
 ```
 
+While the app lives inside the `hutchies.github.io` repo, it is published by committing a build to `../metronome2/` (served at https://hutchies.github.io/metronome2/):
+
+```sh
+npm run deploy:site   # then commit the metronome2/ folder
+```
+
+Drop that script once the app moves to its own repository.
+
 The build uses relative paths, so `dist/` can be served from any sub-path, such as a GitHub Pages project site. The workflow in `.github/workflows/deploy.yml` publishes it once this folder is its own repository. In the repo settings, set Pages → Source to "GitHub Actions".
 
 ## Using it
