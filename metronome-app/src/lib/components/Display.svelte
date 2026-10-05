@@ -42,7 +42,12 @@
 
   $effect(() => {
     void app.settings.theme;
-    if (renderer) queueMicrotask(() => (renderer.theme = readTheme()));
+    void app.focus; // the focus view has its own (true black) canvas in dark mode
+    if (renderer)
+      queueMicrotask(() => {
+        renderer.theme = readTheme();
+        wake();
+      });
   });
 
   let drag: { x: number; score: number; moved: boolean } | null = null;
@@ -169,6 +174,58 @@
     if (onBeat && edgeStrong !== strong) edgeStrong = strong;
   }
 
+  /*
+   * Render loop. To save battery it only runs while something moves (playback,
+   * a drag, a fading flash) and for a moment after any change; otherwise the
+   * display is left alone. It also draws at most ~60 times a second, so
+   * 120 Hz screens don't double the work.
+   */
+  let raf = 0;
+  let lastDraw = 0;
+  let awakeUntil = 0;
+
+  function wake(ms = 400) {
+    awakeUntil = Math.max(awakeUntil, performance.now() + ms);
+    if (!raf && renderer) raf = requestAnimationFrame(loop);
+  }
+
+  function loop(now: number) {
+    raf = 0;
+    const st = app.engine.state;
+    const held = app.status === 'held';
+    const moving = (st.playing && !held) || !!drag || flashOpacity > 0 || edgeOpacity > 0;
+    // A tap-hold only needs to animate its pulsing label.
+    const interval = moving ? 15 : held ? 66 : 15;
+    if (now - lastDraw >= interval) {
+      lastDraw = now;
+      const f = frame();
+      if (!drag) lastScore = f.score;
+      lastFrame = f;
+      renderer.draw(app.timeline, f, view());
+      updateReadout(f);
+    }
+    if (moving || held || st.playing || now < awakeUntil) raf = requestAnimationFrame(loop);
+  }
+
+  // Redraw after anything that changes what the strip shows.
+  $effect(() => {
+    void [
+      app.timeline,
+      app.status,
+      app.startPoint,
+      app.selectedId,
+      app.focus,
+      app.loopRegion,
+      app.settings.pxPerSecond,
+      app.settings.playhead,
+      app.settings.subdivide,
+      app.settings.flash,
+      app.settings.theme,
+      app.settings.focusRows,
+    ];
+    wake();
+  });
+
   onMount(() => {
     renderer = new Renderer(canvas, readTheme());
     const ro = new ResizeObserver(() => {
@@ -176,24 +233,22 @@
       canvasW = r.width;
       canvasH = r.height;
       renderer.resize(r.width, r.height);
+      wake();
     });
     ro.observe(wrap);
     const mq = matchMedia('(prefers-color-scheme: dark)');
-    const onScheme = () => (renderer.theme = readTheme());
+    const onScheme = () => {
+      renderer.theme = readTheme();
+      wake();
+    };
     mq.addEventListener('change', onScheme);
 
-    let raf = 0;
-    const loop = () => {
-      const f = frame();
-      if (!drag) lastScore = f.score;
-      lastFrame = f;
-      renderer.draw(app.timeline, f, view());
-      updateReadout(f);
-      raf = requestAnimationFrame(loop);
-    };
+    app.engine.onChange = () => wake();
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
+      raf = 0;
+      app.engine.onChange = () => {};
       ro.disconnect();
       mq.removeEventListener('change', onScheme);
     };
@@ -232,6 +287,7 @@
   }
 
   function onPointerDown(e: PointerEvent) {
+    wake();
     if (app.status === 'held') {
       app.tap();
       return;
@@ -278,6 +334,7 @@
   }
 
   function onWheel(e: WheelEvent) {
+    wake();
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const f = Math.exp(-e.deltaY * 0.01);
@@ -440,6 +497,8 @@
   }
   /* Focus view: the strip fills the whole screen. */
   .display.focus {
+    --c-canvas: var(--c-canvas-focus);
+    --c-canvas-shade: var(--c-canvas-shade-focus);
     position: fixed;
     inset: 0;
     z-index: 50;
@@ -484,10 +543,13 @@
     inset: 0;
     z-index: 60;
     pointer-events: none;
-    box-shadow: inset 0 0 0 8px var(--c-accent), inset 0 0 28px 8px var(--c-accent);
+    /* A plain border on its own layer: fading it costs the compositor almost nothing. */
+    border: 10px solid var(--c-accent);
+    will-change: opacity;
   }
   .edges.strong {
-    box-shadow: inset 0 0 0 14px var(--c-playhead), inset 0 0 44px 14px var(--c-playhead);
+    border-width: 18px;
+    border-color: var(--c-playhead);
   }
   .hint {
     position: absolute;
@@ -512,6 +574,6 @@
     inset: 0;
     background: var(--c-playhead);
     pointer-events: none;
-    mix-blend-mode: normal;
+    will-change: opacity;
   }
 </style>

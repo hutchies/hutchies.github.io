@@ -10,6 +10,9 @@
   --c-danger: #c92a2a;
   --c-canvas: #fdfdfb;
   --c-canvas-shade: #f1f1ec;
+  /* Focus view canvas: true black in dark mode, as OLED pixels that are off use no power. */
+  --c-canvas-focus: var(--c-canvas);
+  --c-canvas-shade-focus: var(--c-canvas-shade);
   --c-beat: #1d1d1b;
   --c-pulse: #9a9a92;
   --c-playhead: #f76707;
@@ -36,6 +39,8 @@
     --c-danger: #ff6b6b;
     --c-canvas: #16171a;
     --c-canvas-shade: #1d1e22;
+    --c-canvas-focus: #000000;
+    --c-canvas-shade-focus: #0e0e10;
     --c-beat: #ececea;
     --c-pulse: #6b6c74;
     --c-playhead: #ff922b;
@@ -59,6 +64,8 @@
   --c-danger: #ff6b6b;
   --c-canvas: #16171a;
   --c-canvas-shade: #1d1e22;
+  --c-canvas-focus: #000000;
+  --c-canvas-shade-focus: #0e0e10;
   --c-beat: #ececea;
   --c-pulse: #6b6c74;
   --c-playhead: #ff922b;
