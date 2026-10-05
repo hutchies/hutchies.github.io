@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { app } from './lib/state/app.svelte';
   import { serialize } from './lib/model/syntax';
   import Display from './lib/components/Display.svelte';
@@ -12,6 +12,10 @@
   import SharePanel from './lib/components/SharePanel.svelte';
   import LibraryPanel from './lib/components/LibraryPanel.svelte';
   import Icon from './lib/components/Icon.svelte';
+  import GroupPanel from './lib/components/GroupPanel.svelte';
+  import GroupBar from './lib/components/GroupBar.svelte';
+  import CountdownView from './lib/components/CountdownView.svelte';
+  import { parseJoinLink, savedSession } from './lib/sync/session';
 
   let editorMode = $state<'builder' | 'text'>('builder');
   let mobileTab = $state<'play' | 'edit'>('play');
@@ -19,14 +23,38 @@
   let showShare = $state(false);
   let showLibrary = $state(false);
   let showKeys = $state(false);
+  let showGroup = $state(false);
+  /** Room code from a join link, waiting for the user to tap Join. */
+  let joinInvite = $state<{ code: string; hostKey?: string; server?: string } | null>(null);
 
   // Keep the engine's copy of the timeline and loop in step.
   $effect(() => {
-    app.engine.setTimeline(app.timeline);
+    const tl = app.timeline;
+    untrack(() => {
+      app.engine.setTimeline(tl);
+      // In a group, replay the cue log against the edited map.
+      app.group?.recompute();
+    });
+  });
+  $effect(() => {
+    // A follower's own count-in still applies, so it changes the replay too.
+    void app.settings.countIn.amount;
+    void app.settings.countIn.unit;
+    untrack(() => app.group?.recompute());
   });
   $effect(() => {
     const loop = app.loopRegion;
-    app.engine.update({ loop: loop ? { ...loop } : null });
+    const region = loop ? { ...loop } : null;
+    const g = app.group;
+    untrack(() => {
+      if (!g) {
+        app.engine.update({ loop: region });
+      } else if (g.isLeader) {
+        // While the group plays, the loop is shared as a cue; otherwise it's local until the next start.
+        if (g.playback?.mode === 'playing') g.localLoopChanged(region);
+        else app.engine.update({ loop: region });
+      }
+    });
   });
 
   // Mirror builder edits into the text view (but never rewrite text while it is being typed).
@@ -52,6 +80,16 @@
   });
 
   onMount(() => {
+    const invite = parseJoinLink(location);
+    if (invite) {
+      joinInvite = invite;
+      showGroup = true;
+      history.replaceState(null, '', location.pathname);
+    } else {
+      const saved = savedSession();
+      // Reloaded while in a room: rejoin (sound starts after a tap, see GroupBar).
+      if (saved) app.joinGroup({ server: saved.server, code: saved.code, kind: saved.kind }).catch(() => {});
+    }
     app.loadFromLocation();
     const onHash = () => {
       // Only reload if the hash was changed externally (e.g. pasted link).
@@ -104,7 +142,7 @@
         break;
       case 'l':
       case 'L':
-        app.loopOn = !app.loopOn;
+        if (!app.following) app.loopOn = !app.loopOn;
         break;
       case '+':
       case '=':
@@ -134,6 +172,7 @@
     <div class="title" title={app.piece.title}>{app.piece.title || 'Untitled'}</div>
     <nav>
       <button class="icon" onclick={() => (showLibrary = true)} title="Open / save" aria-label="Library"><Icon name="folder" /></button>
+      <button class="icon" class:live={!!app.group} onclick={() => (showGroup = true)} title="Play together" aria-label="Group"><Icon name="group" /></button>
       <button class="icon" onclick={() => (showShare = true)} title="Share link" aria-label="Share"><Icon name="share" /></button>
       <button class="icon" onclick={() => (showSettings = true)} title="Settings" aria-label="Settings"><Icon name="settings" /></button>
       <button class="icon" onclick={() => (showKeys = true)} title="Keyboard shortcuts" aria-label="Help"><Icon name="help" /></button>
@@ -161,6 +200,9 @@
     </aside>
 
     <section class="player" class:hide-mobile={mobileTab !== 'play'}>
+      {#if app.group}
+        <GroupBar onopen={() => (showGroup = true)} />
+      {/if}
       <Display />
       <Minimap />
       <Transport />
@@ -169,9 +211,10 @@
           <span class="lbl">Sections</span>
           {#each app.sections as s}
             <span class="chip" class:current={app.currentBar >= s.from && app.currentBar <= s.to}>
-              <button class="go" onclick={() => app.seekBar(s.from)} title="Go to {s.label}">{s.label}</button>
+              <button class="go" onclick={() => app.seekBar(s.from)} disabled={!app.canSeek} title="Go to {s.label}">{s.label}</button>
               <button
                 class="lp"
+                disabled={app.following}
                 class:on={app.loopOn && app.loopRange?.from === s.from && app.loopRange?.to === s.to}
                 onclick={() => app.loopSection(s.from, s.to)}
                 title="Loop {s.label}"
@@ -179,7 +222,7 @@
               >
             </span>
           {/each}
-          {#if app.loopRange}
+          {#if app.loopRange && !app.following}
             <button class="link" onclick={() => (app.loopRange = null)}>Loop whole piece</button>
           {/if}
         </div>
@@ -190,6 +233,10 @@
 
 <Dialog bind:open={showSettings} title="Settings"><SettingsPanel /></Dialog>
 <Dialog bind:open={showShare} title="Share"><SharePanel /></Dialog>
+<Dialog bind:open={showGroup} title="Play together"><GroupPanel bind:invite={joinInvite} /></Dialog>
+{#if app.group?.kind === 'countdown'}
+  <CountdownView onopen={() => (showGroup = true)} />
+{/if}
 <Dialog bind:open={showLibrary} title="Library"><LibraryPanel onclose={() => (showLibrary = false)} /></Dialog>
 <Dialog bind:open={showKeys} title="Keyboard shortcuts">
   <table class="keys">
@@ -240,6 +287,10 @@
   nav {
     display: flex;
     gap: 0.2rem;
+  }
+  nav .live {
+    color: var(--c-accent);
+    background: var(--c-surface-2);
   }
   main {
     flex: 1;

@@ -2,12 +2,15 @@
 
 A metronome for complex, multi-metre music. You build a map of a piece: bars, metres (including additive ones like 3+2+2/8), tempi, rit./accel., pauses and repeats. You can share the whole map as a link and play it back with a sample-accurate audio engine and a rolling display that stays exactly in sync with the audio.
 
-Built with Svelte 5, TypeScript and Vite. It has no runtime dependencies and no backend.
+Several players can also start together, each on their own device, accurate to a few milliseconds ("Play together", below).
+
+Built with Svelte 5, TypeScript and Vite. Solo use needs no backend; playing together uses a small PocketBase server (`pocketbase/`), and the PocketBase client is only loaded when you join a room.
 
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # unit tests (parser, compiler, transport maths, URL codec)
+npm test          # unit tests (parser, compiler, transport maths, URL codec, group sync)
+METRONOME_PB_URL=https://hutchies.cc npm test   # also check a deployed sync server
 npm run check     # svelte-check / TypeScript
 npm run build     # static site in dist/
 ```
@@ -29,6 +32,19 @@ The build uses relative paths, so `dist/` can be served from any sub-path, such 
 - **Display**: drag to move the start point, Ctrl/⌘+scroll or pinch to zoom, and tap it to continue from a pause.
 - **Sections**: jump to a rehearsal mark, or loop it.
 - **Keys**: Space play/pause/continue, Esc stop, ←/→ bar, [/] mark, L loop, −/+/0 tempo. Page-turner pedals (PgDn/↓/Enter) continue from pauses.
+
+### Play together
+
+The group button in the header creates or joins a room (a 5-character code, an invite link or a QR code). No accounts are needed.
+
+- **One leader.** Whoever creates the room leads: their Play, Pause, Stop, tempo, loop, jump and pause-release control everyone. Followers' transport controls are locked. "Copy leader link" hands control to someone else.
+- **Different maps are fine.** Each player plays their own map with their own count-in. Positions are shared as a rehearsal mark plus a bar offset (falling back to the bar number), so starting at B starts everyone at *their* B. Starting from the top starts every map at its first bar, at the same instant. The leader can also share their map with the room for others to load.
+- **Pauses (fermatas)** are released by the leader: everyone continues a set delay (default 250 ms) after the leader's tap. A follower whose map pauses where the leader's doesn't can "Continue alone".
+- **Countdown only.** Players using another metronome (or none) can join as "countdown only" and get a full-screen 3, 2, 1, GO with beeps that ends on the group's downbeat.
+- **Late joiners** come in at the right place mid-piece.
+- The bar above the display shows the room, the leader, who's present, and the clock-sync accuracy (e.g. "±4 ms").
+
+How it works: every device syncs its clock to the server (NTP-style), and every command carries a future instant on that shared clock. Each device replays the room's command log against its own map and schedules the result on its audio clock. See [`docs/SYNC_PLAN.md`](docs/SYNC_PLAN.md) for the design and [`pocketbase/README.md`](pocketbase/README.md) to install the server.
 
 ### Text syntax
 
@@ -84,8 +100,15 @@ src/lib/audio/
   sounds.ts          sound settings
 src/lib/display/
   renderer.ts        canvas rolling display
+src/lib/sync/        group sync
+  clock.ts           NTP-style clock offset estimation (pure)
+  cues.ts            cue log -> transport state for this device's map (pure)
+  room.ts            PocketBase API client
+  session.ts         join links, saved session, constants (no PocketBase)
+  group.svelte.ts    live session: presence, realtime cues, engine glue
 src/lib/state/app.svelte.ts   app state (Svelte 5 runes)
 src/lib/components/  UI
+pocketbase/          sync server: migrations, hooks, local runner
 ```
 
 ### How audio and display stay in sync
@@ -97,9 +120,12 @@ src/lib/components/  UI
 
 Count-ins are a separate list of absolute-time clicks sent with the play command, so a count-in works from any start point in the piece. It uses the start bar's metre, grouping and tempo.
 
+Group sync reuses this machinery unchanged. The room's cue log is reduced (by `sync/cues.ts`) to a transport state whose anchor times are on the server's clock; the device shifts those times onto its AudioContext clock via the clock-sync offset and `getOutputTimestamp()`, and hands the state to the engine (`Engine.adopt`). The mapping is re-checked every second and re-applied if it drifts by more than 3 ms.
+
 This replaces v1's design, a worker that only posted "tick" timer messages to a main-thread scheduler. The new design keeps the audio on its own thread, as v1 intended, but now the clicks are generated there too.
 
 ## Docs
 
-- [`docs/SYNC_PLAN.md`](docs/SYNC_PLAN.md): proposed design for starting in sync with other players (PocketBase), awaiting approval.
+- [`docs/SYNC_PLAN.md`](docs/SYNC_PLAN.md): design of group sync, and the decisions taken.
+- [`pocketbase/README.md`](pocketbase/README.md): installing and running the sync server.
 - [`docs/IDEAS.md`](docs/IDEAS.md): possible future features.

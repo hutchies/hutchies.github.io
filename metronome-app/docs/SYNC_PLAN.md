@@ -1,6 +1,6 @@
 # Plan: group sync (PocketBase)
 
-**Status: proposal, not implemented.** Please review the open questions at the end.
+**Status: implemented** (phases 1–4), with the decisions and changes listed under [What was built](#what-was-built) at the end. The server needs installing on hutchies.cc before the published app can use it: see [`pocketbase/README.md`](../pocketbase/README.md).
 
 ## Goal
 
@@ -25,11 +25,11 @@ None of the playback code changes. The transport maths is pure and deterministic
 
 The server is the reference clock.
 
-- **Endpoint:** a PocketBase JS hook (`pb_hooks/time.pb.js`) exposing `GET /api/time`, which returns the server's current time (`Date.now()`) in ms. This is a trivial route with no database access.
+- **Endpoint:** a PocketBase JS hook (`pb_hooks/metronome.pb.js`) exposing `GET /api/metronome/time`, which returns the server's current time (`Date.now()`) in ms. This is a trivial route with no database access.
 - **Client (`src/lib/sync/clock.ts`, pure and unit-testable):** NTP-style sampling.
   - Burst of 12 requests on join. For each: `t0 = performance.now()`, server `ts`, `t1 = performance.now()`.
   - Keep the ~4 samples with the lowest round-trip time (`t1 - t0`). The offset is `ts - (t0 + t1) / 2`, and the uncertainty is about half the best RTT.
-  - Re-sample a few times every 30 s, and smooth with the median of recent best samples, to track drift between the device's clock and the server's.
+  - Re-sample 4 times every 15 s, keeping the last 2 minutes of samples and taking the median of the best ones, to track drift between the device's clock and the server's.
 - **Chain to audio time:** server ms → `performance.now()` via the offset → AudioContext time via `ctx.getOutputTimestamp()` (which pairs a `contextTime` with a `performanceTime`). Output latency is included, so the instant is when the click is *heard*. The existing per-device "display delay" calibration also applies to Bluetooth audio here.
 - **Expected accuracy:** about ±2–10 ms over decent Wi-Fi or 4G to a nearby server. That's well under the ~20–30 ms at which ensemble players notice. If PocketBase runs on a laptop in the room (a single binary), LAN round trips are about 1–3 ms and accuracy is about ±1–2 ms.
 - **UI:** each member shows a sync-quality badge (e.g. "±4 ms"), so a bad connection is visible before the downbeat.
@@ -38,11 +38,11 @@ The server is the reference clock.
 
 | Collection | Fields | Notes |
 |---|---|---|
-| `rooms` | `code` (text, unique, 5 chars like `K7QXM`), `name`, `hostKey` (hidden, hashed), `map` (text: the shared map in the text syntax, optional), `settings` (json: who may start, release mode), `expires` (date) | Joined by code or QR. No accounts needed. |
-| `members` | `room` (rel), `clientId`, `displayName`, `part` (text), `lastSeen` (date), `rttMs`, `offsetErrMs`, `ready` (bool), `kind` (`app` \| `countdown`) | Presence via heartbeat every 10 s; stale after 30 s. |
-| `cues` | `room` (rel), `seq` (number), `kind` (`start` \| `stop` \| `pause` \| `release` \| `tempo` \| `seek`), `at` (number: server ms when it takes effect), `payload` (json), `by` (clientId) | Append-only command log. Clients subscribe with PocketBase realtime (SSE), filtered by room. |
+| `metronome_rooms` | `code` (text, unique, 5 chars like `K7QXM`), `name`, `hostKeyHash` (hidden), `map` (text: the shared map in the text syntax, optional), `settings` (json: `releaseLeadMs`), `expires` (date) | Joined by code or QR. No accounts needed. |
+| `metronome_members` | `room` (rel), `clientId`, `keyHash` (hidden), `displayName`, `part` (text), `updated` (the heartbeat), `rttMs`, `offsetErrMs`, `countInSec`, `ready`, `leader` (bool), `kind` (`app` \| `countdown`) | Presence via heartbeat every 10 s; stale after 30 s. |
+| `metronome_cues` | `room` (rel), `seq` (number), `kind` (`start` \| `stop` \| `pause` \| `release` \| `update` \| `seek` \| `room`), `at` (number: server ms when it takes effect), `payload` (json), `by` (clientId) | Append-only command log. Clients subscribe with PocketBase realtime (SSE), filtered by room. |
 
-API rules (server-side):
+API rules (server-side; as proposed, see [What was built](#what-was-built) for what was implemented):
 
 - Anyone with the room code can read the room, members and cues, and can create and update their own `members` row.
 - Creating `cues` needs the host key, sent in a header and checked in a hook, unless room settings allow "anyone can start". A hook assigns `seq` and rejects an `at` too close to now or too far ahead.
@@ -100,10 +100,33 @@ src/lib/components/GroupPanel.svelte   create/join (code + QR), members list, re
 - Integration: two Playwright browser contexts in one room, with an analyser on each output, asserting the downbeat onsets are within a few ms of each other.
 - Manual: two phones on different networks, recorded together with one microphone, measuring the offset in Audacity.
 
-## Open questions for you
+## Decisions
 
-1. **Hosting:** do you already run a PocketBase instance, or should this target a fresh one? (It affects the default server URL, and whether I write a `pb_migrations/` set and a deploy note, e.g. Fly.io or a small VPS.)
-2. **Who controls playback:** a single leader with the host key (my default), or anyone in the room?
-3. **Fermatas:** is leader-release with a small delay acceptable, or should "everyone taps" be the default?
-4. **Accounts:** are anonymous rooms by code enough, or do you want persistent bands or groups with saved setlists? That would need PocketBase auth.
-5. **Different maps:** is a sync point of "mark + bar offset / bar number" the right way to align players with different maps, or do you need named sync points defined in the syntax (e.g. `sync:intro`)?
+1. **Hosting:** the existing PocketBase at `https://hutchies.cc` (the app's default; configurable per device). Everything is prefixed `metronome_`: collections `metronome_rooms`, `metronome_members`, `metronome_cues`, routes under `/api/metronome/`, and the `metronome_cleanup` cron job.
+2. **Control:** a single leader holding the room's host key.
+3. **Fermatas:** leader releases.
+4. **Accounts:** none; anonymous rooms joined by code.
+5. **Different maps:** sync points are "mark + bar offset", falling back to the bar number. A start from the top is a start from every map's first bar, so the default is simply that everyone starts at the same instant with their own map.
+
+## What was built
+
+Mostly as proposed above. Where it differs:
+
+- **Server.** Every write goes through custom routes in `pb_hooks/metronome.pb.js` that check the host key (or a per-member key) themselves, so all three collections are locked down. The one public rule lets a client read and subscribe to a room's cues if it sends the room code (`X-Room-Code`, which PocketBase also accepts as a realtime subscription option). The server assigns `seq` in a transaction, rejects `at` more than 60 s ahead, and moves an `at` that's already past to just ahead of now (rather than rejecting it), so every device still agrees on it. Rooms expire 24 h after their last use.
+- **Presence** is a heartbeat every 10 s whose response is the member list (no realtime subscription on members). Members report their round trip, clock uncertainty and count-in length; the leader's start lead time is the longest count-in among present members plus `max(1.5 s, 3 × worst RTT + 0.5 s)`, at least 2.5 s.
+- **Cue kinds:** `start`, `stop`, `pause`, `release`, `seek`, plus `update` (tempo and/or loop, replacing `tempo`) and `room` (no timing; tells clients to refetch the room after the leader shares a map or changes settings). Loops are shared as first/last-bar sync points, or "whole piece".
+- **Replay, not incremental application.** Each device keeps the whole cue log and recomputes its transport by replaying it (`sync/cues.ts`) whenever a cue arrives, its map changes, or its count-in setting changes. This makes late joins, reconnects, out-of-order delivery and mid-piece map edits the same code path. The leader applies its own cues from the POST response rather than waiting for the realtime echo.
+- **Engine.** Rather than `Engine.play()` gaining a `startAt`, the engine gained `adopt(state, countIn)`: the replayed transport state (shifted onto the AudioContext clock) is handed over whole. The worklet and display needed no changes.
+- **Audio clock.** Server instants map to AudioContext time through the clock offset and `getOutputTimestamp()` (so the instant is when the click is heard), minus the display-delay calibration. The mapping is sampled every second (median of the last 5) and playback is re-anchored if it moves by more than 3 ms, which tracks drift between the audio clock and the system clock.
+- **Releases** take effect `releaseLeadMs` after the leader's tap (250 ms by default, adjustable by the leader). A map that reaches its pause up to 0.5 s after the release continues straight on. A follower whose map pauses where the leader's doesn't would otherwise wait forever, so they get a "Continue alone" button (not bound to Space or pedals, to avoid accidents); it's kept as a local entry in that device's cue log.
+- **Followers** can still move their own start point while stopped (it's replaced by the leader's next start), and keep their own count-in and display settings. Tempo, loop and transport controls are locked.
+- **Reaching the end:** maps can differ in length, so each device stops when its own map ends.
+- **Leader handoff** is a "leader link" carrying the host key in the URL fragment (never sent to a server). Host keys are remembered per device, so the leader can reload and still lead.
+- **Not done:** the audible "prep" click before a release, LAN discovery, and the Playwright test with analysers on each output (see Testing).
+
+### Testing done
+
+- Unit tests (`tests/sync.test.ts`): clock estimation under asymmetric jitter; sync points across different maps, repeats and loops; cue reduction (count-ins in different maps ending on the same downbeat, tempo/pause/stop instants, cancelled count-ins, releases including late-arriving maps, late join, out-of-order delivery).
+- Server: the hooks and migration were run on PocketBase v0.40.4, and `tests/server.test.ts` exercises the API, permissions and the cue read rule (`METRONOME_PB_URL=… npm test`).
+- Browser: four headless Chromium tabs against that local server (leader, a follower with a different map, a late joiner and a countdown-only member). Start from a mark, tempo change, pause, stop, fermata release, late join, leader link and rejoin after reload all behaved as designed; leader and follower positions agreed with the shared clock to within 0.1 ms. This was the same machine, so it checks the plumbing rather than network accuracy.
+- Still to do: two phones on different networks, recorded with one microphone (section 6).

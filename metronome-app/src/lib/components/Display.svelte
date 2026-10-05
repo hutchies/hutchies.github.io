@@ -79,7 +79,7 @@
       if (app.status !== 'countin') app.status = 'countin';
     } else if (st.playing && !pos.pending) {
       if (pos.frozen?.kind === 'end') {
-        app.stop();
+        app.halt();
       } else if (pos.frozen?.kind === 'hold') {
         if (app.status !== 'held') app.status = 'held';
       } else if (app.status !== 'playing') {
@@ -98,9 +98,11 @@
       score,
       flash,
       rate,
-      loop: app.loopRegion,
+      // The engine's loop: the leader's when following a group.
+      loop: st.loop,
       countIn: countInInfo,
       held: app.status === 'held',
+      holdText: app.following ? 'Waiting for the leader' : undefined,
       ended: false,
       highlight,
     };
@@ -178,7 +180,7 @@
   });
 
   function canDrag() {
-    return app.status === 'stopped' || app.status === 'paused';
+    return (app.status === 'stopped' || app.status === 'paused') && app.canSeek;
   }
 
   function onPointerDown(e: PointerEvent) {
