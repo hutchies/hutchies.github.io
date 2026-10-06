@@ -19,7 +19,6 @@
 
   let editorMode = $state<'builder' | 'text'>('builder');
   let showParts = $state(false);
-  let showMenu = $state(false);
   let showSettings = $state(false);
   let showShare = $state(false);
   let showLibrary = $state(false);
@@ -216,19 +215,11 @@
       <button class="pill" class:live={!!app.group} onclick={() => (showGroup = true)} title="Play together" aria-label="Play together">
         <Icon name="group" size={18} /><span class="wide-only">Play together</span>
       </button>
-      <div class="menuwrap">
-        <button class="icon" onclick={() => (showMenu = !showMenu)} aria-expanded={showMenu} aria-haspopup="menu" title="More" aria-label="More"><Icon name="more" /></button>
-        {#if showMenu}
-          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-          <div class="scrim" onclick={() => (showMenu = false)}></div>
-          <div class="menu" role="menu">
-            <button role="menuitem" onclick={() => { showMenu = false; showLibrary = true; }}><Icon name="folder" size={18} /> Open / save</button>
-            <button role="menuitem" onclick={() => { showMenu = false; showShare = true; }}><Icon name="share" size={18} /> Share link</button>
-            <button role="menuitem" onclick={() => { showMenu = false; showSettings = true; }}><Icon name="settings" size={18} /> Settings</button>
-            <button role="menuitem" onclick={() => { showMenu = false; showKeys = true; }}><Icon name="help" size={18} /> Help and shortcuts</button>
-          </div>
-        {/if}
-      </div>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="icon" onclick={() => (showLibrary = true)} title="Open / save" aria-label="Open / save"><Icon name="folder" /></button>
+      <button class="icon" onclick={() => (showShare = true)} title="Share link" aria-label="Share"><Icon name="share" /></button>
+      <button class="icon" onclick={() => (showSettings = true)} title="Settings" aria-label="Settings"><Icon name="settings" /></button>
+      <button class="icon help" onclick={() => (showKeys = true)} title="Help and keyboard shortcuts" aria-label="Help"><Icon name="help" /></button>
     </nav>
   </header>
 
@@ -363,40 +354,11 @@
   .pcount {
     color: var(--c-muted);
   }
-  .menuwrap {
-    position: relative;
-  }
-  .scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 30;
-  }
-  .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 0.3rem);
-    z-index: 31;
-    min-width: 13rem;
-    display: flex;
-    flex-direction: column;
-    padding: 0.3rem;
-    background: var(--c-surface);
-    border: 1px solid var(--c-border);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-  }
-  .menu button {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    border: none;
-    background: none;
-    text-align: left;
-    padding: 0.55rem 0.7rem;
-    border-radius: 8px;
-  }
-  .menu button:hover {
-    background: var(--c-surface-2);
+  .sep {
+    width: 1px;
+    height: 1.5rem;
+    margin: 0 0.2rem;
+    background: var(--c-border);
   }
   main {
     flex: 1;
@@ -500,6 +462,12 @@
     font-size: 0.85rem;
     margin: 0;
   }
+  /* Keyboard shortcuts mean little on touch screens. */
+  @media (hover: none) and (pointer: coarse) {
+    .help {
+      display: none;
+    }
+  }
   @media (max-width: 860px) {
     /* Phones: the editor takes the whole screen while it is open. */
     main.editing {
@@ -528,7 +496,17 @@
       padding: 0.35rem 0.7rem;
     }
     .pname {
-      max-width: 6rem;
+      max-width: 5rem;
+    }
+    nav {
+      gap: 0.2rem;
+    }
+    nav .icon {
+      width: 2.1rem;
+      padding: 0;
+    }
+    .sep {
+      display: none;
     }
     .player {
       padding: 0.6rem 0.75rem;

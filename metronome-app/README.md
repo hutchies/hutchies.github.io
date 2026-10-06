@@ -27,7 +27,7 @@ The build uses relative paths, so `dist/` can be served from any sub-path, such 
 
 ## Using it
 
-The play screen keeps to the essentials: the display, a section strip, and Stop / Play / Loop / Speed. The header has Parts, Edit piece, Play together and ⋯ (Open / save, Share, Settings, Help).
+The play screen keeps to the essentials: the display, a section strip, and Stop / Play / Loop / Speed. The header has Parts, Edit piece, Play together, then Open / save, Share, Settings and Help.
 
 - **Edit piece** (or E) opens the editor beside the display (full screen on phones); Done closes it.
 - **Blocks** (in the editor): one compact row per block of bars, pause or repeat: mark, × number of bars, metre and tempo (tap the note symbol to change the beat unit). Empty fields carry on from the previous block, shown as grey placeholders. Type ∞ (or "inf") in the × field to keep a block going until stopped. The ⋯ button on a row opens rit./accel., renumbering, and move, loop, duplicate, repeat and delete.
