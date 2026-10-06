@@ -8,6 +8,7 @@
  *   4/4  3+2/8  metre (optionally with additive grouping)
  *   c=120 q.=80 tempo (sb m c q sq ds hd, or 1 2 4 8 16 ..., dots for dotted)
  *   x8          number of bars (default 1)
+ *   forever     keep going until stopped (also x∞, xinf, indefinitely)
  *   rit c=90    gradual tempo change across the block (also accel, rall, ~c=90)
  *   @17         renumber: this block starts at bar 17
  *   wait        pause until tapped;  wait 3s  timed pause
@@ -44,6 +45,7 @@ export interface ParseResult {
 }
 
 const GLIDE_WORDS = /^(rit|ritard|ritardando|rall|rallentando|accel|accelerando)\.?$/i;
+const FOREVER_WORDS = /^(forever|indefinitely|indef|x∞|∞|xinf|x\*)$/i;
 const PAUSE_WORDS = /^(wait|tap|pause|fermata|gp|g\.p\.)$/i;
 
 export function parseMetre(tok: string): Metre | undefined {
@@ -150,6 +152,7 @@ function parseEntry(t: string, line: number, errors: SyntaxError[]): Item | unde
   let tempo: Tempo | undefined;
   let tempoTo: Tempo | undefined;
   let bars: number | undefined;
+  let forever = false;
   let barNumber: number | undefined;
   let isPause = false;
   let seconds: number | undefined;
@@ -160,6 +163,8 @@ function parseEntry(t: string, line: number, errors: SyntaxError[]): Item | unde
     let m: RegExpExecArray | null;
     if ((m = /^(.+):$/.exec(tok)) && !tok.includes('=')) {
       mark = m[1];
+    } else if (FOREVER_WORDS.test(tok)) {
+      forever = true;
     } else if ((m = /^x(\d+)$/i.exec(tok))) {
       bars = Number(m[1]);
       if (bars < 1) err(`Bar count must be at least 1 ("${tok}")`);
@@ -193,19 +198,21 @@ function parseEntry(t: string, line: number, errors: SyntaxError[]): Item | unde
   if (glideNext) err('rit./accel. needs a target tempo, e.g. "rit c=90"');
 
   if (isPause) {
-    if (metre || tempo || tempoTo || bars) err('A pause cannot also have bars, metre or tempo');
+    if (metre || tempo || tempoTo || bars || forever) err('A pause cannot also have bars, metre or tempo');
     const p: PauseItem = { kind: 'pause', id: newId() };
     if (seconds !== undefined) p.seconds = seconds;
     if (mark !== undefined) p.mark = mark;
     return p;
   }
   if (seconds !== undefined) err('Seconds only apply to a pause ("wait 2s")');
+  if (forever && tempoTo) err('An indefinite block cannot have a rit./accel.');
 
   const b: BlockItem = { kind: 'bars', id: newId(), bars: bars ?? 1 };
   if (mark !== undefined) b.mark = mark;
   if (metre) b.metre = metre;
   if (tempo) b.tempo = tempo;
   if (tempoTo) b.tempoTo = tempoTo;
+  if (forever) b.forever = true;
   if (barNumber !== undefined) b.barNumber = barNumber;
   return b;
 }
@@ -263,8 +270,9 @@ export function serialize(piece: Piece, opts: SerializeOptions = {}): string {
         lastTempo = it.tempo;
       }
       if (it.metre) toks.push(metreToText(it.metre));
-      if (it.bars !== 1) toks.push(`x${it.bars}`);
-      if (it.tempoTo) {
+      if (it.forever) toks.push('forever');
+      else if (it.bars !== 1) toks.push(`x${it.bars}`);
+      if (it.tempoTo && !it.forever) {
         const from = it.tempo ?? lastTempo;
         const slower = from ? wholesPerSecond(it.tempoTo) < wholesPerSecond(from) : true;
         toks.push(slower ? 'rit' : 'accel', tempoToText(it.tempoTo, british));

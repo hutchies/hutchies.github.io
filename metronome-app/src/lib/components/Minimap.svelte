@@ -5,7 +5,8 @@
   import { barAt } from '../model/compile';
 
   const tl = $derived(app.timeline);
-  const dur = $derived(Math.max(tl.duration, 1e-6));
+  // An indefinite ending is drawn as a short tail rather than its full horizon.
+  const dur = $derived(Math.max(tl.open ? tl.openStart * 1.25 + 10 : tl.duration, 1e-6));
 
   // Merge consecutive bars of the same metre into segments for a cleaner strip.
   const segments = $derived.by(() => {

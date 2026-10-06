@@ -33,8 +33,31 @@
     while (last + 1 <= range.to && bars[last + 1].number > bars[last].number) last++;
     return [bars[range.from].number, bars[last].number] as const;
   });
-  const rangeText = $derived(span ? (span[0] === span[1] ? `Bar ${span[0]}` : `Bars ${span[0]}–${span[1]}`) : '');
-  const shortRange = $derived(span ? (span[0] === span[1] ? `${span[0]}` : `${span[0]}–${span[1]}`) : '');
+  const forever = $derived(item.kind === 'bars' && !!item.forever);
+  const rangeText = $derived(
+    !span ? '' : forever ? `From bar ${span[0]}, indefinitely` : span[0] === span[1] ? `Bar ${span[0]}` : `Bars ${span[0]}–${span[1]}`,
+  );
+  const shortRange = $derived(!span ? '' : forever ? `${span[0]}–∞` : span[0] === span[1] ? `${span[0]}` : `${span[0]}–${span[1]}`);
+
+  function setForever(on: boolean) {
+    if (item.kind !== 'bars') return;
+    if (on) {
+      item.forever = true;
+      // An indefinite block holds its tempo.
+      delete item.tempoTo;
+    } else delete item.forever;
+  }
+
+  /** The × field takes a number of bars, or ∞ (also "inf", "*", "forever") for indefinitely. */
+  function setCount(v: string) {
+    if (item.kind !== 'bars') return;
+    const t = v.trim().toLowerCase();
+    if (/^(∞|\*|i|in|inf|infinite|indef.*|f|for|forever)$/.test(t)) setForever(true);
+    else if (/^\d+$/.test(t) && Number(t) >= 1) {
+      setForever(false);
+      item.bars = Math.min(999, Number(t));
+    }
+  }
   /** Extra options and actions, shown on demand to keep the list compact. */
   let open = $state(false);
   const selected = $derived(app.selectedId === item.id);
@@ -90,6 +113,7 @@
       delete item.tempoTo;
       return;
     }
+    delete item.forever;
     const base = item.tempo ?? effTempo ?? { unit: { base: 4, dots: 0 }, bpm: 120 };
     const factor = kind === 'rit' ? 0.8 : 1.25;
     item.tempoTo = { unit: base.unit, bpm: Math.round(base.bpm * factor) };
@@ -131,9 +155,18 @@
     {#if item.kind === 'bars'}
       <span class="where" title={rangeText}>{shortRange}</span>
       <input class="mark" type="text" value={item.mark ?? ''} placeholder="mark" maxlength="12" aria-label="Rehearsal mark" title="Rehearsal mark" oninput={(e) => setMark(e.currentTarget.value)} />
-      <label class="count" title="Number of bars">
+      <label class="count" title="Number of bars, or ∞ to keep going until stopped (anything after won't play)">
         <span aria-hidden="true">×</span>
-        <input type="number" inputmode="numeric" min="1" max="999" aria-label="Bars" value={item.bars} oninput={(e) => item.kind === 'bars' && (item.bars = Math.max(1, Number(e.currentTarget.value) || 1))} />
+        <input
+          type="text"
+          inputmode="text"
+          list="bar-count-options"
+          aria-label="Bars"
+          autocomplete="off"
+          value={forever ? '∞' : item.bars}
+          oninput={(e) => setCount(e.currentTarget.value)}
+          onblur={(e) => (e.currentTarget.value = forever ? '∞' : String(item.kind === 'bars' ? item.bars : ''))}
+        />
       </label>
       <input
         class="metre"
@@ -400,6 +433,7 @@
     width: 2.4rem;
     text-align: center;
   }
+
   .metre {
     flex: 3 0 4.6rem;
     width: 4.6rem;

@@ -363,9 +363,9 @@ export class Renderer {
       if (p.mark !== undefined) this.drawMark(p.mark, x, lanes.markLane);
     }
 
-    // Final double bar.
+    // Final double bar (an indefinite piece has none).
     const xe = xOf(tl.duration);
-    if (xe < w + 10 && tl.duration > visFrom) {
+    if (!tl.open && xe < w + 10 && tl.duration > visFrom) {
       ctx.fillStyle = th.fg;
       ctx.fillRect(xe - 7, lanes.beatTop, 2, beatH);
       ctx.fillRect(xe - 3, lanes.beatTop, 5, beatH);

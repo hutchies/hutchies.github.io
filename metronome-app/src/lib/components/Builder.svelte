@@ -14,6 +14,9 @@
   }
 </script>
 
+<!-- Suggestion for every block's bar-count field, so ∞ is one tap away on phones. -->
+<datalist id="bar-count-options"><option value="∞">indefinitely</option></datalist>
+
 <div class="builder">
   {#if app.piece.items.length === 0}
     <p class="empty">Nothing here yet. Add some bars to get started.</p>
