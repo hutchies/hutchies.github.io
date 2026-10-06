@@ -1,2 +1,16 @@
 name: Annotated reading
 markdown: kramdown
+# Folders Jekyll must not process. ScreenCheck's committed node_modules
+# contain READMEs with {{ }} that Jekyll mistakes for templates, which
+# fails the whole Pages build. (Listing excludes replaces Jekyll's
+# defaults, so those are repeated here.)
+exclude:
+  - ScreenCheck/node_modules
+  - ScreenCheckSave/node_modules
+  - node_modules
+  - Gemfile
+  - Gemfile.lock
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/
