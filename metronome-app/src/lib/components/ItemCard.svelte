@@ -160,7 +160,6 @@
         <input
           type="text"
           inputmode="text"
-          list="bar-count-options"
           aria-label="Bars"
           autocomplete="off"
           value={forever ? '∞' : item.bars}
