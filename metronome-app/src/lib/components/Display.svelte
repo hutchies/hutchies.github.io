@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { app } from '../state/app.svelte';
   import StartCountdown from './StartCountdown.svelte';
-  import { Renderer, type Frame, type Theme } from '../display/renderer';
+  import { Renderer, type Frame, type StackLane, type Theme } from '../display/renderer';
   import { barAt, lowerBound, LEVEL_BAR, LEVEL_BEAT, LEVEL_COUNT_BAR, LEVEL_COUNT_BEAT } from '../model/compile';
   import { positionAt } from '../audio/transport';
   import Icon from './Icon.svelte';
@@ -55,9 +55,24 @@
   let lastScore = 0;
   let lastFrame: Frame | null = null;
 
+  /** All parts as lanes (when there are several and the stacked view is on). */
+  const stacked = $derived(app.settings.stackParts && app.project.parts.length > 1);
+
+  function stackLanes(f: Frame): StackLane[] | undefined {
+    if (!stacked) return undefined;
+    const audible = app.audible;
+    return app.project.parts.map((p, i) => ({
+      tl: app.partTimelines[i],
+      name: p.name,
+      offset: app.partOffset(i, f.score),
+      audible: audible.has(p.name),
+      active: i === app.activeIndex,
+    }));
+  }
+
   /** Rows for the focus view: wrap the strip so tall screens aren't one stretched lane. */
   function rows() {
-    if (!app.focus) return 1;
+    if (!app.focus || stacked) return 1;
     if (app.settings.focusRows > 0) return app.settings.focusRows;
     const n = Math.round((canvasH / Math.max(1, canvasW)) * 1.2);
     return Math.max(1, Math.min(3, n, Math.floor(canvasH / 180)));
@@ -202,7 +217,7 @@
       const f = frame();
       if (!drag) lastScore = f.score;
       lastFrame = f;
-      renderer.draw(app.timeline, f, view());
+      renderer.draw(app.timeline, f, view(), stackLanes(f));
       updateReadout(f);
     }
     if (moving || held || st.playing || now < awakeUntil) raf = requestAnimationFrame(loop);
@@ -223,6 +238,10 @@
       app.settings.flash,
       app.settings.theme,
       app.settings.focusRows,
+      stacked,
+      app.partTimelines,
+      app.audible,
+      app.activeIndex,
     ];
     wake();
   });
@@ -277,6 +296,11 @@
       document.removeEventListener('webkitfullscreenchange', onFs);
     };
   });
+
+  function setStack(on: boolean) {
+    app.settings.stackParts = on;
+    app.persistSettings();
+  }
 
   function toggleEdges() {
     app.settings.flash = app.settings.flash === 'edges' ? 'off' : 'edges';
@@ -352,7 +376,13 @@
   <div class="edges" class:strong={edgeStrong} style:opacity={edgeOpacity} aria-hidden="true"></div>
 {/if}
 
-<div class="display" class:held={app.status === 'held'} class:focus={app.focus}>
+<div
+  class="display"
+  class:held={app.status === 'held'}
+  class:focus={app.focus}
+  class:stacked
+  style:--lanes={stacked ? app.project.parts.length : 1}
+>
   <div class="readout" aria-live="off">
     <div class="cell">
       <span class="k">Bar</span>
@@ -366,6 +396,12 @@
     </div>
     {#if markText}
       <div class="cell mark"><span class="v">{markText}</span></div>
+    {/if}
+    {#if app.project.parts.length > 1}
+      <div class="viewseg" role="group" aria-label="Display">
+        <button aria-pressed={!app.settings.stackParts} class:on={!app.settings.stackParts} onclick={() => setStack(false)} title="Show only {app.activePart.name}">One part</button>
+        <button aria-pressed={app.settings.stackParts} class:on={app.settings.stackParts} onclick={() => setStack(true)} title="Show every part, one above the other">All parts</button>
+      </div>
     {/if}
     <button class="icon small focus-btn" onclick={() => app.setFocus(true)} title="Focus view: just the click strip (F)" aria-label="Focus view">
       <Icon name="expand" size={18} />
@@ -420,6 +456,30 @@
   .focus-btn {
     margin-left: auto;
     color: var(--c-muted);
+  }
+  .viewseg {
+    margin-left: auto;
+    display: flex;
+    background: var(--c-surface-2);
+    padding: 2px;
+    border-radius: 8px;
+  }
+  .viewseg + .focus-btn {
+    margin-left: 0;
+  }
+  .viewseg button {
+    border: none;
+    background: none;
+    padding: 0.2rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--c-muted);
+  }
+  .viewseg button.on {
+    background: var(--c-surface);
+    color: var(--c-fg);
+    box-shadow: var(--shadow-sm);
   }
   .cell {
     display: flex;
@@ -491,6 +551,14 @@
     height: 100%;
     touch-action: none;
     cursor: grab;
+  }
+  /* Stacked parts: room for each lane, up to most of the screen. */
+  .stacked {
+    max-height: calc(min(max(440px, 150px * var(--lanes)), 75vh) + 3rem);
+  }
+  .stacked .canvas-wrap {
+    min-height: min(calc(120px * var(--lanes)), 70vh);
+    max-height: min(max(440px, 150px * var(--lanes)), 75vh);
   }
   @media (max-height: 500px) {
     .canvas-wrap {

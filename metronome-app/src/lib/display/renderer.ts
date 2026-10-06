@@ -61,6 +61,18 @@ export interface ViewOptions {
   rows?: number;
 }
 
+/** One part in the stacked view. */
+export interface StackLane {
+  tl: Timeline;
+  name: string;
+  /** This part's score time minus the shown part's, at the current position. */
+  offset: number;
+  /** Heard on this device (others are drawn faded). */
+  audible: boolean;
+  /** The shown part: it carries the loop, count-in and pauses. */
+  active: boolean;
+}
+
 /** Vertical space between wrapped rows. */
 const ROW_GAP = 14;
 
@@ -91,12 +103,17 @@ export class Renderer {
     return frame.score + (x - this.w * view.playhead) / view.pxPerSecond;
   }
 
-  draw(tl: Timeline, frame: Frame, view: ViewOptions) {
+  draw(tl: Timeline, frame: Frame, view: ViewOptions, stack?: StackLane[]) {
     const { ctx, w, h, theme: th } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.fillStyle = th.bg;
     ctx.fillRect(0, 0, w, h);
     if (w === 0 || h === 0) return;
+
+    if (stack && stack.length > 1) {
+      this.drawStack(frame, view, stack);
+      return;
+    }
 
     const rows = Math.max(1, Math.floor(view.rows ?? 1));
     if (rows === 1) {
@@ -130,13 +147,75 @@ export class Renderer {
     }
   }
 
+  /**
+   * Every part as its own lane, on a shared time axis. Parts not heard on this
+   * device are faded, and the shown part is outlined.
+   */
+  private drawStack(frame: Frame, view: ViewOptions, stack: StackLane[]) {
+    const { ctx, w, h, theme: th } = this;
+    const n = stack.length;
+    const gap = 6;
+    const laneH = (h - gap * (n - 1)) / n;
+    stack.forEach((lane, k) => {
+      const y = k * (laneH + gap);
+      if (k > 0) {
+        ctx.fillStyle = th.barShade;
+        ctx.fillRect(0, y - gap, w, gap);
+      }
+      const f: Frame = lane.active
+        ? frame
+        : {
+            ...frame,
+            score: frame.score + lane.offset,
+            flash: undefined,
+            loop: null,
+            countIn: undefined,
+            held: false,
+            highlight: null,
+          };
+      ctx.save();
+      ctx.translate(0, y);
+      ctx.beginPath();
+      ctx.rect(0, 0, w, laneH);
+      ctx.clip();
+      this.drawRow(lane.tl, f, view, laneH, true, true);
+      if (!lane.audible) {
+        // Fade a part that isn't heard.
+        ctx.fillStyle = th.bg;
+        ctx.globalAlpha = 0.72;
+        ctx.fillRect(0, 0, w, laneH);
+        ctx.globalAlpha = 1;
+      }
+      // Part name, top left, over the (dimmed) past.
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      const label = lane.audible ? lane.name : `${lane.name} (muted)`;
+      const tw = Math.min(ctx.measureText(label).width, w * view.playhead - 24);
+      ctx.fillStyle = th.bg;
+      ctx.globalAlpha = 0.9;
+      ctx.fillRect(6, 4, tw + 12, 20);
+      ctx.globalAlpha = 1;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(6, 4, tw + 12, 20);
+      ctx.clip();
+      this.label(12, 14, label, lane.active ? th.accent : th.muted, 13, 'left', 'middle', 'bold');
+      ctx.restore();
+      if (lane.active) {
+        ctx.strokeStyle = th.accent;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(1, 1, w - 2, laneH - 2);
+      }
+      ctx.restore();
+    });
+  }
+
   /** One strip of height h at the current origin; only the primary row carries the playhead. */
-  private drawRow(tl: Timeline, frame: Frame, view: ViewOptions, h: number, primary: boolean) {
+  private drawRow(tl: Timeline, frame: Frame, view: ViewOptions, h: number, primary: boolean, compact = false) {
     const { ctx, w, theme: th } = this;
 
     const px = w * view.playhead;
     const pps = view.pxPerSecond;
-    const lanes = this.lanes(h);
+    const lanes = this.lanes(h, compact);
 
     const loop = frame.loop;
     const pos = frame.score;
@@ -198,12 +277,13 @@ export class Renderer {
     }
   }
 
-  private lanes(h: number) {
+  private lanes(h: number, compact = false) {
     const top = 6;
+    // Stacked lanes are short, so their header is a little tighter.
     const markLane = top;
     const tempoLane = top + 26;
-    const numberLane = top + 50;
-    const beatTop = top + 66;
+    const numberLane = top + (compact ? 46 : 50);
+    const beatTop = top + (compact ? 60 : 66);
     const beatBottom = h - 10;
     return { top, markLane, tempoLane, numberLane, beatTop, beatBottom };
   }

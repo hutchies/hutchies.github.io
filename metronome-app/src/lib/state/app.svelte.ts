@@ -18,6 +18,7 @@ import type { LayerTrack, TrackMix } from '../audio/worklet';
 import { resolveSyncPoint, syncPointAt, type SyncPoint } from '../sync/cues';
 import type { GroupSession, JoinOptions } from '../sync/group.svelte';
 import { DEFAULT_SERVER } from '../sync/session';
+import { newBlock } from '../model/tree';
 
 export type Status = 'stopped' | 'countin' | 'playing' | 'held' | 'paused';
 
@@ -49,6 +50,8 @@ export interface Settings {
   muted: boolean;
   /** Rows in the focus view: 0 picks by screen shape (more rows in portrait). */
   focusRows: number;
+  /** Show every part as its own lane in the display. */
+  stackParts: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -68,6 +71,7 @@ const DEFAULT_SETTINGS: Settings = {
   flash: 'off',
   muted: false,
   focusRows: 0,
+  stackParts: false,
 };
 
 export const EXAMPLE = `# Example: mixed metres
@@ -139,6 +143,14 @@ export class AppState {
   selectedId = $state<string | null>(null);
   /** Focus view: only the rolling click strip, filling the screen. */
   focus = $state(false);
+  /** The block editor panel is open. */
+  editorOpen = $state(false);
+  /**
+   * Parts made with Duplicate, by name, with a snapshot of the part they were
+   * copied from (item id -> JSON), so the editor can mark what has changed.
+   * This session only.
+   */
+  duplicates = $state<Record<string, { from: string; items: Record<string, string> }>>({});
 
   get activePart() {
     const parts = this.project.parts;
@@ -252,7 +264,7 @@ export class AppState {
     this.selectedId = null;
   }
 
-  /** Adds a part, starting as a copy of the active one. */
+  /** Adds a new part with one block of 4/4. */
   addPart() {
     const names = this.project.parts.map((p) => p.name);
     // Name the existing single part too, so the project gets headers.
@@ -260,9 +272,48 @@ export class AppState {
       this.project.parts[0].name = 'Part 1';
       names[0] = 'Part 1';
     }
-    const piece = structuredClone($state.snapshot(this.piece)) as Piece;
+    const piece: Piece = { title: '', items: [newBlock()] };
     this.project.parts.push({ name: uniqueName(`Part ${names.length + 1}`, names), piece, sound: defaultSound() });
     this.setActivePart(this.project.parts.length - 1);
+  }
+
+  /** Copies a part (blocks and sound) as the start of a new one, and shows it. */
+  duplicatePart(i = this.activeIndex) {
+    const src = this.project.parts[i];
+    if (!src) return;
+    const names = this.project.parts.map((p) => p.name);
+    let srcName = src.name;
+    if (names.length === 1 && srcName === DEFAULT_PART_NAME) {
+      src.name = srcName = 'Part 1';
+      names[0] = srcName;
+    }
+    const piece = structuredClone($state.snapshot(src.piece)) as Piece;
+    const sound = structuredClone($state.snapshot(src.sound)) as PartSound;
+    const name = uniqueName(`${srcName} copy`, names);
+    this.project.parts.splice(i + 1, 0, { name, piece, sound });
+    this.duplicates[name] = { from: srcName, items: itemSnapshot(piece.items) };
+    this.setActivePart(i + 1);
+    this.editorOpen = true;
+  }
+
+  /** For a duplicated part: whether an item differs from the part it was copied from. */
+  itemChange(id: string): 'changed' | 'new' | null {
+    const d = this.duplicates[this.activePart.name];
+    if (!d) return null;
+    const loc = findItem(this.piece.items, id);
+    if (!loc) return null;
+    const before = d.items[id];
+    if (before === undefined) return 'new';
+    return before === itemKey(loc) ? null : 'changed';
+  }
+
+  /** Score offset of part i from the active part at active score `score`, as heard. */
+  partOffset(i: number, score: number): number {
+    const tl = this.partTimelines[i];
+    if (!tl?.bars.length || i === this.activeIndex) return 0;
+    const playing = this.status !== 'stopped' && this.status !== 'paused';
+    if (playing) return resolveSyncPoint(tl, this.layerAnchor.sync) - this.layerAnchor.from;
+    return resolveSyncPoint(tl, syncPointAt(this.timeline, score)) - score;
   }
 
   removePart(i: number) {
@@ -270,6 +321,7 @@ export class AppState {
     if (parts.length <= 1) return;
     const name = parts[i].name;
     parts.splice(i, 1);
+    delete this.duplicates[name];
     this.mix.muted = this.mix.muted.filter((n) => n !== name);
     this.mix.solo = this.mix.solo.filter((n) => n !== name);
     if (this.activeIndex >= parts.length || i < this.activeIndex) this.activeIndex = Math.max(0, this.activeIndex - 1);
@@ -282,6 +334,10 @@ export class AppState {
     const next = uniqueName(name, parts.filter((_, j) => j !== i).map((p) => p.name));
     if (next === old) return;
     parts[i].name = next;
+    if (this.duplicates[old]) {
+      this.duplicates[next] = this.duplicates[old];
+      delete this.duplicates[old];
+    }
     const swap = (list: string[]) => list.map((n) => (n === old ? next : n));
     this.mix.muted = swap(this.mix.muted);
     this.mix.solo = swap(this.mix.solo);
@@ -640,6 +696,32 @@ export class AppState {
     this.loopOn = true;
     if (this.status === 'stopped') this.seekBar(from);
   }
+}
+
+/** An item's content without its children (a repeat's own settings only). */
+function itemKey(it: Item): string {
+  const copy: Record<string, unknown> = { ...$state.snapshot(it) };
+  if (it.kind === 'repeat') delete copy.items;
+  return JSON.stringify(copy);
+}
+
+function itemSnapshot(items: Item[], out: Record<string, string> = {}): Record<string, string> {
+  for (const it of items) {
+    out[it.id] = itemKey(it);
+    if (it.kind === 'repeat') itemSnapshot(it.items, out);
+  }
+  return out;
+}
+
+function findItem(items: Item[], id: string): Item | null {
+  for (const it of items) {
+    if (it.id === id) return it;
+    if (it.kind === 'repeat') {
+      const f = findItem(it.items, id);
+      if (f) return f;
+    }
+  }
+  return null;
 }
 
 function loadLibrary(): LibraryEntry[] {

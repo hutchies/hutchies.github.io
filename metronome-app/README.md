@@ -27,22 +27,28 @@ The build uses relative paths, so `dist/` can be served from any sub-path, such 
 
 ## Using it
 
-- **Blocks** (left panel, or the Edit tab on phones): one compact row per block of bars, pause or repeat: mark, × number of bars, metre and tempo (tap the note symbol to change the beat unit). Empty fields carry on from the previous block, shown as grey placeholders. Type ∞ (or "inf") in the × field to keep a block going until stopped. The ⋯ button on a row opens rit./accel., renumbering, and move, loop, duplicate, repeat and delete.
-- **Text** (left panel): the same map in a compact syntax (below). Both views edit the same piece.
+The play screen keeps to the essentials: the display, a section strip, and Stop / Play / Loop / Speed. The header has Parts, Edit piece, Play together and ⋯ (Open / save, Share, Settings, Help).
+
+- **Edit piece** (or E) opens the editor beside the display (full screen on phones); Done closes it.
+- **Blocks** (in the editor): one compact row per block of bars, pause or repeat: mark, × number of bars, metre and tempo (tap the note symbol to change the beat unit). Empty fields carry on from the previous block, shown as grey placeholders. Type ∞ (or "inf") in the × field to keep a block going until stopped. The ⋯ button on a row opens rit./accel., renumbering, and move, loop, duplicate, repeat and delete.
+- **Text** (in the editor): the same map in a compact syntax (below). Both views edit the same piece.
 - **Focus view**: the ⛶ button above the display (or F) shows only the click strip, fullscreen where the browser allows it. On tall (portrait) screens the strip wraps onto 2–3 rows, read like lines of text: the playhead is on the top row and each row continues where the one above ends (Settings → Focus view rows to fix the number). Corner buttons toggle the edge flash and mute. Tap anywhere to play or pause; Esc or the corner button leaves it.
 - **Silent playback**: Settings → Visual beat flash → Screen edges lights the edges of the screen on every beat (brighter on downbeats), in any view; combine it with Mute clicks.
 - **Display**: drag to move the start point, Ctrl/⌘+scroll or pinch to zoom, and tap it to continue from a pause.
-- **Sections**: jump to a rehearsal mark, or loop it.
+- **Section strip**: one button per rehearsal-mark section, sized by length. Tap a section to go there; tap the one you're in to loop it.
+- **Speed**: tempo (%) and count-in.
 - **Keys**: Space play/pause/continue, Esc stop (or leave focus view), F focus view, ←/→ bar, [/] mark, L loop, −/+/0 tempo. Page-turner pedals (PgDn/↓/Enter) continue from pauses.
 
 ### Parts (layered maps)
 
-A project can hold several maps, called parts, that play together from the same start: say a conductor's map and a percussionist's with different groupings, or a part with a two-bar intro the others don't have. The parts bar above the display:
+A project can hold several maps, called parts, that play together from the same start: say a conductor's map and a percussionist's with different groupings, or a part with a two-bar intro the others don't have. The Parts button in the header opens the list:
 
 - **Tap a part's name** to show and edit it. The shown part drives the display, the bar numbers and the pauses; the others play along, lined up at the same rehearsal mark (or bar number).
 - **M / S** mute or solo a part, just on this device, so you can practise with only what you want to hear.
 - **⚙** sets the part's click sound (timbre, volume, pitch) and name. The sound is saved with the project.
-- **+ Add part** starts a new part as a copy of the shown one.
+- **Duplicate this part** copies the shown part (blocks and sound) as a new one and opens the editor, which marks the blocks that differ from the original (for this session).
+- **New part** starts an empty part.
+- **One part / All parts** (above the display) stacks every part in its own lane on the same time line. Parts you can't hear are faded, so mute and solo show at a glance; the shown part is outlined.
 
 In the text view, each part starts with a `== Name` line, optionally with its sound in brackets: `== Percussion [bell, 70%, -5]` (timbre, volume, semitones). A project with one part is just an ordinary map.
 
