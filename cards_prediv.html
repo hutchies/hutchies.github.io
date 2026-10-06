@@ -1,0 +1,789 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Card game player</title>
+  <style>
+    .game_space {
+      height: 500px;
+      border-style: solid;
+      border-width: 1px;
+      border-color: black;
+    }
+
+    .preview {
+      position: fixed;
+      top: 0;
+      right: 0;
+      opacity: 0.8;
+    }
+    .card_container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .card_image {
+      display: inline-block;
+    }
+
+    .card_props {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      margin: auto;
+      background: rgb(0, 0, 0);
+      background: rgba(0, 0, 0, 0.5);
+      opacity: 1;
+      color: white;
+      padding: 20px;
+      font-size: 20px;
+      text-align: center;
+    }
+  </style>
+  <script src="mousetrap.min.js"></script>
+  <script src="jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/interactjs@1.3.4/dist/interact.min.js"></script>
+  <script>
+    $(document).ready(function() {
+
+      window.encounter_URL = "https://raw.githubusercontent.com/Tragic-zz/lackeyCCG-LoTRLCG/master/Cards/";
+
+      window.default_player_card = "https://raw.githubusercontent.com/Tragic-zz/lackeyCCG-LoTRLCG/master/Cards/cardback.jpg"
+
+      window.default_encounter_card = "https://raw.githubusercontent.com/Tragic-zz/lackeyCCG-LoTRLCG/master/Cards/encounter.jpg"
+
+      window.cards_list = [];
+      // fetch the cards list
+      $.ajax({
+        url: "cards.json"
+      }).done(function(data) {
+        //console.log(typeof data);
+        window.cards_list = JSON.parse(data);
+        //alert(cards_list.toString());
+
+        window.player = {
+          draw: [],
+          discard: []
+        };
+        window.encounter = {
+          draw: [],
+          discard: []
+        };
+        window.quest = [];
+
+        window.all_decks = [
+          window.player.draw,
+          window.player.discard,
+          window.encounter.draw,
+          window.encounter.discard,
+          window.quest
+        ];
+
+        window.default_encounter_top = "placeholder.jpg";
+
+
+        $('#create_card').on('click', search_card);
+        $('#load_deck').on('click', function() {load_deck(window.player.draw, true);});
+        $('#load_encounter_deck').on('click', load_encounter_deck);
+        $('#draw_player').on('click', function() {
+          draw_cards(window.player.draw, "player_hand", 1);
+        });
+
+        make_deck_interface("encounter_deck", window.default_encounter_card, window.encounter.draw, "game_space", 'down');
+
+      });
+
+      interact('.previewable').on('mouseover', function (event){
+        var i = new Image();
+        i.src = event.target.src;
+        $('#card_preview').html(i);
+        $('#card_preview').show();
+        console.log('Hovering over '+$(event.target).attr('card_name'));
+      }).on('mouseout', function (event){
+        $('#card_preview').hide();
+      });
+
+      interact('.deck_drag').draggable({
+        onmove: dragMoveListener,
+        onend: dragEndListener
+      });
+
+      interact('.draggable').draggable({
+          onmove: dragMoveListener,
+          onend: dragEndListener,
+          onstart: function(event){
+            //console.log('start drag');
+          }
+        }).resizable({
+          // resize from all edges and corners
+          edges: {
+            left: true,
+            right: true,
+            bottom: true,
+            top: true
+          },
+
+          squareResize: true,
+
+          /*// keep the edges inside the parent
+          restrictEdges: {
+            outer: 'parent',
+            endOnly: true,
+          },*/
+
+          // minimum size
+          restrictSize: {
+            min: {
+              width: 50,
+              height: 70
+            },
+          }
+
+        })
+        .on('resizemove', resizeListener);
+      interact('.draggable').on('tap', tap_card);
+      interact('.draggable').on('doubletap', rotate_card);
+      interact('.draggable').on('hold', hold_card);
+
+      interact('.dropzone').dropzone({
+  // only accept elements matching this CSS selector
+  // Require a 75% element overlap for a drop to be possible
+  overlap: 0.75,
+
+  // listen for drop related events:
+
+  ondrop: dropListener
+});
+
+
+      interact('#game_space').resizable({
+        edges: {
+          right: true,
+          bottom: true,
+        },
+
+        restrictSize: {
+          min: {
+            width: 200,
+            height: 200
+          },
+        }
+      }).on('resizemove', resizeListener);
+    });
+
+    function dropListener(event) {
+      var card = event.relatedTarget;
+
+      if(card.parentElement == event.target) return;
+
+      //console.log("Dropped "+card);
+
+      if($(card).attr('deck')){
+        // Initiate a draw
+        var deck = eval($(card).attr('deck'));
+        draw_cards(deck, "game_space", 1);
+      }else{
+        card.remove(); // Remove from current place
+        card.style.transform = "";
+        card.setAttribute("data-x", 0);
+        card.setAttribute("data-y", 0);
+        event.target.appendChild(card);
+      }
+    }
+
+    function resizeListener(event) {
+      var target = event.target,
+        x = (parseFloat(target.getAttribute('data-x')) || 0),
+        y = (parseFloat(target.getAttribute('data-y')) || 0);
+
+      // update the element's style
+      target.style.width = event.rect.width + 'px';
+      target.style.height = event.rect.height + 'px';
+
+      // translate when resizing from top or left edges
+      x += event.deltaRect.left;
+      y += event.deltaRect.top;
+
+      target.style.webkitTransform = target.style.transform =
+        'translate(' + x + 'px,' + y + 'px)';
+
+      target.setAttribute('data-x', x);
+      target.setAttribute('data-y', y);
+    }
+
+    function dragMoveListener(event) {
+      var target = event.target,
+        // keep the dragged position in the data-x/data-y attributes
+        x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx,
+        y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+
+      // translate the element if in the game space
+      target.style.webkitTransform =
+        target.style.transform =
+        'translate(' + x + 'px, ' + y + 'px)';
+
+      // update the posiion attributes
+      target.setAttribute('data-x', x);
+      target.setAttribute('data-y', y);
+    }
+
+    function dragEndListener(event) {
+      //console.log('drag end');
+      var target = event.target;
+
+      if(!target.parentElement.classList.contains('game_space')){
+        // reset position
+        //console.log("Not game space")
+
+        target.style.webkitTransform =
+          target.style.transform = ""; // !! Fix!
+        target.setAttribute('data-x', 0);
+        target.setAttribute('data-y', 0);
+      }
+    }
+
+    function draw_cards(from, to, number, face = 'up') {
+      var cards = from.splice(0, number).reverse();
+      //console.log('adding ' + number + ' cards: ' + cards.toString())
+
+      for(i in cards){
+        //console.log('card is face '+$(cards[i]).attr('face'));
+        if($(cards[i]).attr('face') != face){
+          //console.log('flipping card');
+          flip_card(cards[i]);
+        }
+        if (typeof to === "object") {
+          // Going to another deck
+          to.unshift(cards[i]);
+        }else{
+          // Going to a div
+          $('#' + to).append(cards[i]);
+        }
+      }
+    }
+
+    function split_transforms(style) {
+      var translate = style.match(/(translate\(.*\))/);
+      var rotate = style.match(/(rotate\(.*\))/);
+    }
+
+
+    function flip_card(card){
+      var rev = card_downface(card);
+      var img = card_upface(card);
+      if($(card).attr('face') == 'up'){
+        $(card).attr('face', 'down');
+      }else {
+        $(card).attr('face', 'up');
+      }
+      console.log('flip_card: card is now face '+$(card).attr('face'));
+      card_setupface(card, rev);
+      card_setdownface(card, img);
+      if($('.preview').children('img').first().attr('src') === img){
+        //console.log('yes');
+        $('.preview').children('img').first().attr('src', rev);
+      }
+      return card;
+    }
+
+    function tap_card(event) {
+      //console.log('card tapped!');
+      flip_card(event.currentTarget);
+      /*var rev = $(event.currentTarget).attr('reverse');
+      var img = event.currentTarget.src;
+      event.currentTarget.src = rev;
+      $(event.currentTarget).attr('reverse', img);
+      //console.log($('.preview').children('img').first().attr('src')+" and "+img);
+      if($('.preview').children('img').first().attr('src') === img){
+        //console.log('yes');
+        $('.preview').children('img').first().attr('src', rev);
+      }*/
+    }
+
+    function hold_card(event) {
+
+    }
+
+    function rotate_card(event) {
+      //alert('rotated '+event.currentTarget.style.transform);
+      if (event.currentTarget.style.transform == "rotate(90deg)") {
+        event.currentTarget.style.transform = "none";
+      } else {
+        event.currentTarget.style.transform = "rotate(90deg)";
+      }
+    }
+
+    function card_upface(card){
+      return $(card).attr('src');
+    }
+
+    function card_downface(card){
+      return $(card).attr('reverse');
+    }
+
+    function card_setupface(card, uf){
+      $(card).attr('src', uf);
+    }
+
+    function card_setdownface(card, df){
+      $(card).attr('reverse', df);
+    }
+
+    function card_image(card, face = 'default'){
+      var is_up;
+      if($(card).attr('face') == 'up'){
+        is_up = true;
+      }else{
+        is_up = false;
+      }
+      if(face != 'default'){
+        if(face == $(card).attr('face')){
+          //console.log('showing upside');
+          return $(card).attr('src');
+        }else{
+          //console.log('showing flipside');
+          return $(card).attr('reverse');
+        }
+      }
+      return $(card).attr('src');
+    }
+
+    function update_discard_image(div, deck){
+      console.log('updating discard image');
+      if(deck.length > 0){
+        console.log('top image is now '+card_image(deck[0], 'up'));
+        $('#'+div+'_image').attr('src', card_image(deck[0], 'up'));
+      }
+    }
+
+    function make_deck_interface(div, image, deck, draw_to = "game_space", face = 'up', discard = false){
+      var st_w = 100;
+      var st_h = 140;
+      var deck_image = new Image(st_w, st_h);
+      deck_image.src = image;
+      deck_image.id = div + '_image';
+      if(discard){
+        update_discard_image(div, deck);
+      }
+      $('#'+div).append($(deck_image));
+      $('#'+div).on('click', function() {
+        console.log('deck clicked: drawing a card face '+face);
+        draw_cards(deck, draw_to, 1, face);
+        if(discard){
+          update_discard_image(div, deck);
+        }
+      });
+    }
+
+    function Card(front_url, back_url, name = "Player", card_id = "player") {
+      var st_w = 100;
+      var st_h = 140;
+      var card = new Image(st_w, st_h);
+      card.src = front_url;
+      $(card).on('load', function(){
+        //console.log('loaded card '+ $(this).attr('card_name') + ': '+ this.src + "("+this.naturalWidth+' vs '+this.naturalHeight+")");
+        if(this.naturalWidth > this.naturalHeight){
+          $("[src='"+this.src+"']").each(function (){
+            $(this).css('width', st_h);
+            $(this).css('height', st_w);
+          });
+        }
+      });
+
+      if(!back_url){
+        back_url = window.default_player_card;
+      }
+      $(card).attr('reverse', back_url);
+      $(card).attr('face', 'up');
+      card.classList.add("draggable");
+      card.classList.add("previewable");
+      $(card).attr('card_id', card_id);
+      $(card).attr('card_name', name);
+      $( card ).mouseover(function(){
+        //console.log('mouseover');
+        $('#card_preview').src = card.src;
+        $('#card_preview').show();
+      }).mouseout(function(){
+        $('#card_preview').src = "";
+        $('#card_preview').hide();
+      });
+      /*
+      card.onmouseover = function(){
+        console.log('mouseover');
+        $('#card_preview').src = card.src;
+        $('#card_preview').show();
+      }*/
+      return card;
+
+    }
+
+    function status(text) {
+      $('#status').html(text);
+    }
+
+    function add_card(card, div_id) {
+      $('#' + div_id).append(card);
+    }
+
+    function octgn_card(id) {
+      var card = window.cards_list.find(n => n.octgnid == id);
+      var cd = new Card("https://ringsdb.com/" + card.imagesrc, "");
+      /*for(var i=0; i < qty; i++){
+        add_card(cd.cloneNode(true), "game_space");
+      }*/
+      return cd;
+    }
+
+    function search_card() {
+      var name = $('#card_name').val();
+      var cards = window.cards_list.filter(n => n.name.match(new RegExp(name, "i")));
+      for (c in cards) {
+        //alert('Adding card '+cards[c].imagesrc);
+        var cd = new Card("https://ringsdb.com/" + cards[c].imagesrc, "");
+        add_card(cd, "game_space");
+      }
+    }
+
+    function shuffle_deck(a) {
+      var j, x, i;
+      for (i = a.length - 1; i > 0; i--) {
+        j = Math.floor(Math.random() * (i + 1));
+        x = a[i];
+        a[i] = a[j];
+        a[j] = x;
+      }
+      console.log("shuffled")
+      return a;
+    }
+
+    function load_deck(to_deck, shuffle = true) {
+      // Add filter for type??
+
+      var deckx = $('#deck_paste').val();
+      var xmldoc = $.parseXML(deckx);
+      $(xmldoc).find('card').each(function() {
+        var id = $(this).attr('id');
+        var qty = $(this).attr('qty');
+        //var type = $(this).attr('type');
+        var cd = octgn_card(id);
+        for (var i = 0; i < qty; i++) {
+          to_deck.unshift($(cd).clone(true));
+        }
+      });
+
+      if(shuffle){
+        shuffle_deck(to_deck);
+      }
+
+      status("Deck successfully loaded");
+
+    }
+
+    function add_to_deck(card, deck){
+      var id = $(card).attr('id');
+      var qty = $(card).attr('qty');
+      var cd = octgn_card(id);
+      for (var i = 0; i < qty; i++) {
+        to_deck.unshift($(cd).clone(true));
+      }
+    }
+
+    function check_ext(file, ext){
+      var [f, e] = file.split('.');
+      if(e){
+        //console.log('fine:' + e);
+        return file;
+      }else{
+        //console.log('added:' + file);
+        return file+'.'+ext;
+      }
+    }
+
+    //const flatten = (arr) => arr.reduce((flat, next) => flat.concat(next), []);
+
+    function replace_image(id, top, bottom = window.default_encounter_card){
+      // First deal with all in DOM
+      $('[card_id="'+id+'"]').each(function(){
+        //console.log('replacing image with new one on card '+id);
+        //console.log('New image for '+$(this).attr('card_name')+': '+top);
+        if($(this).attr('face') == 'up'){
+          // Card is face down
+          this.src = top;
+          $(this).attr('reverse', bottom);
+        }else{
+          this.src = bottom;
+          $(this).attr('reverse', top);
+        }
+        //$(this).attr('reverse') is already set
+      });
+
+      // Then deal with all in other decks
+
+      window.all_decks.forEach(function(a){
+        /*a.forEach(function(b){
+          console.log(b);
+          console.log($(b).attr('card_id'));
+          if(b.getAttribute('card_id') == id){
+            b.src = top;
+            b.setAttribute('reverse', bottom);
+            console.log('New image in deck for '+b.getAttribute('card_name')+': '+b);
+          }
+        });*/
+        var filtered = a.filter(card => $(card).attr('card_id') == id);
+        filtered.forEach(function(c){
+          if($(c).attr('face') == 'up'){
+            //$(c).attr('card_name')
+            $(c).attr('src', top);
+            $(c).attr('reverse', bottom);
+            //console.log('New image in deck for '+$(c).attr('card_name')+': '+c);
+          }else{
+            $(c).attr('src', bottom);
+            $(c).attr('reverse', top);
+          }
+        });
+      });
+    }
+
+    function encounter_card(top, bottom){
+      if(!bottom){
+        //console.log(top.substr(-1));
+        if(top.substr(-1) == 'a'){
+          //console.log('trying');
+          bottom = top.slice(0, -1) + 'b';
+        }else{
+          bottom = "encounter.jpg";
+        }
+      }
+      var top = check_ext(top, 'jpg');
+      var bottom = check_ext(bottom, 'jpg');
+      var top_url = window.encounter_URL + top;
+      var bottom_url = window.encounter_URL + bottom;
+      var cd = new Card(top_url, bottom_url);
+      return cd;
+    }
+
+    function load_encounter_deck(){
+      var deckx = $('#encounter_paste').val();
+      var xmldoc = $.parseXML(deckx);
+      $(xmldoc).find('section').each(function() {
+        var name = $(this).attr('name');
+
+        var cards = [];
+        $(this).children('card').each(function(){
+          //var id = $(this).children('name').first().attr('id');
+          var qty = $(this).attr('qty');
+          var id = $(this).attr('id');
+          var card_name = $(this).html();
+
+          //var [top, bottom] = id.split(',');
+          //var cd = encounter_card(images[0], images[1]);
+          //console.log('Making card: '+JSON.stringify(images));
+          var cd = new Card(window.default_encounter_top, window.default_encounter_card, card_name, id);
+          for(var j = 0; j < qty; j++){
+            cards.push(cd);
+          }
+          search_beorn(card_name, id); // To add images later
+        });
+        if(name == "Quest"){
+            for(var i in cards){
+              $('#quest_cards').append($(cards[i]).clone(true));
+            }
+          }else if(name == "Encounter"){
+            for(var i in cards){
+              // !! REVERT SOON
+              var c = $(cards[i]).clone(true);
+              //c = flip_card(c); //upside-down
+              window.encounter.draw.unshift(c);
+              //$('#encounter_cards').append($(cards[i]).clone(true));
+            }
+          }else if(name == "Setup"){
+            for(var i in cards){
+                $('#encounter_cards').append($(cards[i]).clone(true));
+            }
+          }
+
+      });
+
+      shuffle_deck(window.encounter.draw);
+      status("Encounter deck successfully loaded");
+    }
+
+    /*RegExp.escape = function(string) {
+      return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+    };*/
+
+    function decodeHtml(html) {
+    var txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
+    }
+
+    function strip_punct(str){
+      var d = str.replace(/-/g, ' ');
+      d = d.replace(/[!.?]+/g, '');
+      return d;
+    }
+
+    function choose_between(name, id, images){
+      var div = $('<div></div>').text("Choose between images for "+name+": ");
+      $(div).attr('id', id);
+      //console.log(div);
+      images.forEach(function (i){
+        var button = $('<button></button>').text(i);
+        $(button).attr('url', encodeURI(i));
+        $(button).attr('div_id', id);
+        $(button).on('click', function(){
+          var url = $(this).attr('url');
+          var id = $(this).attr('div_id');
+
+          //Remember to handle double_sided!
+          url = decodeURI(url);
+          url = decodeHtml(url);
+          var start_URL = "https://s3.amazonaws.com/hallofbeorn-resources/Images/Cards/";
+          var matches = url.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+)(\.[^\'\"]+)/);
+          var name_bit = matches[1];
+          var ext = matches[2];
+          if(/(A|B)$/.test(name_bit)){
+            // Two-sided!
+            //console.log(name_bit+' is 2-sided!');
+            var name_stripped = name_bit.slice(0, -1);
+            var top_URL = encodeURI(start_URL+name_stripped+'A'+ext);
+            var bot_URL = encodeURI(start_URL+name_stripped+'B'+ext);
+            replace_image(id, top_URL, bot_URL);
+          }else{
+            var match = url.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+\.[^\'\"]+)/);
+            replace_image(id, encodeURI(start_URL+match[1]));
+          }
+          $('#'+id).remove();
+        });
+        $(div).append(button);
+      });
+      $('#choices').append(div);
+    }
+
+    function search_beorn(name, id){
+      var jqxhr = $.ajax('http://hallofbeorn.com/LotR?Query='+encodeURIComponent(name)).done(function(){
+        var res = jqxhr.responseText;
+        var num = res.match(/([0-9]+) results? found/i);
+        //var image_re = new RegExp(RegExp.escape('https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/')+'[^/]+\/[^.]')
+        var images = res.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/[^/]+\/[^.]+\.[^\'\"]+/g);
+
+        var start_URL = "https://s3.amazonaws.com/hallofbeorn-resources/Images/Cards/";
+
+        //console.log('searching beorn');
+
+        //console.log(JSON.stringify(images));
+
+        //https://s3.amazonaws.com/hallofbeorn-resources/Images/LotR/Thumbnails/Core-Set/Hill-Troll.jpg
+
+        if(images){
+          //console.log("searched for "+name+" and found "+images.length);
+
+          for(i in images){
+            images[i] = decodeURI(images[i]);
+            images[i] = decodeHtml(images[i]);
+          }
+
+          var images = images.filter(function(u){
+            var matches = u.match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/[^/]+\/([^.]+)\.[^\'\"]+/);
+            var decoded = strip_punct(matches[1]);
+            var d_name = strip_punct(name);
+
+            if(decoded.includes(d_name)){
+              //console.log('Yes! '+decoded+' matches '+name);
+              return true;
+            }
+            //console.log("not a match for "+decoded+' against '+d_name);
+            return false;
+          });
+
+          //console.log(name+" filtered down to "+images.length);
+
+          if(images.length == 1){
+            // Great! only found one
+            //console.log('found single image '+images[0]);
+            //return [images[0], window.default_encounter_card];
+            var match = images[0].match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+\.[^\'\"]+)/);
+            var image_URL = encodeURI(start_URL+match[1]);
+            replace_image(id, image_URL, window.default_encounter_card);
+
+          }else if(images.length == 2){
+            //Probably a pair
+            var matches = images[0].match(/https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^/]+\/[^.]+)(\.[^\'\"]+)/);
+            var name_bit = matches[1];
+            var ext = matches[2];
+            if(/(A|B)$/.test(name_bit)){
+              // Two-sided!
+              var name_stripped = name_bit.slice(0, -1);
+              var top_URL = encodeURI(start_URL+name_stripped+'A'+ext);
+              var bot_URL = encodeURI(start_URL+name_stripped+'B'+ext);
+              replace_image(id, top_URL, bot_URL);
+            }
+          }else if(images.length > 1){
+            //console.log('found multiple for '+name);
+            choose_between(name, id, images);
+
+          }else if(images.length == 0){
+            console.log('found nothing for '+name);
+          }
+        }
+      });
+
+      //return [window.default_encounter_card, window.default_encounter_card];
+
+    }
+
+    /*function get_image(n, s){
+      // Get proper versions of names
+      var name = url_normalise(n);
+      var set = url_normalise(s);
+      var full_url=name+"/"
+    }
+    function url_normalise(str){
+      return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/ /g, "-");
+    }*/
+  </script>
+</head>
+
+<body>
+  <h1>Card game player</h1> Load deck by pasting here: <input id="deck_paste" type="text"> <button id="load_deck">Go!</button>
+  <div id="show_url"></div>
+  <div id="status"></div>
+  <div id="choices"></div>
+  <div id="encounter_space">
+    <h3>Encounter decks</h3>
+    <input id="encounter_paste" type="text"> <button id="load_encounter_deck">Go!</button>
+
+    <h3>Cards set aside</h3>
+    <div id="encounter_cards"></div>
+    <h3>Quest deck</h3>
+    <div id="quest_cards"></div>
+  </div>
+  <div id="encounter_deck" class="deck_drag" deck="window.encounter.draw"></div>
+  <h3>Play space</h3>
+  <div id="game_space" class="game_space dropzone">
+  </div>
+  <div id="player_space">
+    <h3>Player hand</h3>
+    <button id="draw_player">Draw player card</button>
+    <div id="player_hand" class="dropzone">
+
+    </div>
+    <div class="card_container">
+      <img class = "card_image" src="placeholder.jpg" width="100" height="140" />
+      <div class="card_props">
+        <table>
+          <tr><td>H</td><td>E</td></tr>
+          <tr><td>H</td><td>E</td></tr>
+          <tr><td>H</td><td>E</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div id="card_preview" class="preview" />
+</body>
+
+</html>

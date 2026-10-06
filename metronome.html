@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="https://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css" />
 <script src="https://code.jquery.com/jquery-1.11.1.min.js"></script>
 <script src="https://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+<script src="https://thibaultjanbeyer.github.io/DragSelect/ds.min.js"></script>
 <!--<meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">-->
 <style>
@@ -17,7 +18,18 @@
   background-color: green;
 }
 
+.short {
+  width: 15px;
+}
+
 .current-bar {
+  color: black;
+  font-weight: bold;
+}
+
+.ds-selected {
+  outline: 3px solid black;
+  outline-offset: 3px;
   color: black;
   font-weight: bold;
 }
@@ -56,6 +68,7 @@
 <script src="metronome/monkeypatch.js"></script>
 <script src="pako.js"></script>
 <script src="mespeak.js"></script>
+<script src="Sortable.min.js"></script>
 <script>
 
 // To remove:
@@ -66,7 +79,7 @@
 // To add:
 // Graphic editor?
 
-
+//import { Sortable } from './Sortable.min.js';
 var audioContext = null;
 var isPlaying = false;      // Are we currently playing?
 var startTime;              // The start time of the entire sequence.
@@ -256,6 +269,7 @@ function unroll(rolled){
       //console.log("Has tempo");
       working_tempo = block.tempo;
     }
+    if(block.loop) b.loop = block.loop;
     b.tempo = working_tempo;
     if(block.metre !== undefined){
       //console.log("Has metre");
@@ -269,7 +283,10 @@ function unroll(rolled){
       b.rehearsal = block.rehearsal;
     }
     b.metre = working_metre;
+    
     if(block.bars > 1){
+      let loop = b.loop;
+      delete b.loop;
       for(let i = 0; i < block.bars; i++){
         if(i > 0){
           if(b.rehearsal !== undefined){
@@ -277,6 +294,11 @@ function unroll(rolled){
             b = Object.assign({}, b); // Clone
             delete b.rehearsal;
           }
+          
+        }
+        if(loop && i == block.bars - 1){
+          // Only loop final bar of block
+          b.loop = true;
         }
         running_end += b.metre.bar_duration(b.tempo).valueOf();
         b.end_time = running_end;
@@ -330,6 +352,16 @@ function max_beats(){
 }
 
 function next_bar(){
+  let b = working_bars[current_bar];
+  console.log(b.loop, pressedKey)
+  if(b.loop && !pressedKey){
+    // go back!
+    current_beat = 0;
+    //working_bars[current_bar].repeats++;
+    return;
+  }
+  pressedKey = false;
+  
   current_beat = 0;
   current_bar++;
   real_bar_number++;
@@ -344,6 +376,16 @@ function next_bar(){
       play(); //i.e. stop – change!!
       return; //avoid any crashes on basis of current_bar being too big
     }
+  }
+  //working_bars[current_bar].repeats = 0;
+}
+
+document.onkeydown = document.onpointerdown = (e) => {
+  pressedKey = true;
+  if(working_bars[current_bar].loop){
+    current_bar++;
+    current_beat = 0;
+    pressedKey = false;
   }
 }
 
@@ -506,6 +548,7 @@ function collate_hits(bars){
       time: loc,
       bn: bar_num
     };
+    bar.start_time = loc;
     if(bar.rehearsal !== undefined) h.rehearsal = bar.rehearsal;
     add_hit(loc, h);
     for(var i = 1; i < bar.metre.num; i++){
@@ -559,6 +602,11 @@ function draw_current_beat(){
   var ctx = document.getElementById('beat_canvas').getContext('2d');
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+
+  // The below needs to change to be relative to position not in audioContext but in the progress
+  // through the beat structure, so that looping repeats work ok
+  // Probably in conjunction with scheduleNote, maybe via a function that gives us a movable 'now'
+  // as things repeat and/or update
   if(audioContext){
     now = audioContext.currentTime;
     //console.log(now);
@@ -566,6 +614,9 @@ function draw_current_beat(){
       // Loop back
       //console.log('looping');
       now -= double_bar;
+    }
+    while(working_bars[current_bar].loop && now > working_bars[current_bar].end_time && !pressedKey){
+      now -= working_bars[current_bar].end_time;
     }
     trans = now * pixels_per_sec;
     //ctx.translate(-trans,0);
@@ -608,6 +659,8 @@ function draw_current_beat(){
 
 }
 
+let pressedKey = false;
+
 function animate_beats(){
   //console.log('animating...');
   draw_current_beat();
@@ -617,6 +670,7 @@ function animate_beats(){
 
 function play() {
   isPlaying = !isPlaying;
+  pressedKey = false;
   console.log('pressed play');
 
   //audioContext = new AudioContext(); // Here so it is from a tap for Safari
@@ -682,6 +736,7 @@ function mirror_structure(){
     var tempo = m[i].tempo;
     var rehearsal = m[i].rehearsal;
     var bars = m[i].bars;
+    let loop = m[i].loop;
 
     var metre_s = '';
     var tempo_s = '';
@@ -709,6 +764,10 @@ function mirror_structure(){
     if(bars > 1){
       bars_s = 'x' + bars + ' ';
     }
+    
+    if(loop){
+      
+    }
 
     // Now load up for display in canonical order
     if(i > 0){
@@ -718,7 +777,7 @@ function mirror_structure(){
         display_string += ", "; // avoid too many newlines
       }
     }
-    var temp_string = rehearsal_s + tempo_s + metre_s + bars_s
+    var temp_string = rehearsal_s + tempo_s + metre_s + bars_s + (loop ? 'L' : '');
     display_string += temp_string.trim();
   }
   $('#edit_structure').val(display_string);
@@ -741,9 +800,14 @@ function load_new(){
     var units = lines[i].trim().split(/\s+/);
     var metre = undefined, tempo = undefined, rehearsal = undefined, bars = undefined;
     var b = {};
+    let loop = false;
 
     for(j in units){
       console.log("''"+units[j]+"''");
+      if(units[j] == 'L'){
+        // loop this bit until you press a button
+        loop = true;
+      }
       if(/^[^:]+:$/.test(units[j])){
         rehearsal = units[j].slice(0,-1);
         console.log('rehearsal='+rehearsal);
@@ -780,6 +844,9 @@ function load_new(){
       //console.log('not undefined: '+bars);
       b.bars = bars;
     }
+    if(loop){
+      b.loop = true;
+    }
     m.push(b);
   }
 
@@ -805,51 +872,56 @@ function m_changed(){
 }
 
 function create_table(piece){
-  var table = $('<table>');
+  var table = $('<ul>');
   var bn = 0;
+  var index = 0;
   for(block of piece){
     var b = {};
-    var bar_num = ++bn;
-    var row = $('<tr>').addClass('piece_row');
-    var reh_cell;
+    var row = $('<li>').addClass('piece_row').addClass('ui-selectable');
+    bn++;
+    row.id = index++;
+    var reh_cell = $('<input type="text" class="short">');
     if(block.rehearsal !== undefined){
-      reh_cell = $('<td>').html('Mark '+block.rehearsal+' - ');
-    }else{
-      reh_cell = $('<td>');
+      reh_cell.val(block.rehearsal);
     }
     if(block.bn !== undefined){
-      bar_num = block.bn;
+      bn = block.bn;
     }
-    var bar_cell = $('<td>').html("<b>"+bar_num+":</b>");
+    var bar_cell = $('<input type="text" class="short">');
+    bar_cell.val(bn);
     var b_count = "1 bar of";
     if(block.bars > 1){
       b_count = block.bars+" bars of";
       bn += block.bars - 1;
       console.log('bar count now '+b_count);
     }
-    var bc_cell = $('<td>').html(b_count);
+    var bc_cell = $('<span>').html(b_count);
     var metre_cell;
     if(block.metre !== undefined){
-      metre_cell = $('<td>').html(metre_str(block.metre)+' ');
+      metre_cell = $('<span>').html(metre_str(block.metre)+' ');
     }else{
-      metre_cell = $('<td>').html('same metre ');
+      metre_cell = $('<span>').html('same metre ');
     }
 
     var tempo_cell;
     if(block.tempo !== undefined){
-      tempo_cell = $('<td>').html('at tempo '+tempo_to_string(block.tempo, true)+' ');
+      tempo_cell = $('<span>').html('at tempo '+tempo_to_string(block.tempo, true)+' ');
     }else{
-      tempo_cell = $('<td>').html('at same tempo');
+      tempo_cell = $('<span>').html('at same tempo');
     }
-    row.append(reh_cell);
-    row.append(bar_cell);
+    row.append('Mark ',reh_cell,', ');
+    row.append('bar ',bar_cell,': ');
     row.append(bc_cell);
     row.append(metre_cell);
     row.append(tempo_cell);
     table.append(row);
+    var sortable = Sortable.create(table[0]);
   }
   //console.log(table);
   $('#piece_table').html(table);
+  new DragSelect({
+    selectables: document.querySelectorAll('.ui-selectable')
+  });
 }
 
 function set_gzipped(){
@@ -956,6 +1028,7 @@ $(document).on('pageinit', function(){
           <li>hd or 64: hemidemisemiquaver or 64th note (numbers continue after this indefinitely)</li>
         </ul>
       </li>
+      <li><b>L</b> means loop this passage when you reach the final bar, until the user presses a(ny) button to continue.</li>
     </ul>
     v 1.07 (4 Jan 2019 3:28pm)
   </div>

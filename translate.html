@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Translation helper</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+  <style>
+  .bigtext {
+    width: 100%;
+  }
+  .line {
+    width: 100%;
+  }
+  </style>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+  <script src="mousetrap.min.js"></script>
+  <body>
+  <div id="translator">
+    <div class="w3-container w3-purple">
+      <h1>Translation helper!</h1>
+    </div>
+    <label for="fulltext">Original text:</label>
+    <textarea id="fulltext" v-model.lazy.trim="orig_text_full" v-show="!started" class="bigtext" rows=10></textarea>
+    <button class="w3-btn w3-purple" v-on:click = "split_orig" v-show="!started">Start translating!</button>
+    <div class="w3-row" v-show="started">
+      <div class="w3-half">
+        <h3>Original text:</h3>
+        <div v-for="(line, index) in orig_text">
+          <div>{{ line.text }}</div>
+          <div><input class="line" type="text" v-model.lazy.trim="trans_text[index].text"/></div>
+        </div>
+      </div>
+      <div class="w3-half">
+      </div>
+    </div>
+  </div>
+  <script src="translate.js" /></script>
+  </body>
+  </html>

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Music visualiser</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+  <style>
+  img, canvas {
+    border-width: 1px;
+    border-color: black;
+    border-style: solid;
+  }
+  </style>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+  <script type="text/javascript" src="https://mozilla.github.io/pdf.js/build/pdf.js"></script>
+  <script src="mousetrap.min.js"></script>
+  <script src="fabric.js"></script>
+  <script src="jszip.min.js"></script>
+  <script src="fraction/fraction.js"></script>
+  <script src="musviz.js"></script>
+  <script>
+  window.canvi = [];
+  window.current_page = 0;
+  window.main_sound = null;
+  $(document).ready(function(){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://mozilla.github.io/pdf.js/build/pdf.worker.js';
+    $('#main_source').on('change', load_source);
+    $('#split_go').on('click', split_pages);
+    $('#pdf_images').on('mousemove', 'canvas', canvas_mm)
+                     .on('click', 'canvas', canvas_split)
+                     .on('mouseout', 'canvas', canvas_ml);
+    $('#next_page').on('click', next_page);
+    $('#prev_page').on('click', prev_page);
+  });
+
+  function cropped_image(img, starty, height){
+    let canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = height;
+    let ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, starty, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+    //let res = document.createElement('img');
+    //canvas_img(canvas, res);
+    return canvas;
+  }
+
+  function split_pages(){
+    let results = [];
+    window.canvi.forEach(function(c){
+      let starty = 0;
+      for(let i = 0; i < c.splits.length; i++){
+        let height = c.splits[i].endy - starty;
+        if(c.splits[i].visible) results.push(cropped_image(c.i, starty, height));
+        starty = c.splits[i].endy+1;
+      }
+    })
+    window.canvi = [];
+    let img_div = document.getElementById('pdf_images');
+    img_div.innerHTML = '';
+    results.forEach((canvas, index) =>{
+      let im = new fabric.Image()
+      window.canvi.push({c: canvas, i: canvas.cloneNode(), m: canvas.cloneNode(), splits: [{endy: canvas.height, visible: true}]});
+      let ctx = window.canvi[index].i.getContext('2d');
+      ctx.drawImage(canvas, 0, 0);
+      $(canvas).attr('id', 'c'+index);
+      $(canvas).hide();
+      img_div.appendChild(canvas);
+    })
+    window.current_page = 0;
+    $('#c'+window.current_page).show();
+  }
+
+  function load_source(evt){
+    let f = this.files[0];
+    if(f.type.match('application/pdf')){
+      load_pdf(URL.createObjectURL(f));
+    }else if(f.type.math('audio.*')){
+      load_audio(URL.createObjectURL(f));
+    }
+  }
+
+  function load_audio(url){
+
+  }
+
+  function canvas_mm(evt, id = false){
+    if(!id) id = $(this).attr('id').substring(1);
+    //console.log(evt.offsetX, evt.offsetY);
+    let c = window.canvi[id].c;
+    let y = evt.offsetY;
+    composite_image(id, {top: y});
+  }
+
+  function composite_image(id, marker = false){
+    //draw_splits(id);
+    if(marker){
+      if(canvi[id].m){
+        canvi[id].m.set(marker);
+      }else{
+        let m = new fabric.Line([0, marker.val, canvi[id].c.width, marker.val], {
+          stroke: 'red',
+          strokeWidth: 1,
+          selectable: false,
+          strokeDashArray: [1,1]
+        });
+        canvi[id].c.add(m);
+      }
+      canvi[id].c.renderAll();
+    }
+  }
+
+  function canvas_ml(evt){
+    let id = $(this).attr('id').substring(1);
+    composite_image(id);
+  }
+
+  function canvas_split(evt){
+    let id = $(this).attr('id').substring(1);
+    let point = evt.offsetY;
+    if(evt.shiftKey){
+      // toggle visibility
+      for(let i = 0; i < canvi[id].splits.length; i++){
+        if(canvi[id].splits[i].endy > point){ // reached it
+          //console.log(i, point);
+          canvi[id].splits[i].visible = !canvi[id].splits[i].visible;
+          break;
+        }
+      }
+    }else{
+      canvi[id].splits.push({endy: point, visible: true});
+      canvi[id].splits.sort((a,b)=>{return a.endy-b.endy});
+      let split = new fabric.Line([0, point, canvi[id].c.width, point], {
+        stroke: 'blue',
+        strokeWidth: 1,
+        selectable: true
+      });
+      let starty = 0;
+      let vis = new fabric.Rectangle([0, ])
+      canvi[id].c.add(split);
+      canvi[id].c.renderAll();
+    }
+  }
+
+  function next_page(){
+    $('#c'+window.current_page).hide();
+    if(window.current_page < canvi.length) window.current_page++;
+    $('#c'+window.current_page).show();
+  }
+
+  function prev_page(){
+    $('#c'+window.current_page).hide();
+    if(window.current_page > 0) window.current_page--;
+    $('#c'+window.current_page).show();
+  }
+
+  async function load_pdf(url){
+    let pdf = await pdfjsLib.getDocument(url).promise;
+    $('#pages').text(pdf.numPages);
+    window.current_page = 0;
+    for(let i = 1; i <= pdf.numPages; i++){
+      let page = await pdf.getPage(i);
+      let viewport = page.getViewport({scale: 1});
+      let canvas = document.createElement('canvas');
+      let index = i - 1;
+      //console.log(canvas, window.canvi[0].i);
+      let c
+      let context = canvas.getContext('2d');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      let canvi = [];
+
+      let renderContext = {
+        canvasContext: context,
+        viewport: viewport
+      };
+      try {
+        await page.render(renderContext).promise;
+        let i = await fiImage(canvas.toDataURL());
+        let c = new fabric.Canvas(canvas);
+        window.canvi.push({c: c, i: i, m: null, splits: [{endy: canvas.height, visible: true}]});
+        c.set({width: canvas.width, height: canvas.height, top: 0, left: 0});
+        c.add(i);
+        $(canvas).attr('id', 'c'+index);
+        $(canvas).hide();
+        //let img = document.createElement('img');
+        //canvas_img(canvas, img);
+        //console.log(img);
+        document.getElementById('pdf_images').appendChild(canvas);
+      } catch (e){
+        console.log('Error rendering page '+i+':',e);
+      }
+    }
+    $('#c'+window.current_page).show();
+  }
+
+  async function fiImage(url){
+    return new Promise(function(resolve, reject){
+      fabric.Image.fromURL(url, function(img){
+        resolve(img);
+      });
+    });
+  }
+
+  function canvas_img(canvas, img){
+    canvas.toBlob(function(blob){
+      let url = URL.createObjectURL(blob);
+      img.onload = function(){
+        URL.revokeObjectURL(url);
+      }
+      img.src = url;
+    })
+  }
+  </script>
+</head>
+<body>
+  <div id="header" class="w3-container w3-green">
+    <h1>Music visualiser</h1>
+  </div>
+  <input type="file" id="main_source"/></p>
+  <button id="split_go" class="w3-btn w3-blue">Split pages</button>
+  <div id="audio"></div>
+  <p>
+  PDF has <span id="pages">0</span> pages.
+  </p>
+  <button id="prev_page" class="w3-btn w3-blue">Previous</button>
+  <button id="next_page" class="w3-btn w3-blue">Next</button>
+  <div id="pdf_images"></div>
+</body>
+</html>

@@ -217,7 +217,7 @@
       window.cards_list = [];
       // fetch the cards list
       $.ajax({
-        url: "cards.json"
+        url: "http://ringsdb.com/api/public/cards"
       }).done(function(data) {
         //console.log(typeof data);
         if(typeof data == 'string'){
@@ -252,7 +252,7 @@
         window.st_h = 105;
         window.set_rx = /https\:\/\/s3\.amazonaws\.com\/hallofbeorn\-resources\/Images\/(?:LotR\/Thumbnails|Cards)\/([^\/]+)\/[^.]+\.[^\'\"]+/g;
 
-        window.cors = 'https://cors.io?';
+        window.cors = 'https://cors-anywhere.herokuapp.com/';
         window.remaining_to_load = 0;
 
         window.all_decks = [
@@ -426,6 +426,7 @@
       $('#load').on('click', load);
       $('#delete_save').on('click', delete_save);
       $('#cors').on('click', function(){
+        console.log('Changing cors and reloading encounters');
         window.cors = $('#cors_name').val();
         load_octgn_encounters();
       });
@@ -1650,8 +1651,11 @@
       }
 
       update_discard_image(div, to_deck);
-
-      status("Deck successfully loaded");
+        status("Player deck loaded");
+        // And at this point we can also draw 5 and enable mulligans and shuffling of player space
+        $('#mulligan').show();
+        $('#player_shuffle').show();
+        draw_cards(window.player.draw, "player_hand", 5, 'up', 'player_deck');
     }
 
 
@@ -2165,31 +2169,50 @@
       var github_url = cors+'https://github.com/GeckoTH/Lord-of-the-Rings/tree/master/o8g/Decks/Quests';
 
       var jqxhr = $.ajax(github_url).done(function(){
-        var res = jqxhr.responseText;
-        var decks = res.match(/\/GeckoTH\/[^.]+\.o8d/g);
-        if(decks){
-          var quest_type = '';
-          for(d in decks){
-            var url = 'https://github.com'+decks[d].replace('/blob/','/raw/');
-            url = url.replace('&#39;', '\'');
+        let res = jqxhr.responseText;
+        if(!res) return;
+        var modules = res.match(/href=\"\/GeckoTH\/[^\"]+\/Quests\/[^\"]+\"/g);
+        //console.log(modules);
+        if(modules){
+          for (m in modules){
+            modules[m] = modules[m].slice(7, -1);
+            //console.log(modules[m]);
+            var url = cors+'https://github.com/'+modules[m];
             //console.log(url);
-            var name = decks[d].match(/([^\-\/]+)-[0-9]+-([^.]+).o8d/);
-            if(name){
-              if(name[1] != quest_type){
-                // Mark new quest category
-                quest_type = name[1];
-                var optgrp = $('<optgroup></optgroup>');
-                optgrp.attr('label', name[1]);
-                $('#encounter_select').append(optgrp);
-              }
-              name = name[2];
-              name = decodeURIComponent(name);
-              name = name.replace(/-/g, ' ');
-              var opt = $('<option></option>');
-              opt.html(name);
-              opt.val(url);
-              $('#encounter_select').children().last().append(opt);
-            }
+            let nested_jqxhr = $.ajax(url).done(function(){
+              var new_res = nested_jqxhr.responseText;
+              if(!new_res) return;
+              //console.log(new_res);
+              let decks = new_res.match(/\/GeckoTH\/[^\"]+\.o8d\"/g);
+              if(decks){
+                  var quest_type = '';
+                  for(d in decks){
+                    decks[d] = decks[d].slice(0,-1);
+                    //console.log(decks[d]);
+                    let url = 'https://github.com'+decks[d].replace('/blob/','/raw/');
+                    url = url.replace('&#39;', '\'');
+                    //console.log(url);
+                    var name = decks[d].match(/\/Quests\/Q..\-([^\/]+)\/Q[^-]+\-(.+?).o8d/);
+                    if(name){
+                      name[1] = name[1].replace(/-/g, ' ');
+                      if(name[1] != quest_type){
+                        // Mark new quest category
+                        quest_type = name[1];
+                        var optgrp = $('<optgroup></optgroup>');
+                        optgrp.attr('label', name[1]);
+                        $('#encounter_select').append(optgrp);
+                      }
+                      name = name[2];
+                      name = decodeURIComponent(name);
+                      name = name.replace(/-/g, ' ');
+                      var opt = $('<option></option>');
+                      opt.html(name);
+                      opt.val(url);
+                      $('#encounter_select').children().last().append(opt);
+                    }
+                  }
+                }
+            });
           }
         }
       });

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Tsuro</title>
     <style></style>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="jquery.min.js"></script>
     <script>
     $(document).ready(function(){
         window.x_spacer = 30;
@@ -14,17 +14,17 @@
         window.path_colours = ["red", "green", "blue", "brown"];
         replace_card();
     });
-        
+
     function new_card(){
         var c = random_card();
         return c;
     }
-    
+
     function replace_card(){
         window.card = new_card();
         draw(window.card);
     }
-        
+
     function draw(card){
         var canvas = document.getElementById('canvas');
         var ctx = canvas.getContext('2d');
@@ -37,23 +37,23 @@
             var [start, end] = split_line(card[i]);
             var start_coords = number_to_coords(start);
             var end_coords = number_to_coords(end);
-            
+
             marker_point(ctx, start_coords, i);
             marker_point(ctx, end_coords, i);
-            
+
             var [mx, my] = mid_point(start_coords, end_coords);
-            
+
             var [rx, ry] = radii(start_coords, end_coords);
-            
-           
-            
+
+
+
             ctx.beginPath();
-            
+
             //ctx.ellipse(end_coords[0], start_coords[1], rx, ry, 0, 0, 2*Math.PI);//*/
             ctx.strokeStyle = window.path_colours[i];
             //ctx.stroke();
             //drawSpline(ctx, [start_coords[0], start_coords[1], end_coords[0], //end_coords[1]], 0.5, false, window.path_colours[i]);
-            
+
             // OLD
             ctx.moveTo(start_coords[0], start_coords[1]);
             //ctx.bezierCurveTo(start_coords[0], my, mx, start_coords[1], end_coords[0], end_coords[1]);
@@ -66,7 +66,7 @@
             // mx, my
         }
     }
-        
+
     function marker_point(ctx, coords, num){
             ctx.beginPath();
             ctx.arc(coords[0], coords[1], 2, 0, 2*Math.PI);
@@ -74,7 +74,7 @@
             ctx.fill();
             ctx.outline
     }
-        
+
     function x_on(ctx, x, y, num){
         ctx.beginPath();
         ctx.moveTo(x-5, y-5);
@@ -84,21 +84,21 @@
         ctx.strokeStyle = window.path_colours[num];
         ctx.stroke();
     }
-        
+
     function mid_point(start, end){
         var [x1, y1] = start;
         var [x2, y2] = end;
         return [(x1+x2)/2, (y1+y2)/2];
     }
-        
+
     function line_length(start, end){
         return Math.sqrt(Math.pow(end[0]-start[0], 2)+Math.pow(end[1]-start[1], 2));
     }
-        
+
     function radii(start, end){
         return [Math.abs(end[0]-start[0]), Math.abs(end[1]-start[1])];
     }
-        
+
     function get_rad(n1, n2, spacer){
         if(n1==n2){
             if(n1 == 0 || n1 == 3){
@@ -108,17 +108,17 @@
         }
         return(Math.abs(n1-n2)*spacer);
     }
-        
+
     /*function control_points(start, end){
         var [sx, sy] = number_to_xy(start);
         var [ex, ey] = number_to_xy(end);
-        
+
         var x_cp = get_cp(sx, ex, window.x_spacer);
         var y_cp = get_cp(sy, ey, window.y_spacer);
-        
+
         return [x_cp, y_cp];
     }
-        
+
     function get_cp(n1, n2, spacer){
         if(n1==n2){
             if(n1 == 0 || n1 == 3){
@@ -128,13 +128,13 @@
         }
         return(Math.abs(n1-n2)*spacer);
     }*/
-        
+
     function split_line(line){
         var start = Math.floor(line/10);
         var end = line - (start*10);
         return [start, end];
     }
-    
+
     function draw_edges(ctx){
         ctx.beginPath();
         ctx.moveTo(0,0);
@@ -144,7 +144,7 @@
         ctx.lineTo(0,0);
         ctx.stroke();
     }
-        
+
     function rotate_number(number, direction){
         var n = number + direction*2;
         if(n > 8)
@@ -152,8 +152,8 @@
         if(n < 1)
             n = 8 + n;
         return n;
-    }   
-        
+    }
+
     function rotate_card(card, direction){
         var nc = [];
         for(var i = 0; i<card.length; i++){
@@ -162,10 +162,10 @@
             end = rotate_number(end, direction);
             nc.push(join_line(start, end));
         }
-        
+
         return nc;
     }
-        
+
     function join_line(a, b){
         if(a > b){
             // Swap elements
@@ -175,7 +175,7 @@
         }
         return parseInt(a*10)+parseInt(b);
     }
-        
+
     function random_card(){
         var options = [1, 2, 3, 4, 5, 6, 7, 8];
         var card = [];
@@ -187,7 +187,7 @@
         //alert(card.join(","));
         return card;
     }
-        
+
     function number_to_xy(number){
          switch(number){
             case 1:
@@ -216,13 +216,13 @@
                 break;
         }
     }
-        
+
     function number_to_coords(number){
         var [x, y] = number_to_xy(number);
         return [x*window.x_spacer, y*window.y_spacer];
-    } 
+    }
     </script>
-    
+
 </head>
 <body>
     <h1>Tsuro test</h1>

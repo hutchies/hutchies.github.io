@@ -1130,6 +1130,9 @@
           });
         }
       };
+      worker.onerror = function(event){
+        alert('Error from video processor: '+event.message);
+      }
     }
 
     function export_overlay(){
@@ -1337,20 +1340,10 @@
               join_args = 'concat=n='+duration_list.length+' [v]'
             }
             // TODO make them handle small (below 3) lists well. Or at all.
+            console.log(duration_list); // TODO seems one item too big!!
             duration_list.forEach(function(e, i){
               overlay_args += '-loop 1 -t '+e.dur+' -i '+e.file+' ';
               if(i == 0) return; // Don't alter timestamp/fade of first one
-
-              /*if(fade){
-                // TODO change timings
-                var fadetime = 1;
-                if(last_dur < fadetime) fadetime=last_dur;
-                //took out format=yuva444p, to see
-                var adjusted_time = last_dur - fadetime;
-                filter_args += '['+current+']fade=d='+fadetime+':t=in:alpha=1,setpts=PTS-STARTPTS+'+adjusted_time+'/TB[v'+current+'];';
-              }else{
-                filter_args += '['+current+']setpts=PTS-STARTPTS+'+last_dur+'/TB[f'+current+'];';
-              }*/
               if(!fade){
                 filter_args += '['+current+']';
               }else if(current > 0){ // No fade for first one
@@ -1372,25 +1365,6 @@
 
               current++;
               last_dur += parseFloat(e.dur);
-
-              /*if(i < duration_list.length - 1){
-                var join = current - 1;
-                join = 'bg'+join;
-                if(i == 1){
-                  join = '0';
-                }
-                join_args += '['+join+'][f'+current+']overlay[bg'+current+'];';
-              }else{
-                // Last one, so make format appropriate too
-                if(!just_overlay){
-                  var f = current - 1;
-                  '[0][bg'+f+']overlay[v]';
-                }else{
-                  var f = current-1;
-                  join_args += '[bg'+f+'][f'+current+']overlay[v]'; //yuv420p? / argb
-                }
-              }*/
-
 
             });
 

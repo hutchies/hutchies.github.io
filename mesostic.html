@@ -1,0 +1,358 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mesostic maker</title>
+    <style>
+        h1 {
+            text-align: center;
+        }
+        .chosen {
+            color: limegreen;
+        }
+        
+        .rejected {
+            color: red;
+        }
+        
+        .context {
+            color: darkorange;
+        }
+    </style>
+    <script>
+        var example_results = "";
+        var worker = false;
+        
+        function stop_worker(){
+            if(worker)
+                worker.terminate();
+            document.getElementById("clear").value = "Clear text and reset settings";
+        }
+        
+        function mesostic_message(e){
+            switch(e.data.type){
+                case 'results':
+                    if(e.data.number != 1){
+                        document.getElementById("results").innerHTML = e.data.number + " mesostics created.";
+                    }else{
+                        document.getElementById("results").innerHTML = "1 mesostic created.";
+                    }
+                    document.getElementById("results_div").innerHTML = e.data.mesostics;
+                    if(document.getElementById("should_log").checked){
+                        document.getElementById("log").innerHTML = e.data.log;
+                        document.getElementById("orig").innerHTML = e.data.original;
+                    }
+                    stop_worker();
+                    break;
+                case 'log':
+                    log(e.data.text);
+                    break;
+                case 'progress':
+                    document.getElementById("results_div").innerHTML = e.data.text;
+                    break;
+                case 'invalid':
+                    document.getElementById("results").innerHTML = "<span class=\"rejected\">Invalid input: " + e.data.message;
+                    document.getElementById("results_div").innerHTML = "Process aborted because of invalid input.";
+                    worker.terminate();
+                    break;
+            }
+        }
+        
+        function mesostic_error(e){
+            document.getElementById("results").innerHTML = "<span class=\"rejected\">Error from mesostic worker: Line " + e.lineno + " in " + e.filename + ": " + e.message + "</span>";
+            document.getElementById("results_div").innerHTML = "Process aborted because of error.";
+        }
+
+        function make_mesostic() {
+            var punc = document.getElementById("punc").checked;
+            var count = parseInt(document.getElementById("count").value);
+            var type = document.getElementById("type").value;
+            var context = parseInt(document.getElementById("context").value);
+            var r_min = parseInt(document.getElementById("r_min").value);
+            var r_max = parseInt(document.getElementById("r_max").value);
+            var partial = false;
+            var should_log = false;
+            if(document.getElementById("partial").checked){
+                partial = true;
+            }
+            if(document.getElementById("should_log").checked){
+                should_log = true;
+                document.getElementById("log").innerHTML = "Working...";
+                document.getElementById("orig").innerHTML = "Working...";
+            }
+            
+            worker = new Worker('mesostic.js');
+            worker.onmessage = mesostic_message;
+            worker.onerror = mesostic_error;
+
+            document.getElementById("results").innerHTML = "";
+
+            if((typeof(Worker) !== undefined)&&(window.File && window.FileReader && window.FileList && window.Blob)){
+                document.getElementById("results_div").innerHTML = "Sending text off to worker...";
+                document.getElementById("clear").value = "Stop process and reset settings";
+                var words = "";
+                var files = document.getElementById("file_input").files;
+                if(files.length > 0){
+                    var reader = new FileReader();
+                    reader.onload = (function(theFile) {
+                        return function(e) {
+                            words = e.target.result;
+                            worker.postMessage({
+                            keyword: document.getElementById("keyword").value,
+                            words: words,
+                            count: count,
+                            type: type,
+                            context: context,
+                            r_min: r_min,
+                            r_max: r_max,
+                            partial: partial,
+                            should_log: should_log,
+                            punc: punc
+                            });
+                            document.getElementById("results_div").innerHTML = "Processing...";
+                        }
+                    })(files[0]);
+                    reader.readAsText(files[0]);
+                }else{
+                    words = document.getElementById("source_text").value;
+                    worker.postMessage({
+                        keyword: document.getElementById("keyword").value,
+                        words: words,
+                        count: count,
+                        type: type,
+                        context: context,
+                        r_min: r_min,
+                        r_max: r_max,
+                        partial: partial,
+                        should_log: should_log,
+                        punc: punc
+                    });
+                    document.getElementById("results_div").innerHTML = "Processing...";
+                }
+            }else{
+                document.getElementById("results").innerHTML = "Your browser is too old to run this version. Please use the older version at <a href=\"http://hutchies.atspace.com/mesostic_simpler.html\">http://hutchies.atspace.com/mesostic_simpler.html</a>."
+            }
+        }
+
+        function open_new() {
+            top.mesostics = window.open('', 'mesostics', 'menubar=0' + ',toolbar=0' + ',location=0' + ',status=0' + ',scrollbars=1' + ',resizable=1');
+            top.mesostics.document.writeln('<html><head><title>Mesostic display</title></head><body onLoad=\"self.focus()\"><textarea style="width: 100%; height: 100%; font-family: monospace; white-space: pre;">' + document.getElementById("results_div").innerHTML + '</textarea></body></html>');
+            top.mesostics.document.close();
+        }
+
+
+        function old_log(t) {
+            
+            log_text = log_text + t + "\n";
+
+        }
+
+
+        function toggle_visibility(id) {
+            var e = document.getElementById(id);
+            if (e.style.display == 'block')
+                e.style.display = 'none';
+            else
+                e.style.display = 'block';
+        }
+
+        
+        function change_context() {
+            var new_context = document.getElementById("context").value;
+            if (new_context == -2)
+                document.getElementById("random_params").style.display = "inline";
+            else
+                document.getElementById("random_params").style.display = "none";
+        }
+        
+        function clear_text(){
+            stop_worker();
+            // Clear keyword, source, log and original, and reset settings
+            document.getElementById("source_text").value = "";
+            document.getElementById("keyword").value = "";
+            document.getElementById("type").value = "100";
+            document.getElementById("count").value = "-1";
+            document.getElementById("context").value = "-2";
+            change_context();
+            document.getElementById("should_log").checked = false;
+            document.getElementById("extras").style.display = "none";
+            document.getElementById("punc").checked = true;
+            document.getElementById("partial").checked = false;
+            document.getElementById("log").innerHTML = "Nothing logged yet – make some mesostics!";
+            document.getElementById("orig").innerHTML = "No original text to display yet – make some mesostics!";
+            document.getElementById("overall_results").innerHTML = example_results;
+            document.getElementById("file_place").innerHTML = "<input type=\"file\" id=\"file_input\" name=\"file\"/>";
+        }
+        
+        function load_example(){
+            // stop_worker();
+            example_results = document.getElementById("overall_results").innerHTML;
+
+        }
+        
+    </script>
+</head>
+
+<body onload="load_example();">
+    <h1>Mesostic maker</h1>
+    <div style="text-align: center; font-style: italic;">You too can be John Cage!</div>
+    <b>Source text:</b>
+    <p />
+    <span id="file_place"><input type="file" id="file_input" name="file"/></span><p />
+    Or enter manually:<p>
+    <textarea style="width: 75%;" rows="10" id="source_text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+    <p/>
+    <p/> Keyword or phrase:
+    <input type="text" id="keyword" />
+    <br> Type of mesostic:
+    <select id="type">
+        <option value="basic">Basic (simple search)</option>
+        <option value="50">50% (between any two key-letters, you can't have the second key-letter)</option>
+        <option value="100" selected>100% (between any two key-letters, you can't have either key-letter)</option>
+    </select>
+    <br> Number of mesostics (-1 for as many as possible)
+    <input id="count" style="width: 50px;" type="number" min="-1" step="1" value="-1" />
+    <br> Amount of context to include around each keyword
+    <select id="context" onchange="change_context();">
+        <option value="-2" selected>Random amount</option>
+        <option value="0">No context</option>
+        <option value="1">1 word either side</option>
+        <option value="2">2 words either side</option>
+        <option value="3">3 words either side</option>
+        <option value="4">4 words either side</option>
+        <option value="5">5 words either side</option>
+        <option value="-1">Maximum the rules allow</option>
+    </select> <span id="random_params" style="display: inline;"> from <input id="r_min" style="width: 30px;" type="number"  min="-1" step="1" value="0"/> to <input id="r_max" style="width: 30px;" type="number"  min="-1" step="1" value="5"/> (use -1 in first box to allow limitless context as an option)</span>
+    <br>
+
+    <input type="checkbox" id="should_log" onclick="toggle_visibility('extras');" /> Provide log of decision-making process and marked-up original text
+    <br>
+    <input type="checkbox" id="punc" checked/> Retain original punctuation<br>
+    <input type="checkbox" id="partial"/> Allow partial mesostic at end of text<br>
+    <input type="reset" id="clear" value="Clear text and reset settings" onclick="clear_text()"></input>
+    <input type="submit" value="Make mesostics!" onclick="make_mesostic()"></input>
+    <div style="font-size: 75%; font-style: italic; width: 75%;">Mesostic maker by Mark Hutchinson, November 2015.
+        This program is licensed under the terms of <a target="_blank" href="http://www.perlfoundation.org/artistic_license_2_0">The Artistic License 2.0 by the Perl Foundation</a>. Essentially, you can use and modify as you like without asking me, so long as you link back to the original version here, keep this license, and pass on modified versions to me so I can optionally incorporate them back here. Or, if you want to break these rules for some reason, you can contact me (at markhutchmusic AT gmail DOT com) directly so we can arrange something. Thanks!
+</div>
+    <p/>
+    <table id="extras" style="width: 100%; display: none; border:none; ">
+        <tr>
+            <td style="vertical-align: top; width: 50%;">
+                <div id="log_div"><b>Log:</b>
+                    <div id="log" style="height:200px;border:1px solid #ccc;overflow:auto; font-family: monospace; white-space:pre; ">Nothing logged yet – make some mesostics!
+                    </div>
+                </div>
+            </td>
+            <td style="vertical-align: top; width: 50%;">
+                <div id="orig_div">
+                    <b>Original text, marked up:</b>
+                    <div id="orig" style="height:200px;border:1px solid #ccc;overflow:auto;">No original text to display yet – make some mesostics!
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </table>
+    <p />
+    <b>Result: <p />
+        <input type="submit" id="separate_window" value="Display in new window" onclick="open_new();"/>
+</b>
+<div id="overall_results">
+    <div id="results">
+        Example: the first 10 of 53 possible '100%' mesostics that can be created from the <a target="_blank" href="https://en.wikipedia.org/wiki/John_Cage">English Wikipedia entry on John Cage</a>, as at 5th November 2015, 
+4:33pm GMT. The keyword was 'John Cage', with a random amount of context for each line (between 0 and 5 words); this randomness means that you'll almost certainly get a different result if you try duplicating this process yourself, even if you use the same settings.</div>
+    <div id="results_div" style="font-family: monospace; white-space:pre;">
+                  Milton Cage Jr. (September 5, 1912 –
+                     music theOrist,
+                             tHe
+                         leadiNg
+                              Composers of the
+                             wAs
+                  mostly throuGh his association with
+                romantic partnEr for most of
+
+                            obJects
+               placed between Or
+                              Hammers),
+                        wrote Numerous
+                           pieCes. The best known of these
+                              And
+                     SchoenberG (1933–35), both known for
+                            thEir
+
+                              James
+                            whO
+                              Him to
+                           piaNo
+                          musiC of the 19th
+                      first piAno lessons when he
+           more interest in siGht
+                             rEading than
+
+                              James
+                         via DOn Sample,
+                      In 1930 He dropped
+                           of No use to a
+                           desCribed in the 1991
+                            stAtement: I
+                       of doinG as
+                            thEy
+
+                         with Just
+                             fOur
+                              Hours of sleep
+                             oN
+                              Composition
+                       every dAy
+                              Good
+                          2] HE could
+
+         at Yuma, Arizona, on June 7, 1935.[39]
+                             MOdern
+                        Cage THe
+                              Newly
+                      married Couple first lived with
+                             pArents
+ moved to Hollywood.[40] DurinG 1936–38
+                           numErous
+
+                non-musical obJects.[41][42] In 1938,
+                  with help frOm a
+                             tHe same program as at
+                       UCLA, aNd
+                              Composer
+                              And
+                        workinG
+                           a pErcussion
+
+                            obJects
+                       placed On,
+                        beneatH or
+                        betweeN the
+                    a full perCussion ensemble. It
+                             wAs
+                       lifelonG
+                           friEnds,
+
+                              Jean
+             her husband. WithOut
+                             tHe
+                     percussioN
+                         produCing
+                              A
+                      includinG
+                       who movEd
+
+                   mammoth proJect—the Williams Mix,
+                      a piece Of tape music,
+                              Helped
+                        Also iN
+                              Composed the
+                            thAt
+          the instrument durinG
+                            thE
+</div>
+</div>
+</body>
+
+</html>
