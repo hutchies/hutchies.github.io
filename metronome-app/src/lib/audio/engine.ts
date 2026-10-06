@@ -43,6 +43,8 @@ export class Engine {
   private timeline: Timeline | null = null;
   private sound: SoundConfig | null = null;
   private layers: { main: TrackMix; layers: LayerTrack[] } | null = null;
+  /** Score time (active part) until which other parts keep playing, e.g. an indefinite one. */
+  private layersEnd = 0;
   /** Extra display delay in seconds (user calibration). */
   visualOffset = 0;
   private wakeLock: { release(): Promise<void> } | null = null;
@@ -73,7 +75,7 @@ export class Engine {
         });
         this.node.connect(ctx.destination);
         if (this.timeline) this.sendTimeline(this.timeline);
-        if (this.layers) this.setLayers(this.layers.main, this.layers.layers);
+        if (this.layers) this.setLayers(this.layers.main, this.layers.layers, this.layersEnd);
         if (this.sound) this.post({ type: 'sound', sound: this.sound });
       })();
     }
@@ -127,8 +129,8 @@ export class Engine {
         ...this.state,
         playing,
         anchorTime: t,
-        anchorScore: Math.min(this.scoreAt(t), tl.duration),
-        end: tl.duration,
+        anchorScore: Math.min(this.scoreAt(t), this.endOf(tl)),
+        end: this.endOf(tl),
         holds: tl.holds,
         loop: clampLoop(this.state.loop, tl.duration),
         releaseAtAnchor: false,
@@ -139,8 +141,20 @@ export class Engine {
   }
 
   /** Other parts to play alongside the timeline, and how the main part sounds. */
-  setLayers(main: TrackMix, layers: LayerTrack[]) {
+  private endOf(tl: Timeline) {
+    return Math.max(tl.duration, this.layersEnd);
+  }
+
+  /**
+   * `end`: active-part score time until which the other parts need playback
+   * to continue (so an indefinite part keeps going after the active one ends).
+   */
+  setLayers(main: TrackMix, layers: LayerTrack[], end = 0) {
     this.layers = { main, layers };
+    if (end !== this.layersEnd) {
+      this.layersEnd = end;
+      if (this.timeline) this.apply({ ...this.state, end: this.endOf(this.timeline) }, false);
+    }
     // Copies, because transferring would detach the arrays the app keeps.
     this.post({
       type: 'layers',
@@ -260,7 +274,7 @@ export class Engine {
       // Starting exactly on a tap-hold means "go", not "wait again".
       releaseAtAnchor: true,
       loop: clampLoop(opts.loop, tl.duration),
-      end: tl.duration,
+      end: this.endOf(tl),
       holds: tl.holds,
     });
     this.requestWakeLock();

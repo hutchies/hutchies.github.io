@@ -328,16 +328,20 @@ export class AppState {
     const main = mixFor(active.sound, audible.has(active.name));
     const { sync, from } = this.layerAnchor;
     const layers: LayerTrack[] = [];
+    let end = 0;
     parts.forEach((p, i) => {
       if (i === this.activeIndex || !audible.has(p.name) || !tls[i]?.bars.length) return;
+      const offset = resolveSyncPoint(tls[i], sync) - from;
       layers.push({
         ...mixFor($state.snapshot(p.sound) as PartSound, true),
         times: tls[i].clickTimes,
         levels: tls[i].clickLevels,
-        offset: resolveSyncPoint(tls[i], sync) - from,
+        offset,
       });
+      // An indefinite part keeps playback going after the active part ends.
+      if (tls[i].open) end = Math.max(end, tls[i].duration - offset);
     });
-    this.engine.setLayers(main, layers);
+    this.engine.setLayers(main, layers, end);
   }
 
   async loadFromLocation() {

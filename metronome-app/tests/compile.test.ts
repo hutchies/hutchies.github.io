@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { barAt, compile, countIn, LEVEL_BAR, LEVEL_BEAT, LEVEL_PULSE } from '../src/lib/model/compile';
-import { parse } from '../src/lib/model/syntax';
+import { parse, serialize } from '../src/lib/model/syntax';
 
 const tl = (s: string, sub = 1) => compile(parse(s).piece, { subdivide: sub });
 
@@ -84,5 +84,27 @@ describe('compile', () => {
     expect(c68.offsets).toEqual([-3, -1.5]);
     expect(c68.levels).toEqual([4, 5]);
     expect(countIn(t, 0, { amount: 0, unit: 'bars' }).duration).toBe(0);
+  });
+});
+
+describe('indefinite blocks', () => {
+  it('parses, round-trips and plays until stopped', () => {
+    const text = 'A: c=120 4/4 x2\nB: 3/4 forever';
+    const { piece, errors } = parse(text);
+    expect(errors).toEqual([]);
+    expect(serialize(piece)).toBe(text);
+    expect(parse('c=60 x∞').piece.items[0]).toMatchObject({ forever: true });
+    const tl = compile(piece);
+    expect(tl.open).toBe(true);
+    expect(tl.openStart).toBeCloseTo(4);
+    expect(tl.duration).toBeGreaterThan(3 * 60 * 60);
+    expect(tl.bars[2].mark).toBe('B');
+  });
+
+  it('ignores anything after it, even inside a repeat', () => {
+    const tl = compile(parse('|: x2, forever :|, x4').piece);
+    expect(tl.open).toBe(true);
+    expect(tl.bars.filter((b) => b.repeatStart)).toHaveLength(1);
+    expect(compile(parse('x2').piece)).toMatchObject({ open: false, openStart: 4 });
   });
 });

@@ -27,7 +27,7 @@ The build uses relative paths, so `dist/` can be served from any sub-path, such 
 
 ## Using it
 
-- **Blocks** (left panel, or the Edit tab on phones): one compact row per block of bars, pause or repeat: mark, × number of bars, metre and tempo (tap the note symbol to change the beat unit). Empty fields carry on from the previous block, shown as grey placeholders. The ⋯ button on a row opens rit./accel., renumbering, and move, loop, duplicate, repeat and delete.
+- **Blocks** (left panel, or the Edit tab on phones): one compact row per block of bars, pause or repeat: mark, × number of bars, metre and tempo (tap the note symbol to change the beat unit). Empty fields carry on from the previous block, shown as grey placeholders. Type ∞ (or "inf") in the × field to keep a block going until stopped. The ⋯ button on a row opens rit./accel., renumbering, and move, loop, duplicate, repeat and delete.
 - **Text** (left panel): the same map in a compact syntax (below). Both views edit the same piece.
 - **Focus view**: the ⛶ button above the display (or F) shows only the click strip, fullscreen where the browser allows it. On tall (portrait) screens the strip wraps onto 2–3 rows, read like lines of text: the playhead is on the top row and each row continues where the one above ends (Settings → Focus view rows to fix the number). Corner buttons toggle the edge flash and mute. Tap anywhere to play or pause; Esc or the corner button leaves it.
 - **Silent playback**: Settings → Visual beat flash → Screen edges lights the edges of the screen on every beat (brighter on downbeats), in any view; combine it with Mute clicks.
@@ -70,6 +70,7 @@ Separate entries with commas or new lines. Each entry is made of space-separated
 | `7/8`, `3+2+2/8` | metre, with optional grouping (6/8, 9/8, 12/8 group in threes automatically) |
 | `c=120`, `q.=80`, `4=96` | tempo: `sb m c q sq ds hd` or `1 2 4 8 16 32 64`, with `.` for dotted |
 | `x8` | number of bars (default 1) |
+| `forever` | keep going until stopped (also `x∞`, `xinf`, `indefinitely`); anything after it is ignored |
 | `rit c=90`, `accel c=140`, `~c=90` | tempo glides across the block, ending at the target |
 | `@17` | renumber: this block starts at bar 17 (`@0` for an upbeat) |
 | `wait`, `wait 3s` | pause until tapped, or for a set time |
