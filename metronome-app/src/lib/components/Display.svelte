@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { app } from '../state/app.svelte';
+  import StartCountdown from './StartCountdown.svelte';
   import { Renderer, type Frame, type Theme } from '../display/renderer';
   import { barAt, lowerBound, LEVEL_BAR, LEVEL_BEAT, LEVEL_COUNT_BAR, LEVEL_COUNT_BEAT } from '../model/compile';
   import { positionAt } from '../audio/transport';
@@ -380,6 +381,7 @@
       onwheel={onWheel}
       aria-label="Rolling beat display. Drag to move the start point; tap to continue from a pause."
     ></canvas>
+    {#if app.group}<StartCountdown />{/if}
     <div class="flash" style:opacity={flashOpacity * 0.45}></div>
     {#if app.focus}
       <div class="focus-tools">

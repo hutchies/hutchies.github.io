@@ -220,3 +220,29 @@ describe('cue reduction', () => {
     expect(b).toEqual(a);
   });
 });
+
+import { asynchronies, latencyFromTaps } from '../src/lib/audio/latency';
+
+describe('latency measurement', () => {
+  const beats = Array.from({ length: 16 }, (_, k) => 1000 + k * 500);
+  const r = rng(3);
+  // A player who taps ~20 ms early with ±15 ms wobble, on a touchscreen adding 40 ms.
+  const tapsFor = (lag: number) => beats.slice(4).map((b) => b + lag + 40 - 20 + (r() - 0.5) * 30);
+
+  it('recovers the extra audio latency from the two rounds', () => {
+    const res = latencyFromTaps(asynchronies(tapsFor(180 + 15), beats), asynchronies(tapsFor(15), beats));
+    expect(res.reliable).toBe(true);
+    expect(Math.abs(res.offsetMs - 180)).toBeLessThanOrEqual(10);
+  });
+
+  it('copes with Bluetooth-sized delays of more than half a beat', () => {
+    const res = latencyFromTaps(asynchronies(tapsFor(300), beats), asynchronies(tapsFor(0), beats));
+    expect(Math.abs(res.offsetMs - 300)).toBeLessThanOrEqual(10);
+  });
+
+  it('ignores stray taps and flags uneven tapping', () => {
+    expect(asynchronies([1000 - 200, 1500 + 10, 99999], beats)).toEqual([10]);
+    const wild = beats.slice(4).map((b, i) => b + (i % 2 ? 120 : -120));
+    expect(latencyFromTaps(asynchronies(wild, beats), asynchronies(tapsFor(0), beats)).reliable).toBe(false);
+  });
+});

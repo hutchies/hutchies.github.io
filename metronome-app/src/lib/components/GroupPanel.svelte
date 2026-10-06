@@ -1,16 +1,17 @@
 <script lang="ts">
   import { app } from '../state/app.svelte';
-  import { serialize } from '../model/syntax';
-  import { DEFAULT_SERVER, errorMessage, normaliseCode, STALE_MS, type MemberKind } from '../sync/session';
+  import { DEFAULT_SERVER, errorMessage, normaliseCode, STALE_MS } from '../sync/session';
+  import Icon from './Icon.svelte';
 
-  let { invite = $bindable(null) }: { invite: { code: string; hostKey?: string; server?: string } | null } = $props();
+  let {
+    invite = $bindable(null),
+    onlatency,
+  }: { invite: { code: string; hostKey?: string; server?: string } | null; onlatency: () => void } = $props();
 
   const s = app.settings;
   const save = () => app.persistSettings();
 
   let code = $state('');
-  let kind = $state<MemberKind>('app');
-  let shareMap = $state(true);
   let busy = $state(false);
   let error = $state('');
   let copied = $state('');
@@ -22,6 +23,8 @@
   });
 
   const g = $derived(app.group);
+  const partNames = $derived(app.project.parts.map((p) => p.name));
+  const playing = $derived(app.status === 'playing' || app.status === 'countin' || app.status === 'held');
 
   async function run(fn: () => Promise<void>) {
     busy = true;
@@ -38,9 +41,8 @@
   function create() {
     run(() =>
       app.joinGroup({
-        kind,
         name: s.groupName ? `${s.groupName}'s room` : '',
-        map: shareMap ? serialize(app.piece, { british: s.british }) : '',
+        map: app.projectText(),
       }),
     );
   }
@@ -53,7 +55,7 @@
     }
     const inv = invite && invite.code === c ? invite : null;
     run(async () => {
-      await app.joinGroup({ kind, code: c, hostKey: inv?.hostKey, server: inv?.server });
+      await app.joinGroup({ code: c, hostKey: inv?.hostKey, server: inv?.server });
       invite = null;
     });
   }
@@ -75,39 +77,26 @@
     }
   }
 
-  function ago(updated: string): string {
+  function away(updated: string): boolean {
     void g?.tick;
-    const ms = Date.now() - Date.parse(updated.replace(' ', 'T'));
-    return ms < STALE_MS ? '' : 'away';
+    return Date.now() - Date.parse(updated.replace(' ', 'T')) >= STALE_MS;
   }
 
   const readyCount = $derived(g ? g.activeMembers.filter((m) => m.ready || m.leader).length : 0);
-  /** This device's map is the one shared in the room. */
-  const mapIsRooms = $derived(
-    !!g?.room?.map && g.room.map.trim() === serialize(app.piece, { british: s.british }).trim(),
-  );
 </script>
 
 <div class="group">
   {#if !g}
     <p>
-      Start together with other players, each on their own device. Everyone's click lands on the same downbeat, even
-      with different maps or count-ins. One person leads: their play, pause, tempo and pause-release buttons control
+      Start together with other players, each on their own device, accurate to a few milliseconds. One person leads:
+      they set the maps (one part per player, if you like) and their play, pause, tempo and pause-release control
       everyone.
     </p>
 
     <div class="grid">
       <label for="g-name">Your name</label>
       <input id="g-name" type="text" maxlength="40" bind:value={s.groupName} onchange={save} placeholder="e.g. Sam" />
-      <label for="g-part">Part</label>
-      <input id="g-part" type="text" maxlength="40" bind:value={s.groupPart} onchange={save} placeholder="optional, e.g. Percussion" />
     </div>
-
-    <fieldset>
-      <legend>How will you play?</legend>
-      <label><input type="radio" bind:group={kind} value="app" /> With this metronome (my own map and count-in)</label>
-      <label><input type="radio" bind:group={kind} value="countdown" /> Countdown only: I'm using another metronome, or none</label>
-    </fieldset>
 
     <section class="choice">
       <h3>Join a room</h3>
@@ -129,10 +118,15 @@
     </section>
 
     <section class="choice">
-      <h3>Or start a new room</h3>
-      <label class="check"><input type="checkbox" bind:checked={shareMap} /> Share my current map with the room</label>
-      <button onclick={create} disabled={busy}>Create room and lead</button>
+      <h3>Or start a new room and lead</h3>
+      <p class="note">Everyone in the room gets your maps ({partNames.length === 1 ? 'one part' : `${partNames.length} parts`}). You can keep editing them and give each player a part.</p>
+      <button onclick={create} disabled={busy}>Create room</button>
     </section>
+
+    <p class="note">
+      Using Bluetooth headphones or speakers? <button class="link" onclick={onlatency}>Measure your latency</button> first,
+      so your clicks land with everyone else's.
+    </p>
 
     <details>
       <summary>Server</summary>
@@ -162,16 +156,29 @@
       <div class="qr">{@html qrSvg}</div>
     {/if}
 
+    {#if g.isLeader && g.phase === 'live'}
+      <div class="transport">
+        {#if playing}
+          <button class="primary big-btn" onclick={() => app.pause()}><Icon name="pause" /> Pause everyone</button>
+        {:else}
+          <button class="primary big-btn" onclick={() => app.play()}><Icon name="play" /> {app.status === 'paused' ? 'Continue' : 'Start everyone'}</button>
+        {/if}
+        <button class="big-btn" onclick={() => app.stop()}><Icon name="stop" /> Stop</button>
+        <span class="note">{readyCount} of {g.activeMembers.length} ready</span>
+      </div>
+    {/if}
+
     <p class="status">
       {#if g.phase === 'connecting'}
         Connecting…
       {:else if g.isLeader}
-        <strong>You lead.</strong> Play, pause, stop, tempo, loop and pause-release on this device control everyone.
+        <strong>You lead.</strong> Your maps are shared with the room as you edit them; give each player a part below.
       {:else}
-        <strong>Following {g.leaderMember?.displayName || 'the leader'}.</strong> Your own map and count-in still apply.
+        <strong>Following {g.leaderMember?.displayName || 'the leader'}</strong>, playing
+        <strong>{app.activePart.name}</strong>. The leader sets the maps and your part.
       {/if}
       {#if g.clock}
-        Clock sync ±{Math.max(1, Math.round(g.clock.error))} ms (round trip {Math.round(g.clock.rtt)} ms).
+        Clock sync ±{Math.max(1, Math.round(g.clock.error))} ms.
       {/if}
     </p>
 
@@ -183,31 +190,38 @@
       </thead>
       <tbody>
         {#each g.members as m (m.clientId)}
-          <tr class:me={m.clientId === g.id.clientId} class:away={ago(m.updated) === 'away'}>
+          <tr class:me={m.clientId === g.id.clientId} class:away={away(m.updated)}>
             <td>
               {m.displayName || 'Anonymous'}
               {#if m.leader}<span class="tag lead">leader</span>{/if}
-              {#if m.kind === 'countdown'}<span class="tag">countdown</span>{/if}
               {#if m.clientId === g.id.clientId}<span class="tag">you</span>{/if}
-              {#if ago(m.updated)}<span class="tag">away</span>{/if}
+              {#if away(m.updated)}<span class="tag">away</span>{/if}
             </td>
-            <td>{m.part}</td>
+            <td>
+              {#if g.isLeader && !m.leader && partNames.length > 1}
+                <select
+                  value={g.partOf(m) || partNames[0]}
+                  onchange={(e) => g.assign(m.clientId, e.currentTarget.value)}
+                  aria-label="Part for {m.displayName || 'Anonymous'}"
+                >
+                  {#each partNames as n}<option value={n}>{n}</option>{/each}
+                </select>
+              {:else}
+                {m.leader ? m.part : g.partOf(m) || partNames[0]}
+              {/if}
+            </td>
             <td>{m.leader ? '–' : m.ready ? '✓' : ''}</td>
             <td class="num">{m.offsetErrMs ? `±${Math.max(1, Math.round(m.offsetErrMs))} ms` : ''}</td>
           </tr>
         {/each}
       </tbody>
     </table>
+    {#if g.isLeader && partNames.length === 1}
+      <p class="note">To give players different maps, add parts (+ Add part, above the display).</p>
+    {/if}
 
     {#if g.isLeader}
-      <p class="muted">{readyCount} of {g.activeMembers.length} ready.</p>
       <div class="grid">
-        <span>Shared map</span>
-        <div class="row">
-          <button onclick={() => g.shareMap(serialize(app.piece, { british: s.british }))} disabled={mapIsRooms}>
-            {mapIsRooms ? 'Your map is shared' : 'Share my map with the room'}
-          </button>
-        </div>
         <label for="g-rel">Pause release delay</label>
         <div class="row">
           <input
@@ -227,23 +241,12 @@
         message reaches every device in time. Lower it on a fast local network.
       </p>
     {:else}
-      <div class="grid">
-        <label for="g-part2">Part</label>
-        <input id="g-part2" type="text" maxlength="40" bind:value={s.groupPart} onchange={() => { save(); g.heartbeat(); }} />
-        <span>Ready?</span>
-        <label class="check"><input type="checkbox" checked={g.ready} onchange={(e) => g.setReady(e.currentTarget.checked)} /> I'm ready</label>
-      </div>
-      {#if g.room?.map}
-        <div class="row">
-          <button onclick={() => app.loadText(g.room!.map)} class:primary={!mapIsRooms} disabled={mapIsRooms}>
-            {mapIsRooms ? "You have the room's map" : "Load the room's map"}
-          </button>
-          <span class="note">Replaces your current map with the one the leader shared.</span>
-        </div>
-      {/if}
+      <label class="check"><input type="checkbox" checked={g.ready} onchange={(e) => g.setReady(e.currentTarget.checked)} /> I'm ready</label>
     {/if}
 
     <div class="row end">
+      <button class="link" onclick={onlatency}>Measure my latency</button>
+      <span class="spacer"></span>
       <button class="danger" onclick={() => app.leaveGroup()}>Leave room</button>
     </div>
   {/if}
@@ -273,19 +276,6 @@
     gap: 0.5rem 1rem;
     align-items: center;
   }
-  fieldset {
-    border: 1px solid var(--c-border);
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    padding: 0.5rem 0.75rem;
-  }
-  legend {
-    color: var(--c-muted);
-    font-size: 0.85rem;
-    padding: 0 0.3rem;
-  }
   .choice {
     display: flex;
     flex-direction: column;
@@ -300,6 +290,19 @@
   }
   .row.end {
     justify-content: flex-end;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .transport {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .big-btn {
+    font-size: 1.05rem;
+    padding: 0.5rem 1rem;
   }
   .code-in {
     width: 7rem;
@@ -391,8 +394,7 @@
   .num {
     font-variant-numeric: tabular-nums;
   }
-  .note,
-  .muted {
+  .note {
     font-size: 0.85rem;
     color: var(--c-muted);
   }

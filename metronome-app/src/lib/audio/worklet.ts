@@ -14,8 +14,31 @@ declare class AudioWorkletProcessor {
   readonly port: MessagePort;
 }
 
+/** How one part sounds: overrides on top of the global sound settings. */
+export interface TrackMix {
+  /** null = the global timbre. */
+  timbre: Timbre | null;
+  /** Multiplies the level gains and volume; 0 silences the part. */
+  gain: number;
+  /** Multiplies the level pitches. */
+  pitchMul: number;
+}
+
+/**
+ * Another part played alongside the main timeline. Its click at score time
+ * `s` sounds when the main transport reaches `s - offset`.
+ */
+export interface LayerTrack extends TrackMix {
+  times: Float64Array;
+  levels: Uint8Array;
+  offset: number;
+}
+
+const PLAIN: TrackMix = { timbre: null, gain: 1, pitchMul: 1 };
+
 export type WorkletMessage =
   | { type: 'timeline'; times: Float64Array; levels: Uint8Array }
+  | { type: 'layers'; main: TrackMix; layers: LayerTrack[] }
   | { type: 'state'; state: TransportState }
   | { type: 'preroll'; times: number[]; levels: number[] }
   | { type: 'sound'; sound: SoundConfig }
@@ -45,6 +68,8 @@ class MetronomeProcessor extends AudioWorkletProcessor {
   private prerollTimes: number[] = [];
   private prerollLevels: number[] = [];
   private sound: SoundConfig = DEFAULT_SOUND;
+  private mainMix: TrackMix = PLAIN;
+  private layers: LayerTrack[] = [];
   private voices: Voice[] = [];
   /** Audio time up to which clicks have been scheduled. */
   private scheduledTo = 0;
@@ -69,6 +94,10 @@ class MetronomeProcessor extends AudioWorkletProcessor {
         if (a < this.scheduledTo && a > this.scheduledTo - LATE_TOLERANCE) this.scheduledTo = a;
         break;
       }
+      case 'layers':
+        this.mainMix = msg.main;
+        this.layers = msg.layers;
+        break;
       case 'preroll':
         this.prerollTimes = msg.times;
         this.prerollLevels = msg.levels;
@@ -84,17 +113,17 @@ class MetronomeProcessor extends AudioWorkletProcessor {
     }
   }
 
-  private trigger(level: number, delay: number) {
+  private trigger(level: number, delay: number, mix: TrackMix = PLAIN) {
     const lv = this.sound.levels[level];
-    if (!lv || lv.gain <= 0) return;
-    const timbre = this.sound.timbre;
+    if (!lv || lv.gain <= 0 || mix.gain <= 0) return;
+    const timbre = mix.timbre ?? this.sound.timbre;
     const dur = timbre === 'bell' ? 0.25 : timbre === 'beep' ? 0.06 : timbre === 'wood' ? 0.05 : 0.02;
     this.voices.push({
       delay,
       age: 0,
       length: Math.ceil(dur * sampleRate),
-      gain: lv.gain * this.sound.volume,
-      pitch: lv.pitch,
+      gain: lv.gain * this.sound.volume * mix.gain,
+      pitch: lv.pitch * mix.pitchMul,
       timbre,
       phase: 0,
       phase2: 0,
@@ -124,7 +153,18 @@ class MetronomeProcessor extends AudioWorkletProcessor {
         const s = this.times[i];
         if (s >= sB - 1e-9) break;
         const t = p.t0 + (s - p.s0) / p.rate;
-        this.trigger(this.levels[i], offsetOf(t));
+        this.trigger(this.levels[i], offsetOf(t), this.mainMix);
+      }
+      // Other parts, shifted to line up with the main one.
+      for (const L of this.layers) {
+        const lA = sA + L.offset;
+        const lB = sB + L.offset;
+        for (let i = lowerBound(L.times, lA - 1e-9); i < L.times.length; i++) {
+          const s = L.times[i];
+          if (s >= lB - 1e-9) break;
+          const t = p.t0 + (s - L.offset - p.s0) / p.rate;
+          this.trigger(L.levels[i], offsetOf(t), L);
+        }
       }
     }
     this.scheduledTo = to;

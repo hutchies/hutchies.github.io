@@ -10,6 +10,8 @@ import type { MemberKind } from './session';
 export interface RoomSettings {
   /** Delay between the leader's tap and everyone continuing from a pause, ms. */
   releaseLeadMs: number;
+  /** Which part each member (by client id) plays. */
+  assign?: Record<string, string>;
 }
 
 export interface RoomInfo {

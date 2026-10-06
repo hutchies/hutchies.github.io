@@ -50,17 +50,21 @@ async function pipe(bytes: Uint8Array, stream: CompressionStream | Decompression
 }
 
 export async function encodePiece(piece: Piece): Promise<string> {
-  const text = serialize(piece);
+  return encodeText(serialize(piece));
+}
+
+/** Encodes map (or multi-part project) text for a URL fragment. */
+export async function encodeText(text: string): Promise<string> {
   const plain = 'm=' + escapeText(text);
   if (plain.length < 200 || typeof CompressionStream === 'undefined') return plain;
   const z = 'z=' + toBase64Url(await pipe(new TextEncoder().encode(text), new CompressionStream('deflate-raw')));
   return z.length < plain.length * 0.8 ? z : plain;
 }
 
-export async function shareUrl(piece: Piece, base = location.href): Promise<string> {
+export async function shareUrl(text: string, base = location.href): Promise<string> {
   const u = new URL(base);
   u.search = '';
-  u.hash = await encodePiece(piece);
+  u.hash = await encodeText(text);
   return u.toString();
 }
 

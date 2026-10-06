@@ -2,6 +2,8 @@
   import { app } from '../state/app.svelte';
   import { LEVEL_NAMES, DEFAULT_SOUND, type Timbre } from '../audio/sounds';
 
+  let { onlatency }: { onlatency: () => void } = $props();
+
   const s = app.settings;
   const save = () => app.persistSettings();
   const TIMBRES: { v: Timbre; label: string }[] = [
@@ -96,15 +98,17 @@
   </section>
 
   <section>
-    <h3>Sync calibration</h3>
+    <h3>Latency</h3>
     <p class="note">
-      The display already compensates for the latency your device reports. If the clicks still sound early or late
-      against the playhead (common with Bluetooth audio), adjust this until they match.
+      The display already allows for the latency your device reports, but wireless headphones and speakers are often
+      later than they say. <button class="link inline" onclick={onlatency}>Measure my latency</button> (tap along for
+      about 20 seconds), or adjust by hand until the clicks match the playhead. Playing in a group, this also starts
+      your clicks earlier to match everyone else's.
     </p>
     <div class="grid">
       <label for="off">Display delay</label>
       <div class="row">
-        <input id="off" type="range" min="-150" max="400" step="5" bind:value={s.visualOffsetMs} oninput={save} />
+        <input id="off" type="range" min="-150" max="500" step="5" bind:value={s.visualOffsetMs} oninput={save} />
         <span class="val">{s.visualOffsetMs} ms</span>
       </div>
     </div>
@@ -112,6 +116,10 @@
 </div>
 
 <style>
+  .link.inline {
+    display: inline;
+    font-size: inherit;
+  }
   .settings {
     display: flex;
     flex-direction: column;

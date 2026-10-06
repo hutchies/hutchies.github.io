@@ -11,7 +11,7 @@
 
 <div class="library">
   <div class="actions">
-    <button class="primary" onclick={() => app.saveToLibrary()}>Save “{app.piece.title || 'Untitled'}”</button>
+    <button class="primary" onclick={() => app.saveToLibrary()}>Save “{app.project.title || 'Untitled'}”</button>
     <button onclick={() => open('# Untitled\nc=120 4/4 x4')}>New</button>
     <button onclick={() => open(EXAMPLE)}>Load example</button>
   </div>

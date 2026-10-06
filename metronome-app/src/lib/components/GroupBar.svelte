@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { app } from '../state/app.svelte';
-  import { serialize } from '../model/syntax';
   import Icon from './Icon.svelte';
 
   let { onopen }: { onopen: () => void } = $props();
@@ -26,12 +25,6 @@
     return () => cancelAnimationFrame(raf);
   });
 
-  const roomMapDiffers = $derived.by(() => {
-    const m = g?.room?.map;
-    if (!m || g.isLeader) return false;
-    return m.trim() !== serialize(app.piece, { british: app.settings.british }).trim();
-  });
-
   const leaderName = $derived(g?.leaderMember?.displayName || 'the leader');
   const players = $derived(g?.activeMembers.length ?? 0);
 </script>
@@ -46,6 +39,7 @@
       <span class="muted">Connecting…</span>
     {:else}
       <span class="role">{g.isLeader ? 'You lead' : `Following ${leaderName}`}</span>
+      {#if !g.isLeader && app.project.parts.length > 1}<span class="muted">Your part: <b>{app.activePart.name}</b></span>{/if}
       <span class="muted">{players} {players === 1 ? 'player' : 'players'}</span>
       {#if g.clock}
         <span class="sync" class:poor={g.clock.error > 15} title="Clock sync uncertainty (round trip {Math.round(g.clock.rtt)} ms)">
@@ -59,9 +53,6 @@
     <span class="spacer"></span>
     {#if g.audioBlocked}
       <button class="primary" onclick={() => app.engine.start()}><Icon name="sound" size={16} /> Enable sound</button>
-    {/if}
-    {#if roomMapDiffers}
-      <button onclick={() => app.loadText(g.room!.map)} title="Replace your map with the one the leader shared">Load room map</button>
     {/if}
     {#if g.error}
       <span class="err" title={g.error}>{g.error}</span>
