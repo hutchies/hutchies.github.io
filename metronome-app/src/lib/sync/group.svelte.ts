@@ -134,6 +134,7 @@ export class GroupSession {
   private loadedMap = '';
   private loadedPart = '';
   private projectTimer: ReturnType<typeof setTimeout> | null = null;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** Set once left (possibly while still connecting). */
   private closed = false;
 
@@ -215,7 +216,13 @@ export class GroupSession {
       if (this.closed) return;
       this.phase = 'live';
       rememberSession({ server: this.server, code: this.code });
-      this.timers.push(setInterval(() => void this.heartbeat(), HEARTBEAT_MS));
+      this.timers.push(
+      setInterval(() => {
+        void this.heartbeat();
+        // In case the realtime connection dropped cues without noticing.
+        void this.fetchCues();
+      }, HEARTBEAT_MS),
+    );
       this.timers.push(setInterval(() => this.checkDrift(), 1000));
     } catch (e) {
       this.phase = 'error';
@@ -246,6 +253,7 @@ export class GroupSession {
     void this.unsubscribe?.();
     this.unsubscribe = null;
     if (this.projectTimer) clearTimeout(this.projectTimer);
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
   }
 
   /* ---------------- cue log ---------------- */
@@ -269,16 +277,17 @@ export class GroupSession {
       changed = true;
       if (c.kind === 'room') roomChanged = true;
     }
-    if (roomChanged) void this.refreshRoom();
+    if (roomChanged) this.queueRefresh();
     if (changed) this.recompute();
   }
 
-  private async refreshRoom() {
-    try {
-      this.setRoom(await this.api.getRoom(this.code, this.hostKey ?? undefined));
-    } catch (e) {
-      this.error = errorMessage(e);
-    }
+  /** The room, its settings or its members changed: refetch them (a heartbeat returns both). */
+  private queueRefresh() {
+    if (this.refreshTimer) return;
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = null;
+      void this.heartbeat();
+    }, 50);
   }
 
   private setRoom(room: RoomInfo) {
@@ -419,8 +428,11 @@ export class GroupSession {
         },
         this.hostKey ?? undefined,
       );
+      if (this.closed) return;
       this.members = res.members;
-      if (res.room.updated !== this.room?.updated) this.setRoom({ ...res.room, isHost: this.room?.isHost });
+      if (res.room.updated !== this.room?.updated || JSON.stringify(res.room.settings) !== JSON.stringify(this.room?.settings)) {
+        this.setRoom({ ...res.room, isHost: this.room?.isHost });
+      }
       this.tick++;
       if (this.error === 'Could not reach the sync server.') this.error = '';
     } catch (e) {

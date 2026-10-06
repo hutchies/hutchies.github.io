@@ -18,7 +18,7 @@ Requires PocketBase v0.23 or later (the current JS hooks API). Tested with v0.40
 3. Restart PocketBase. `serve` applies pending migrations on start; hooks are picked up on start too (and reloaded automatically when they change).
 4. Check it: `curl https://hutchies.cc/api/metronome/time` should return `{"now": …}`.
 
-**Updating:** copy the changed files over and restart (or just copy: PocketBase reloads hooks when they change). The October 6 update (parts assigned by the leader) changed only `pb_hooks/metronome_lib.js`; there's no new migration.
+**Updating:** copy the changed files over and restart (or just copy: PocketBase reloads hooks when they change). The October 6 updates (parts assigned by the leader; live player list) changed `pb_hooks/metronome_lib.js` and `pb_hooks/metronome.pb.js`; there's no new migration.
 
 The app's default server is `https://hutchies.cc`. Players can point it elsewhere under Play together → Server.
 

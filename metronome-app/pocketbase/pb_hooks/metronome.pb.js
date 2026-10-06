@@ -7,6 +7,8 @@
 //   POST   /api/metronome/rooms                        create a room (X-Host-Key: new secret)
 //   GET    /api/metronome/rooms/{code}                 room details (+ isHost if X-Host-Key given)
 //   PATCH  /api/metronome/rooms/{code}                 leader: name / map / settings
+//
+// Room changes, joins and leaves append a `room` cue so subscribers refetch.
 //   GET    /api/metronome/rooms/{code}/cues            the room's cue log, in order
 //   POST   /api/metronome/rooms/{code}/cues            leader: append a cue
 //   POST   /api/metronome/rooms/{code}/members         join / heartbeat (X-Member-Key), returns members
@@ -101,6 +103,7 @@ routerAdd('POST', '/api/metronome/rooms/{code}/members', (e) => {
   const clientId = lib.str(b.clientId, 64);
   if (!clientId) throw new BadRequestError('Missing clientId.');
   let m = lib.findMember(e.app, room, clientId);
+  const joined = !m;
   if (m) {
     if (m.getString('keyHash') !== lib.keyHash(key)) throw new ForbiddenError('That member belongs to someone else.');
   } else {
@@ -119,6 +122,8 @@ routerAdd('POST', '/api/metronome/rooms/{code}/members', (e) => {
   m.set('countInSec', Math.round(lib.num(b.countInSec, 0, 60) * 1000) / 1000);
   // Saving bumps `updated` (an autodate), which is the presence heartbeat.
   e.app.save(m);
+  // Tell everyone (the leader's player list especially) that someone joined.
+  if (joined) lib.appendCue(e.app, room, 'room', Date.now(), { members: true }, clientId);
   return e.json(200, { member: m, members: lib.memberList(e.app, room), room: lib.roomJson(room) });
 });
 
@@ -130,6 +135,7 @@ routerAdd('DELETE', '/api/metronome/rooms/{code}/members/{clientId}', (e) => {
   if (m) {
     if (m.getString('keyHash') !== lib.keyHash(key)) throw new ForbiddenError('That member belongs to someone else.');
     e.app.delete(m);
+    lib.appendCue(e.app, room, 'room', Date.now(), { members: true }, m.getString('clientId'));
   }
   return e.noContent(204);
 });
