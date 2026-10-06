@@ -15,7 +15,7 @@ import {
   type Position,
   type TransportState,
 } from './transport';
-import type { WorkletMessage } from './worklet';
+import type { LayerTrack, TrackMix, WorkletMessage } from './worklet';
 
 /** Lead time for ordinary changes (play, tempo, loop), seconds. */
 const LEAD = 0.06;
@@ -42,6 +42,7 @@ export class Engine {
   countIn: CountInInfo | null = null;
   private timeline: Timeline | null = null;
   private sound: SoundConfig | null = null;
+  private layers: { main: TrackMix; layers: LayerTrack[] } | null = null;
   /** Extra display delay in seconds (user calibration). */
   visualOffset = 0;
   private wakeLock: { release(): Promise<void> } | null = null;
@@ -72,6 +73,7 @@ export class Engine {
         });
         this.node.connect(ctx.destination);
         if (this.timeline) this.sendTimeline(this.timeline);
+        if (this.layers) this.setLayers(this.layers.main, this.layers.layers);
         if (this.sound) this.post({ type: 'sound', sound: this.sound });
       })();
     }
@@ -136,6 +138,17 @@ export class Engine {
     if (!playing) this.countIn = null;
   }
 
+  /** Other parts to play alongside the timeline, and how the main part sounds. */
+  setLayers(main: TrackMix, layers: LayerTrack[]) {
+    this.layers = { main, layers };
+    // Copies, because transferring would detach the arrays the app keeps.
+    this.post({
+      type: 'layers',
+      main,
+      layers: layers.map((l) => ({ ...l, times: l.times.slice(), levels: l.levels.slice() })),
+    });
+  }
+
   setSound(sound: SoundConfig) {
     this.sound = sound;
     this.post({ type: 'sound', sound });
@@ -178,7 +191,22 @@ export class Engine {
   outputTimestamp(): { contextTime: number; performanceTime: number } | null {
     const ts = this.ctx?.getOutputTimestamp?.();
     if (!ts || ts.contextTime === undefined || ts.performanceTime === undefined || !(ts.contextTime > 0)) return null;
+    // Just after the context starts, some browsers pair the context time with
+    // a stale (or zero) performance time: treat that as not ready yet.
+    if (!(ts.performanceTime > 0) || Math.abs(performance.now() - ts.performanceTime) > 1000) return null;
     return { contextTime: ts.contextTime, performanceTime: ts.performanceTime };
+  }
+
+  /**
+   * The performance.now() time (ms) at which output at a given AudioContext
+   * time is heard, by the browser's own latency estimate (no calibration).
+   */
+  perfTimeHeardAt(contextTime: number): number {
+    const ctx = this.ctx;
+    const ts = this.outputTimestamp();
+    if (ts) return ts.performanceTime + (contextTime - ts.contextTime) * 1000;
+    if (!ctx) return contextTime * 1000;
+    return performance.now() + (contextTime - ctx.currentTime + (ctx.outputLatency || ctx.baseLatency || 0)) * 1000;
   }
 
   /** True once the AudioContext exists and is running. */

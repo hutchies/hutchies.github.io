@@ -9,8 +9,8 @@
  *   back to the cached page when offline.
  * - Other origins (e.g. the group-sync server) are never touched.
  */
-const VERSION = 'f9b7c85226dc';
-const PRECACHE = ["./","./apple-touch-icon.png","./assets/group.svelte-a2EHDuTG.js","./assets/index-C5DlhDjj.css","./assets/index-C5w7jOUv.js","./assets/qrcode-DtWdxa9d.js","./assets/worklet-Cd361Au6.js","./favicon.png","./icon-192.png","./icon-512.png","./icon-maskable-512.png","./manifest.webmanifest"];
+const VERSION = 'a8ca5a9230ee';
+const PRECACHE = ["./","./apple-touch-icon.png","./assets/group.svelte-BSLMM61D.js","./assets/index-DNju5nVG.css","./assets/index-KCgBn005.js","./assets/qrcode-DtWdxa9d.js","./assets/worklet-BgozDDDD.js","./favicon.png","./icon-192.png","./icon-512.png","./icon-maskable-512.png","./manifest.webmanifest"];
 const CACHE = `metronome-${VERSION}`;
 
 self.addEventListener('install', (event) => {

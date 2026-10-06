@@ -79,6 +79,8 @@ export interface GroupPlayback {
   mode: 'stopped' | 'playing' | 'paused';
   /** Server seconds of the last start's downbeat (null unless playing). */
   startAt: number | null;
+  /** The last start or seek position, for lining up other parts with `home`. */
+  sync: SyncPoint;
 }
 
 export interface LocalContext {
@@ -175,6 +177,7 @@ export function initialPlayback(tl: Timeline): GroupPlayback {
     tempoPercent: 100,
     mode: 'stopped',
     startAt: null,
+    sync: { top: true },
   };
 }
 
@@ -205,7 +208,8 @@ export function applyCue(p: GroupPlayback, cue: Cue, ctx: LocalContext): GroupPl
       const pl = cue.payload as Partial<StartPayload>;
       const tempoPercent = clampPercent(pl.tempoPercent, p.tempoPercent);
       const rate = tempoPercent / 100;
-      const from = Math.min(resolveSyncPoint(tl, pl.sync ?? { top: true }), tl.duration);
+      const sync = pl.sync ?? { top: true };
+      const from = Math.min(resolveSyncPoint(tl, sync), tl.duration);
       const ci = countIn(tl, Math.max(0, barAt(tl, from)), ctx.countIn);
       const times = ci.offsets.map((o) => T + o / rate);
       return {
@@ -227,6 +231,7 @@ export function applyCue(p: GroupPlayback, cue: Cue, ctx: LocalContext): GroupPl
         tempoPercent,
         mode: 'playing',
         startAt: T,
+        sync,
       };
     }
 
@@ -295,10 +300,12 @@ export function applyCue(p: GroupPlayback, cue: Cue, ctx: LocalContext): GroupPl
 
     case 'seek': {
       if (p.mode === 'playing') return p;
-      const home = resolveSyncPoint(tl, (cue.payload as Partial<SeekPayload>).sync ?? { top: true });
+      const sync = (cue.payload as Partial<SeekPayload>).sync ?? { top: true };
+      const home = resolveSyncPoint(tl, sync);
       return {
         ...p,
         home,
+        sync,
         state: withPrev({ ...st, ...base, playing: false, anchorTime: T, anchorScore: home }, st),
         mode: 'stopped',
       };

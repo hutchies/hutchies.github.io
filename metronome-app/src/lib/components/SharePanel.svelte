@@ -1,14 +1,12 @@
 <script lang="ts">
   import { app } from '../state/app.svelte';
   import { shareUrl } from '../model/share';
-  import type { Piece } from '../model/types';
 
   let url = $state('');
   let copied = $state(false);
 
   $effect(() => {
-    const snap = $state.snapshot(app.piece) as Piece;
-    shareUrl(snap).then((u) => (url = u));
+    shareUrl(app.projectText()).then((u) => (url = u));
   });
 
   async function copy() {
@@ -18,7 +16,7 @@
   }
 
   async function nativeShare() {
-    await navigator.share?.({ title: app.piece.title || 'Metronome map', url }).catch(() => {});
+    await navigator.share?.({ title: app.project.title || 'Metronome map', url }).catch(() => {});
   }
 </script>
 

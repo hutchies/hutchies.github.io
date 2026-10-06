@@ -35,6 +35,13 @@ describe.skipIf(!url)('sync server', () => {
     expect(late.at).toBeGreaterThanOrEqual(now);
     expect((await api.listCues(room.code, cue.seq - 1)).map((c) => c.kind)).toEqual(['start', 'stop']);
 
+    const updated = await api.updateRoom(room.code, hostKey, {
+      map: '== A\n4/4\n== B\n3/4',
+      settings: { releaseLeadMs: 200, assign: { someone: 'B' } },
+    });
+    expect(updated.settings).toEqual({ releaseLeadMs: 200, assign: { someone: 'B' } });
+    expect((await api.getRoom(room.code)).map).toContain('== B');
+
     const memberKey = randomKey();
     const me = { clientId: 'test', displayName: 'T', part: '', kind: 'app' as const, ready: true, rttMs: 1, offsetErrMs: 1, countInSec: 2 };
     const res = await api.heartbeat(room.code, memberKey, me);

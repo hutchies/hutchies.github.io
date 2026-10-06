@@ -72,7 +72,18 @@ function requireHost(e, room) {
 
 function cleanSettings(raw) {
   const s = raw && typeof raw === 'object' ? raw : {};
-  return { releaseLeadMs: Math.round(num(s.releaseLeadMs === undefined ? 250 : s.releaseLeadMs, 30, 1000)) };
+  // Which part (by name) each member (by client id) plays.
+  const assign = {};
+  if (s.assign && typeof s.assign === 'object') {
+    for (const k of Object.keys(s.assign).slice(0, 200)) {
+      const v = str(s.assign[k], 60);
+      if (v) assign[String(k).slice(0, 64)] = v;
+    }
+  }
+  return {
+    releaseLeadMs: Math.round(num(s.releaseLeadMs === undefined ? 250 : s.releaseLeadMs, 30, 1000)),
+    assign: assign,
+  };
 }
 
 function roomJson(room) {

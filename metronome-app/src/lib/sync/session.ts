@@ -9,7 +9,7 @@ export const DEFAULT_SERVER = 'https://hutchies.cc';
 /** Members not heard from for this long are shown as away and ignored for timing. */
 export const STALE_MS = 30_000;
 
-/** Countdown-only members hear 3, 2, 1, go. */
+/** The on-screen countdown before a group start shows the last few seconds. */
 export const COUNTDOWN_SECONDS = 3;
 
 export type MemberKind = 'app' | 'countdown';
@@ -19,7 +19,6 @@ const SESSION_KEY = 'metronome.group';
 export interface SavedSession {
   server: string;
   code: string;
-  kind: MemberKind;
 }
 
 export function savedSession(): SavedSession | null {

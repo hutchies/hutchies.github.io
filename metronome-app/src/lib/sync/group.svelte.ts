@@ -7,7 +7,7 @@
  * acting locally (see AppState).
  */
 import { positionAt, type LoopRegion } from '../audio/transport';
-import { barAt, countIn, LEVEL_COUNT_BAR, LEVEL_COUNT_BEAT } from '../model/compile';
+import { barAt, countIn } from '../model/compile';
 import type { AppState } from '../state/app.svelte';
 import { ClockSync, type ClockEstimate } from './clock';
 import {
@@ -23,16 +23,14 @@ import {
   type UpdatePayload,
 } from './cues';
 import {
-  COUNTDOWN_SECONDS,
   DEFAULT_SERVER,
   errorMessage,
   forgetSession,
   normaliseCode,
   rememberSession,
   STALE_MS,
-  type MemberKind,
 } from './session';
-import { randomKey, RoomApi, type MemberInfo, type RoomInfo } from './room';
+import { randomKey, RoomApi, type MemberInfo, type RoomInfo, type RoomSettings } from './room';
 
 const HEARTBEAT_MS = 10_000;
 /** Lead time for stop, pause and tempo changes. */
@@ -94,12 +92,11 @@ function median(xs: number[]): number {
 
 export interface JoinOptions {
   server: string;
-  kind: MemberKind;
   /** Join this room; omit to create a new one. */
   code?: string;
   /** Leader key (from a leader link, or remembered on this device). */
   hostKey?: string;
-  /** For a new room: the map to share. */
+  /** For a new room: the project (all parts) to share. */
   map?: string;
   name?: string;
 }
@@ -111,11 +108,8 @@ export class GroupSession {
   members = $state<MemberInfo[]>([]);
   clock = $state<ClockEstimate | null>(null);
   hostKey = $state<string | null>(null);
-  kind = $state<MemberKind>('app');
   ready = $state(false);
   playback = $state.raw<GroupPlayback | null>(null);
-  /** Countdown members: server ms of the next "go". */
-  countdownAt = $state<number | null>(null);
   /** The AudioContext needs a tap before this device can play. */
   audioBlocked = $state(false);
   /** Bumped on every heartbeat, so "last seen" labels can re-render. */
@@ -135,6 +129,10 @@ export class GroupSession {
   private pendingUpdate: UpdatePayload | null = null;
   private updateTimer: ReturnType<typeof setTimeout> | null = null;
   private lastLoop = 'null';
+  /** Followers: the room project and part assignment last loaded. */
+  private loadedMap = '';
+  private loadedPart = '';
+  private projectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Set once left (possibly while still connecting). */
   private closed = false;
 
@@ -143,7 +141,6 @@ export class GroupSession {
     private opts: JoinOptions,
   ) {
     this.server = opts.server;
-    this.kind = opts.kind;
     this.api = new RoomApi(opts.server);
     this.clockSync = new ClockSync({ fetchTime: () => this.api.time() });
     this.clockSync.onUpdate = (e) => (this.clock = e);
@@ -155,6 +152,17 @@ export class GroupSession {
 
   get isLeader(): boolean {
     return !!this.hostKey && !!this.room?.isHost;
+  }
+
+  /** The part the leader gave this device (followers). */
+  get assignedPart(): string | undefined {
+    return this.room?.settings.assign?.[this.id.clientId];
+  }
+
+  /** The part a member plays: assigned by the leader, else the first. */
+  partOf(m: MemberInfo): string {
+    if (m.leader) return m.part;
+    return this.room?.settings.assign?.[m.clientId] ?? '';
   }
 
   get leaderMember(): MemberInfo | undefined {
@@ -182,7 +190,7 @@ export class GroupSession {
         const room = await this.api.getRoom(code, key ?? undefined);
         this.hostKey = room.isHost ? key : null;
         if (o.hostKey && !room.isHost) this.error = 'That leader link is no longer valid; joined as a player.';
-        this.room = room;
+        this.setRoom(room);
       } else {
         const key = randomKey();
         this.room = await this.api.createRoom(key, { name: o.name ?? '', map: o.map ?? '' });
@@ -205,7 +213,7 @@ export class GroupSession {
       await this.heartbeat();
       if (this.closed) return;
       this.phase = 'live';
-      rememberSession({ server: this.server, code: this.code, kind: this.kind });
+      rememberSession({ server: this.server, code: this.code });
       this.timers.push(setInterval(() => void this.heartbeat(), HEARTBEAT_MS));
       this.timers.push(setInterval(() => this.checkDrift(), 1000));
     } catch (e) {
@@ -236,7 +244,7 @@ export class GroupSession {
     if (this.updateTimer) clearTimeout(this.updateTimer);
     void this.unsubscribe?.();
     this.unsubscribe = null;
-    this.app.engine.beeps([], []);
+    if (this.projectTimer) clearTimeout(this.projectTimer);
   }
 
   /* ---------------- cue log ---------------- */
@@ -266,19 +274,46 @@ export class GroupSession {
 
   private async refreshRoom() {
     try {
-      this.room = await this.api.getRoom(this.code, this.hostKey ?? undefined);
+      this.setRoom(await this.api.getRoom(this.code, this.hostKey ?? undefined));
     } catch (e) {
       this.error = errorMessage(e);
     }
   }
 
+  private setRoom(room: RoomInfo) {
+    this.room = room;
+    this.followRoom();
+  }
+
+  /**
+   * Followers play the leader's project, on the part the leader assigned
+   * them (hearing only that part, until they change the mix).
+   */
+  private followRoom() {
+    const room = this.room;
+    if (!room || this.isLeader) return;
+    const app = this.app;
+    const assigned = this.assignedPart;
+    if (room.map && room.map !== this.loadedMap) {
+      this.loadedMap = room.map;
+      app.loadText(room.map, assigned ?? app.activePart.name);
+      this.loadedPart = '';
+    }
+    const target = assigned ?? app.project.parts[0]?.name ?? '';
+    if (target && target !== this.loadedPart) {
+      const i = app.project.parts.findIndex((p) => p.name === target);
+      if (i < 0) return;
+      this.loadedPart = target;
+      app.activeIndex = i;
+      if (app.project.parts.length > 1) app.soloOnly(target);
+      void this.heartbeat();
+    }
+  }
+
   /** Replays the cue log against the current map and applies it to the engine. */
   recompute() {
-    if (!this.room || this.closed) return;
-    if (this.kind === 'countdown') {
-      this.updateCountdown();
-      return;
-    }
+    // Nothing can be scheduled until the clock is synced (connect() recomputes then).
+    if (!this.room || this.closed || !this.clockSync.estimate) return;
     const app = this.app;
     this.playback = replay(this.cues.values(), {
       timeline: app.timeline,
@@ -318,6 +353,7 @@ export class GroupSession {
     const state = shiftState(p.state, d);
     const now = engine.audibleTime();
     app.startPoint = p.home;
+    app.setLayerAnchor(p.sync, p.home);
     if (p.mode === 'playing' && positionAt(state, now).frozen?.kind === 'end') {
       // This map has finished (maps can differ in length).
       engine.park(p.home);
@@ -341,10 +377,6 @@ export class GroupSession {
     }
     if (!this.app.engine.running) return;
     const d = this.sampleDelta();
-    if (this.kind === 'countdown') {
-      if (this.countdownAt && Math.abs(d - (this.appliedDelta ?? d)) > DRIFT_TOLERANCE) this.updateCountdown();
-      return;
-    }
     const p = this.playback;
     if (!p || p.mode !== 'playing' || this.appliedDelta === null) return;
     if (Math.abs(d - this.appliedDelta) <= DRIFT_TOLERANCE) return;
@@ -353,39 +385,10 @@ export class GroupSession {
     this.apply();
   }
 
-  private updateCountdown() {
-    let at: number | null = null;
-    for (const c of [...this.cues.values()].sort((a, b) => a.seq - b.seq)) {
-      if (c.kind === 'start') at = c.at;
-      else if (c.kind === 'stop' || c.kind === 'pause') at = null;
-    }
-    this.countdownAt = at;
-    const engine = this.app.engine;
-    if (!engine.running) {
-      this.audioBlocked = true;
-      return;
-    }
-    this.audioBlocked = false;
-    if (at === null || at < this.serverNow() - 1000) {
-      engine.beeps([], []);
-      return;
-    }
-    const d = this.sampleDelta();
-    this.appliedDelta = d;
-    const times: number[] = [];
-    const levels: number[] = [];
-    for (let k = COUNTDOWN_SECONDS; k >= 0; k--) {
-      times.push((at - k * 1000) / 1000 + d);
-      levels.push(k === 0 ? LEVEL_COUNT_BAR : LEVEL_COUNT_BEAT);
-    }
-    engine.beeps(times, levels);
-  }
-
   /* ---------------- presence ---------------- */
 
   /** This device's count-in length at its current start point, seconds. */
   private countInSeconds(): number {
-    if (this.kind === 'countdown') return COUNTDOWN_SECONDS;
     const app = this.app;
     const tl = app.timeline;
     if (!tl.bars.length) return 0;
@@ -403,8 +406,8 @@ export class GroupSession {
         {
           clientId: this.id.clientId,
           displayName: s.groupName,
-          part: s.groupPart,
-          kind: this.kind,
+          part: this.isLeader ? this.app.activePart.name : (this.assignedPart ?? this.app.activePart.name),
+          kind: 'app',
           ready: this.ready,
           rttMs: Math.round(this.clock?.rtt ?? 0),
           offsetErrMs: this.clock?.error ?? 0,
@@ -413,7 +416,7 @@ export class GroupSession {
         this.hostKey ?? undefined,
       );
       this.members = res.members;
-      if (res.room.updated !== this.room?.updated) this.room = { ...res.room, isHost: this.room?.isHost };
+      if (res.room.updated !== this.room?.updated) this.setRoom({ ...res.room, isHost: this.room?.isHost });
       this.tick++;
       if (this.error === 'Could not reach the sync server.') this.error = '';
     } catch (e) {
@@ -450,12 +453,12 @@ export class GroupSession {
     const app = this.app;
     const tl = app.timeline;
     let longest = 0;
-    if (tl.bars.length && this.kind === 'app') {
+    if (tl.bars.length) {
       longest = countIn(tl, Math.max(0, barAt(tl, from)), app.settings.countIn).duration / app.rate;
     }
     let rtt = this.clock?.rtt ?? 0;
     for (const m of this.activeMembers) {
-      longest = Math.max(longest, m.countInSec || 0, m.kind === 'countdown' ? COUNTDOWN_SECONDS : 0);
+      longest = Math.max(longest, m.countInSec || 0);
       rtt = Math.max(rtt, m.rttMs || 0);
     }
     const margin = Math.max(START_MARGIN_MS, 3 * rtt + 500);
@@ -543,17 +546,47 @@ export class GroupSession {
     }
   }
 
-  async setReleaseLead(ms: number) {
+  /** Leader: share the project with the room (debounced while editing). */
+  queueProject(text: string) {
+    if (!this.isLeader) return;
+    if (this.projectTimer) clearTimeout(this.projectTimer);
+    this.projectTimer = setTimeout(() => {
+      this.projectTimer = null;
+      if (text !== this.room?.map) void this.shareMap(text);
+    }, 800);
+  }
+
+  private async updateSettings(change: Partial<RoomSettings>) {
     if (!this.hostKey || !this.room) return;
     try {
       const room = await this.api.updateRoom(this.code, this.hostKey, {
-        settings: { ...this.room.settings, releaseLeadMs: ms },
+        settings: { ...this.room.settings, ...change },
         by: this.id.clientId,
       });
       this.room = { ...room, isHost: true };
     } catch (e) {
       this.error = errorMessage(e);
     }
+  }
+
+  /** Leader: give a member a part to play. */
+  assign(clientId: string, part: string) {
+    const assign = { ...(this.room?.settings.assign ?? {}) };
+    if (part) assign[clientId] = part;
+    else delete assign[clientId];
+    void this.updateSettings({ assign });
+  }
+
+  /** Leader renamed a part: keep assignments pointing at it. */
+  partRenamed(from: string, to: string) {
+    const current = this.room?.settings.assign;
+    if (!this.isLeader || !current) return;
+    const assign = Object.fromEntries(Object.entries(current).map(([k, v]) => [k, v === from ? to : v]));
+    void this.updateSettings({ assign });
+  }
+
+  setReleaseLead(ms: number) {
+    void this.updateSettings({ releaseLeadMs: ms });
   }
 
   /** Link that joins this room. With `asLeader`, it carries the host key (handing over control). */

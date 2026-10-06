@@ -39,7 +39,7 @@ The server is the reference clock.
 | Collection | Fields | Notes |
 |---|---|---|
 | `metronome_rooms` | `code` (text, unique, 5 chars like `K7QXM`), `name`, `hostKeyHash` (hidden), `map` (text: the shared map in the text syntax, optional), `settings` (json: `releaseLeadMs`), `expires` (date) | Joined by code or QR. No accounts needed. |
-| `metronome_members` | `room` (rel), `clientId`, `keyHash` (hidden), `displayName`, `part` (text), `updated` (the heartbeat), `rttMs`, `offsetErrMs`, `countInSec`, `ready`, `leader` (bool), `kind` (`app` \| `countdown`) | Presence via heartbeat every 10 s; stale after 30 s. |
+| `metronome_members` | `room` (rel), `clientId`, `keyHash` (hidden), `displayName`, `part` (text), `updated` (the heartbeat), `rttMs`, `offsetErrMs`, `countInSec`, `ready`, `leader` (bool), `kind` (`app`; `countdown` is no longer used) | Presence via heartbeat every 10 s; stale after 30 s. |
 | `metronome_cues` | `room` (rel), `seq` (number), `kind` (`start` \| `stop` \| `pause` \| `release` \| `update` \| `seek` \| `room`), `at` (number: server ms when it takes effect), `payload` (json), `by` (clientId) | Append-only command log. Clients subscribe with PocketBase realtime (SSE), filtered by room. |
 
 API rules (server-side; as proposed, see [What was built](#what-was-built) for what was implemented):
@@ -123,6 +123,13 @@ Mostly as proposed above. Where it differs:
 - **Reaching the end:** maps can differ in length, so each device stops when its own map ends.
 - **Leader handoff** is a "leader link" carrying the host key in the URL fragment (never sent to a server). Host keys are remembered per device, so the leader can reload and still lead.
 - **Not done:** the audible "prep" click before a release, LAN discovery, and the Playwright test with analysers on each output (see Testing).
+
+### Revisions after first use
+
+- **Leader sets the maps.** Projects can hold several parts (layered maps, see the README). In a room, the leader's whole project is synced to the room as they edit (debounced PATCH of the room's `map`), and the leader assigns each member a part, stored as `settings.assign` (client id → part name), so no schema change was needed. Followers load the room's project automatically, show their assigned part and solo it. Each device's transport is still driven by the part it shows; the other parts are layered on in the audio worklet with an offset that lines them up at the last start's sync point.
+- **Countdown-only members removed.** Instead, every device shows a big countdown over the display until the downbeat, the room window closes for everyone when a start arrives, and the leader has Start/Pause/Stop in the room window. Players on another metronome can mute and play from the countdown.
+- **Latency measurement.** A two-round tap test (tap with a 120 bpm click, then with a silent flash) sets the display delay to the difference, which cancels the player's own anticipation and the touchscreen's lag.
+- **Fixes:** don't sample the audio/server clock mapping before the first clock estimate (a late joiner could start seconds out until the drift check corrected it), and ignore output timestamps whose performance time is stale.
 
 ### Testing done
 

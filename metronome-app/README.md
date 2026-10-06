@@ -35,16 +35,28 @@ The build uses relative paths, so `dist/` can be served from any sub-path, such 
 - **Sections**: jump to a rehearsal mark, or loop it.
 - **Keys**: Space play/pause/continue, Esc stop (or leave focus view), F focus view, ←/→ bar, [/] mark, L loop, −/+/0 tempo. Page-turner pedals (PgDn/↓/Enter) continue from pauses.
 
+### Parts (layered maps)
+
+A project can hold several maps, called parts, that play together from the same start: say a conductor's map and a percussionist's with different groupings, or a part with a two-bar intro the others don't have. The parts bar above the display:
+
+- **Tap a part's name** to show and edit it. The shown part drives the display, the bar numbers and the pauses; the others play along, lined up at the same rehearsal mark (or bar number).
+- **M / S** mute or solo a part, just on this device, so you can practise with only what you want to hear.
+- **⚙** sets the part's click sound (timbre, volume, pitch) and name. The sound is saved with the project.
+- **+ Add part** starts a new part as a copy of the shown one.
+
+In the text view, each part starts with a `== Name` line, optionally with its sound in brackets: `== Percussion [bell, 70%, -5]` (timbre, volume, semitones). A project with one part is just an ordinary map.
+
 ### Play together
 
 The group button in the header creates or joins a room (a 5-character code, an invite link or a QR code). No accounts are needed.
 
-- **One leader.** Whoever creates the room leads: their Play, Pause, Stop, tempo, loop, jump and pause-release control everyone. Followers' transport controls are locked. "Copy leader link" hands control to someone else.
-- **Different maps are fine.** Each player plays their own map with their own count-in. Positions are shared as a rehearsal mark plus a bar offset (falling back to the bar number), so starting at B starts everyone at *their* B. Starting from the top starts every map at its first bar, at the same instant. The leader can also share their map with the room for others to load.
-- **Pauses (fermatas)** are released by the leader: everyone continues a set delay (default 250 ms) after the leader's tap. A follower whose map pauses where the leader's doesn't can "Continue alone".
-- **Countdown only.** Players using another metronome (or none) can join as "countdown only" and get a full-screen 3, 2, 1, GO with beeps that ends on the group's downbeat.
+- **One leader.** Whoever creates the room leads: Start, Pause, Stop, tempo, loop, jumps and pause-release on their device control everyone, from the main controls or from the room window. Followers' transport controls are locked. "Copy leader link" hands control to someone else.
+- **The leader sets the maps.** The leader's project is shared with the room as they edit it, and the leader gives each player a part in the room window. Each player's device shows their part and plays only that part (they can change their own mix), with their own count-in.
+- **Starting:** a big countdown runs over the display until the downbeat, and the room window gets out of the way, so everyone is looking at the metronome when it starts. Players using another metronome (or none) can mute the clicks and play from the countdown.
+- **Pauses (fermatas)** are released by the leader: everyone continues a set delay (default 250 ms) after the leader's tap. A follower whose part pauses where the leader's doesn't can "Continue alone".
+- **Latency:** wireless headphones and speakers are often 150–300 ms late. "Measure my latency" (in the room window or Settings) has you tap along to a click and then to a flash, and sets the delay so your clicks land with everyone else's.
 - **Late joiners** come in at the right place mid-piece.
-- The bar above the display shows the room, the leader, who's present, and the clock-sync accuracy (e.g. "±4 ms").
+- The bar above the display shows the room, the leader, your part, who's present, and the clock-sync accuracy (e.g. "±4 ms").
 
 How it works: every device syncs its clock to the server (NTP-style), and every command carries a future instant on that shared clock. Each device replays the room's command log against its own map and schedules the result on its audio clock. See [`docs/SYNC_PLAN.md`](docs/SYNC_PLAN.md) for the design and [`pocketbase/README.md`](pocketbase/README.md) to install the server.
 
@@ -63,6 +75,7 @@ Separate entries with commas or new lines. Each entry is made of space-separated
 | `wait`, `wait 3s` | pause until tapped, or for a set time |
 | `\|:` … `:\|`, `:\| x3` | repeat (played twice, or this many times in total) |
 | `# Title`, `// comment` | title (first line) and comments |
+| `== Name [bell, 70%, -5]` | starts a part (see Parts), with an optional sound |
 
 ```
 # Example

@@ -1,9 +1,21 @@
 import { Engine } from '../audio/engine';
 import { DEFAULT_SOUND, type SoundConfig } from '../audio/sounds';
 import { barAt, compile, countIn, type CountInSpec, type Timeline } from '../model/compile';
-import { decodeLocation, encodePiece } from '../model/share';
-import { parse, serialize, type SyntaxError } from '../model/syntax';
+import {
+  audibleParts,
+  defaultSound,
+  DEFAULT_PART_NAME,
+  parseProject,
+  serializeProject,
+  uniqueName,
+  type PartSound,
+  type Project,
+} from '../model/project';
+import { decodeLocation, encodeText } from '../model/share';
+import type { SyntaxError } from '../model/syntax';
 import type { Item, Piece } from '../model/types';
+import type { LayerTrack, TrackMix } from '../audio/worklet';
+import { resolveSyncPoint, syncPointAt, type SyncPoint } from '../sync/cues';
 import type { GroupSession, JoinOptions } from '../sync/group.svelte';
 import { DEFAULT_SERVER } from '../sync/session';
 
@@ -95,8 +107,12 @@ function save(key: string, value: unknown) {
 }
 
 export class AppState {
-  piece = $state<Piece>(parse(EXAMPLE).piece);
-  /** Text-editor contents (may differ from the canonical serialisation while typing). */
+  /** All parts (maps). The active one is shown, edited, and drives the transport. */
+  project = $state<Project>(parseProject(EXAMPLE).project);
+  activeIndex = $state(0);
+  /** This device's mixer: part names muted or soloed. */
+  mix = $state<{ muted: string[]; solo: string[] }>({ muted: [], solo: [] });
+  /** Text-editor contents: the whole project (may differ from the canonical serialisation while typing). */
   text = $state(EXAMPLE);
   errors = $state<SyntaxError[]>([]);
   editingText = $state(false);
@@ -117,7 +133,30 @@ export class AppState {
   /** Focus view: only the rolling click strip, filling the screen. */
   focus = $state(false);
 
+  get activePart() {
+    const parts = this.project.parts;
+    return parts[Math.max(0, Math.min(this.activeIndex, parts.length - 1))];
+  }
+
+  /** The active part's map. */
+  get piece(): Piece {
+    return this.activePart.piece;
+  }
+
   timeline: Timeline = $derived(compile(this.piece, { subdivide: this.settings.subdivide }));
+
+  /** Every part's timeline (the active one is `timeline`). */
+  partTimelines: Timeline[] = $derived(
+    this.project.parts.map((p, i) =>
+      i === this.activeIndex ? this.timeline : compile(p.piece, { subdivide: this.settings.subdivide }),
+    ),
+  );
+
+  /** Part names heard on this device. */
+  audible = $derived(audibleParts(this.project.parts.map((p) => p.name), this.mix.muted, this.mix.solo));
+
+  /** Where the other parts line up with the active one: set on each start. */
+  private layerAnchor: { sync: SyncPoint; from: number } = { sync: { top: true }, from: 0 };
 
   loopRegion = $derived.by(() => {
     if (!this.loopOn) return null;
@@ -156,27 +195,142 @@ export class AppState {
 
   /* ---------- editing ---------- */
 
-  setText(text: string) {
-    this.text = text;
-    const res = parse(text);
-    this.errors = res.errors;
-    this.piece = res.piece;
+  /** The whole project as text. */
+  projectText(): string {
+    return serializeProject(this.project, { british: this.settings.british });
   }
 
-  /** Re-derive the text from the piece (after builder edits). */
+  setText(text: string) {
+    this.text = text;
+    const res = parseProject(text);
+    this.errors = res.errors;
+    this.setProject(res.project);
+  }
+
+  /** Replace the project, keeping the active part (by name) where possible. */
+  private setProject(project: Project, activeName = this.activePart?.name) {
+    this.project = project;
+    const i = project.parts.findIndex((p) => p.name === activeName);
+    this.activeIndex = Math.max(0, i);
+  }
+
+  /** Re-derive the text from the project (after builder edits). */
   syncText() {
-    this.text = serialize(this.piece, { british: this.settings.british });
+    this.text = this.projectText();
     this.errors = [];
   }
 
-  loadText(text: string) {
+  loadText(text: string, activeName?: string) {
     // In a group, playback carries on: the cue log is replayed against the new map.
     if (!this.group) this.stop();
-    this.setText(text);
+    this.text = text;
+    const res = parseProject(text);
+    this.errors = res.errors;
+    this.setProject(res.project, activeName);
     if (!this.errors.length) this.syncText();
     this.startPoint = 0;
     this.loopRange = null;
     this.selectedId = null;
+  }
+
+  /* ---------- parts ---------- */
+
+  setActivePart(i: number) {
+    if (i === this.activeIndex || i < 0 || i >= this.project.parts.length) return;
+    if (this.following) return; // the leader assigns parts
+    if (!this.group) this.halt();
+    this.activeIndex = i;
+    this.startPoint = 0;
+    this.loopRange = null;
+    this.selectedId = null;
+  }
+
+  /** Adds a part, starting as a copy of the active one. */
+  addPart() {
+    const names = this.project.parts.map((p) => p.name);
+    // Name the existing single part too, so the project gets headers.
+    if (names.length === 1 && names[0] === DEFAULT_PART_NAME) {
+      this.project.parts[0].name = 'Part 1';
+      names[0] = 'Part 1';
+    }
+    const piece = structuredClone($state.snapshot(this.piece)) as Piece;
+    this.project.parts.push({ name: uniqueName(`Part ${names.length + 1}`, names), piece, sound: defaultSound() });
+    this.setActivePart(this.project.parts.length - 1);
+  }
+
+  removePart(i: number) {
+    const parts = this.project.parts;
+    if (parts.length <= 1) return;
+    const name = parts[i].name;
+    parts.splice(i, 1);
+    this.mix.muted = this.mix.muted.filter((n) => n !== name);
+    this.mix.solo = this.mix.solo.filter((n) => n !== name);
+    if (this.activeIndex >= parts.length || i < this.activeIndex) this.activeIndex = Math.max(0, this.activeIndex - 1);
+    if (parts.length === 1 && parts[0].name === 'Part 1') parts[0].name = DEFAULT_PART_NAME;
+  }
+
+  renamePart(i: number, name: string) {
+    const parts = this.project.parts;
+    const old = parts[i].name;
+    const next = uniqueName(name, parts.filter((_, j) => j !== i).map((p) => p.name));
+    if (next === old) return;
+    parts[i].name = next;
+    const swap = (list: string[]) => list.map((n) => (n === old ? next : n));
+    this.mix.muted = swap(this.mix.muted);
+    this.mix.solo = swap(this.mix.solo);
+    this.group?.partRenamed(old, next);
+  }
+
+  setPartSound(i: number, sound: Partial<PartSound>) {
+    Object.assign(this.project.parts[i].sound, sound);
+  }
+
+  toggleMutePart(name: string) {
+    const m = this.mix.muted;
+    this.mix.muted = m.includes(name) ? m.filter((n) => n !== name) : [...m, name];
+  }
+
+  toggleSoloPart(name: string) {
+    const s = this.mix.solo;
+    this.mix.solo = s.includes(name) ? s.filter((n) => n !== name) : [...s, name];
+  }
+
+  /** Hear only this part. */
+  soloOnly(name: string) {
+    this.mix.solo = [name];
+    this.mix.muted = [];
+  }
+
+  /** Line up the other parts with the active one, from a start at `from` (active score time). */
+  setLayerAnchor(sync: SyncPoint, from: number) {
+    this.layerAnchor = { sync, from };
+    this.pushLayers();
+  }
+
+  /** Sends the other parts (and the mix) to the audio engine. */
+  pushLayers() {
+    const parts = this.project.parts;
+    const tls = this.partTimelines;
+    const audible = this.audible;
+    const mixFor = (sound: PartSound, heard: boolean): TrackMix => ({
+      timbre: sound.timbre,
+      gain: heard ? sound.volume : 0,
+      pitchMul: Math.pow(2, sound.transpose / 12),
+    });
+    const active = this.activePart;
+    const main = mixFor(active.sound, audible.has(active.name));
+    const { sync, from } = this.layerAnchor;
+    const layers: LayerTrack[] = [];
+    parts.forEach((p, i) => {
+      if (i === this.activeIndex || !audible.has(p.name) || !tls[i]?.bars.length) return;
+      layers.push({
+        ...mixFor($state.snapshot(p.sound) as PartSound, true),
+        times: tls[i].clickTimes,
+        levels: tls[i].clickLevels,
+        offset: resolveSyncPoint(tls[i], sync) - from,
+      });
+    });
+    this.engine.setLayers(main, layers);
   }
 
   async loadFromLocation() {
@@ -193,7 +347,7 @@ export class AppState {
   }
 
   async updateUrl() {
-    const hash = await encodePiece($state.snapshot(this.piece) as Piece);
+    const hash = await encodeText(this.projectText());
     const url = new URL(location.href);
     url.search = '';
     url.hash = hash;
@@ -220,8 +374,8 @@ export class AppState {
   /* ---------- library ---------- */
 
   saveToLibrary() {
-    const text = serialize(this.piece, { british: this.settings.british });
-    const title = this.piece.title || 'Untitled';
+    const text = this.projectText();
+    const title = this.project.title || 'Untitled';
     const existing = this.library.find((e) => e.title === title);
     if (existing) {
       existing.text = text;
@@ -263,6 +417,7 @@ export class AppState {
     const bar = barAt(tl, from);
     const ci = countIn(tl, bar, this.settings.countIn);
     this.status = ci.duration > 0 ? 'countin' : 'playing';
+    this.setLayerAnchor(syncPointAt(tl, from), from);
     await this.engine.play({
       from,
       rate: this.rate,

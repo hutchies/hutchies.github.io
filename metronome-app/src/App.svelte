@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { app } from './lib/state/app.svelte';
-  import { serialize } from './lib/model/syntax';
   import Display from './lib/components/Display.svelte';
   import Transport from './lib/components/Transport.svelte';
   import Minimap from './lib/components/Minimap.svelte';
@@ -14,7 +13,8 @@
   import Icon from './lib/components/Icon.svelte';
   import GroupPanel from './lib/components/GroupPanel.svelte';
   import GroupBar from './lib/components/GroupBar.svelte';
-  import CountdownView from './lib/components/CountdownView.svelte';
+  import PartsBar from './lib/components/PartsBar.svelte';
+  import LatencyTest from './lib/components/LatencyTest.svelte';
   import { parseJoinLink, savedSession } from './lib/sync/session';
 
   let editorMode = $state<'builder' | 'text'>('builder');
@@ -24,6 +24,7 @@
   let showLibrary = $state(false);
   let showKeys = $state(false);
   let showGroup = $state(false);
+  let showLatency = $state(false);
   /** Room code from a join link, waiting for the user to tap Join. */
   let joinInvite = $state<{ code: string; hostKey?: string; server?: string } | null>(null);
 
@@ -64,16 +65,35 @@
 
   // Mirror builder edits into the text view (but never rewrite text while it is being typed).
   $effect(() => {
-    const text = serialize(app.piece, { british: app.settings.british });
+    const text = app.projectText();
     if (!app.editingText && app.errors.length === 0) app.text = text;
   });
 
-  // Keep the address bar shareable.
+  // Keep the address bar shareable, and (leading a group) the room's copy of the project.
   let urlTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
-    serialize(app.piece); // track deeply
+    const text = app.projectText(); // tracks every part deeply
     clearTimeout(urlTimer);
     urlTimer = setTimeout(() => app.updateUrl(), 400);
+    const g = app.group;
+    if (g?.isLeader && g.phase === 'live') untrack(() => g.queueProject(text));
+  });
+
+  // The other parts and the mix go to the audio engine as layers.
+  $effect(() => {
+    void app.partTimelines;
+    void app.audible;
+    void app.activeIndex;
+    for (const p of app.project.parts) void [p.sound.timbre, p.sound.volume, p.sound.transpose];
+    untrack(() => app.pushLayers());
+  });
+
+  // When the leader starts, get the room dialog out of the way so everyone sees the metronome.
+  let lastStart: number | null = null;
+  $effect(() => {
+    const at = app.group?.playback?.startAt ?? null;
+    if (at !== null && at !== lastStart) showGroup = false;
+    lastStart = at;
   });
 
   $effect(() => {
@@ -81,7 +101,7 @@
   });
 
   $effect(() => {
-    document.title = app.piece.title ? `${app.piece.title} · Metronome` : 'Metronome';
+    document.title = app.project.title ? `${app.project.title} · Metronome` : 'Metronome';
   });
 
   onMount(() => {
@@ -93,7 +113,7 @@
     } else {
       const saved = savedSession();
       // Reloaded while in a room: rejoin (sound starts after a tap, see GroupBar).
-      if (saved) app.joinGroup({ server: saved.server, code: saved.code, kind: saved.kind }).catch(() => {});
+      if (saved) app.joinGroup({ server: saved.server, code: saved.code }).catch(() => {});
     }
     app.loadFromLocation();
     const onHash = () => {
@@ -179,7 +199,7 @@
       <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 2h4l5 20H5zm1.5 2-1 4h3l-1-4zM12 9.5 16.6 4l1 .8-4.6 5.6.9 3.6h-3.8z" /></svg>
       <span>Metronome</span>
     </div>
-    <div class="title" title={app.piece.title}>{app.piece.title || 'Untitled'}</div>
+    <div class="title" title={app.project.title}>{app.project.title || 'Untitled'}</div>
     <div class="seg tabs mobile-only" role="tablist">
       <button role="tab" aria-selected={mobileTab === 'play'} class:on={mobileTab === 'play'} onclick={() => (mobileTab = 'play')}>Play</button>
       <button role="tab" aria-selected={mobileTab === 'edit'} class:on={mobileTab === 'edit'} onclick={() => (mobileTab = 'edit')}>Edit</button>
@@ -198,8 +218,16 @@
       <div class="edhead">
         <label class="ptitle">
           <span class="sr">Title</span>
-          <input type="text" placeholder="Untitled piece" bind:value={app.piece.title} />
+          <input type="text" placeholder="Untitled piece" bind:value={app.project.title} />
         </label>
+        {#if app.project.parts.length > 1 && editorMode === 'builder'}
+          <label class="partsel">
+            <span>Part</span>
+            <select value={app.activeIndex} onchange={(e) => app.setActivePart(Number(e.currentTarget.value))} disabled={app.following}>
+              {#each app.project.parts as p, i}<option value={i}>{p.name}</option>{/each}
+            </select>
+          </label>
+        {/if}
         <div class="seg" role="tablist" aria-label="Editor mode">
           <button role="tab" aria-selected={editorMode === 'builder'} class:on={editorMode === 'builder'} onclick={() => (editorMode = 'builder')}>Blocks</button>
           <button role="tab" aria-selected={editorMode === 'text'} class:on={editorMode === 'text'} onclick={() => (editorMode = 'text')}>Text</button>
@@ -218,6 +246,7 @@
       {#if app.group}
         <GroupBar onopen={() => (showGroup = true)} />
       {/if}
+      <PartsBar />
       <Display />
       <Minimap />
       <Transport />
@@ -246,12 +275,12 @@
   </main>
 </div>
 
-<Dialog bind:open={showSettings} title="Settings"><SettingsPanel /></Dialog>
+<Dialog bind:open={showSettings} title="Settings"><SettingsPanel onlatency={() => (showLatency = true)} /></Dialog>
 <Dialog bind:open={showShare} title="Share"><SharePanel /></Dialog>
-<Dialog bind:open={showGroup} title="Play together"><GroupPanel bind:invite={joinInvite} /></Dialog>
-{#if app.group?.kind === 'countdown'}
-  <CountdownView onopen={() => (showGroup = true)} />
-{/if}
+<Dialog bind:open={showGroup} title="Play together"><GroupPanel bind:invite={joinInvite} onlatency={() => (showLatency = true)} /></Dialog>
+<Dialog bind:open={showLatency} title="Measure latency">
+  {#if showLatency}<LatencyTest onclose={() => (showLatency = false)} />{/if}
+</Dialog>
 <Dialog bind:open={showLibrary} title="Library"><LibraryPanel onclose={() => (showLibrary = false)} /></Dialog>
 <Dialog bind:open={showKeys} title="Keyboard shortcuts">
   <table class="keys">
@@ -341,6 +370,13 @@
     padding: 0.25rem 0.35rem;
   }
   .ptitle input:hover,
+  .partsel {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    color: var(--c-muted);
+    font-size: 0.85rem;
+  }
   .ptitle input:focus {
     border-color: var(--c-border);
     background: var(--c-surface);
