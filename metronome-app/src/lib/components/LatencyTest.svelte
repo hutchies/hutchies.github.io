@@ -12,6 +12,7 @@
     type TapEstimate,
   } from '../audio/latency';
   import Icon from './Icon.svelte';
+  import LatencyInput from './LatencyInput.svelte';
 
   /**
    * Tap along with a 120 bpm click to measure how late this device's sound
@@ -182,7 +183,14 @@
     {/if}
     {#if busy}<p class="err">Stop playback first.</p>{/if}
     <button class="primary" onclick={start} disabled={busy}>Start</button>
-    <p class="note">Current display delay: {app.settings.visualOffsetMs} ms.</p>
+    <div class="manual">
+      <label for="lat-manual"><strong>Or set it yourself</strong></label>
+      <LatencyInput id="lat-manual" />
+      <p class="note">
+        If you already know how late your headphones or speakers are (from another app, or by ear), enter it here. It
+        takes effect straight away: larger numbers make your clicks play earlier and the display wait longer.
+      </p>
+    </div>
   {:else if phase === 'audio' || phase === 'visual'}
     <p class="what">
       {phase === 'audio' ? 'Tap with the clicks you hear' : 'Tap with the flash'}
@@ -260,6 +268,15 @@
     background: var(--c-playhead);
     border-color: var(--c-playhead);
     color: #fff;
+  }
+  .manual {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.8rem;
+    border-top: 1px solid var(--c-border);
+    padding-top: 0.7rem;
+    width: 100%;
   }
   .res {
     font-size: 1.15rem;
