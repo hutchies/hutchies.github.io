@@ -33,6 +33,11 @@ export interface BlockItem {
   kind: 'bars';
   id: string;
   bars: number;
+  /**
+   * Play indefinitely: the block repeats its bar until stopped, ignoring
+   * `bars` (kept so switching back restores the count). Nothing after it plays.
+   */
+  forever?: boolean;
   metre?: Metre;
   /** Tempo at the start of the block (inherited if absent). */
   tempo?: Tempo;

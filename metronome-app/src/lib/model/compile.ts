@@ -77,7 +77,19 @@ export interface Timeline {
   holds: number[];
   marks: MarkInfo[];
   duration: number;
+  /**
+   * True if the piece ends with an indefinite block. Its bars are laid out
+   * up to a long horizon, so `duration` is where playback finally gives up.
+   */
+  open: boolean;
+  /** Start of the indefinite block (equals `duration` when not open). */
+  openStart: number;
 }
+
+/** How far an indefinite block is laid out, in score seconds. */
+export const FOREVER_SECONDS = 4 * 60 * 60;
+/** Upper bound on bars laid out for an indefinite block. */
+const FOREVER_MAX_BARS = 50000;
 
 export interface CompileOptions {
   /** Extra clicks per pulse: 1 = none, 2 = halves, 3 = triplets, 4 = quarters. */
@@ -99,6 +111,8 @@ export function compile(piece: Piece, opts: CompileOptions = {}): Timeline {
   let barNumber = 1;
   let prevMetre: Metre | undefined;
   let prevTempo: Tempo | undefined;
+  let open = false;
+  let openStart = 0;
 
   const pushClick = (t: number, level: number) => {
     times.push(t);
@@ -111,10 +125,18 @@ export function compile(piece: Piece, opts: CompileOptions = {}): Timeline {
     if (b.barNumber !== undefined) barNumber = b.barNumber;
     const groups = effectiveGroups(metre);
     const w0 = wholesPerSecond(tempo);
-    const target = b.tempoTo;
+    // An indefinite block holds its tempo (no glide) and is laid out to the horizon.
+    const target = b.forever ? undefined : b.tempoTo;
     const w1 = target ? wholesPerSecond(target) : w0;
     const barLen = metre.num / metre.denom; // in whole notes
-    const total = barLen * Math.max(1, b.bars);
+    const count = b.forever
+      ? Math.max(1, Math.min(FOREVER_MAX_BARS, Math.ceil((FOREVER_SECONDS * w0) / barLen)))
+      : Math.max(1, b.bars);
+    if (b.forever) {
+      open = true;
+      openStart = now;
+    }
+    const total = barLen * count;
     const pulseLen = 1 / metre.denom;
 
     // Time (from block start) to reach position x whole notes into the block.
@@ -129,7 +151,7 @@ export function compile(piece: Piece, opts: CompileOptions = {}): Timeline {
     };
 
     const blockStart = now;
-    for (let i = 0; i < Math.max(1, b.bars); i++) {
+    for (let i = 0; i < count; i++) {
       const x0 = i * barLen;
       const start = blockStart + timeAt(x0);
       const end = blockStart + timeAt(x0 + barLen);
@@ -160,10 +182,10 @@ export function compile(piece: Piece, opts: CompileOptions = {}): Timeline {
         groups,
         pulses,
         tempoStart: i === 0 ? tempo : tStart,
-        tempoEnd: i === b.bars - 1 && target ? target : tEnd,
+        tempoEnd: i === count - 1 && target ? target : tEnd,
         glide: !!target,
         glideStart: !!target && i === 0,
-        glideEnd: !!target && i === b.bars - 1,
+        glideEnd: !!target && i === count - 1,
         metreChanged: !prevMetre || !metreEquals(prevMetre, metre),
         tempoChanged: i === 0 && (!prevTempo || !tempoEquals(prevTempo, tempo)),
         itemId: b.id,
@@ -187,6 +209,8 @@ export function compile(piece: Piece, opts: CompileOptions = {}): Timeline {
   const walk = (items: Item[], pass?: { n: number; of: number }) => {
     let first = true;
     for (const it of items) {
+      // Nothing plays after an indefinite block.
+      if (open) return;
       if (it.kind === 'bars') {
         block(it, pass, first);
       } else if (it.kind === 'pause') {
@@ -200,7 +224,7 @@ export function compile(piece: Piece, opts: CompileOptions = {}): Timeline {
       } else {
         const startNumber = barNumber;
         let endNumber = barNumber;
-        for (let n = 1; n <= it.times; n++) {
+        for (let n = 1; n <= it.times && !open; n++) {
           barNumber = startNumber;
           const before = bars.length;
           walk(it.items, { n, of: it.times });
@@ -226,6 +250,8 @@ export function compile(piece: Piece, opts: CompileOptions = {}): Timeline {
     holds: [...new Set(holds)].sort((a, b) => a - b),
     marks,
     duration: now,
+    open,
+    openStart: open ? openStart : now,
   };
 }
 
