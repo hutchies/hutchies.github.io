@@ -3,7 +3,7 @@
   import { app } from './lib/state/app.svelte';
   import Display from './lib/components/Display.svelte';
   import Transport from './lib/components/Transport.svelte';
-  import Minimap from './lib/components/Minimap.svelte';
+  import SectionStrip from './lib/components/SectionStrip.svelte';
   import Builder from './lib/components/Builder.svelte';
   import TextEditor from './lib/components/TextEditor.svelte';
   import Dialog from './lib/components/Dialog.svelte';
@@ -13,12 +13,13 @@
   import Icon from './lib/components/Icon.svelte';
   import GroupPanel from './lib/components/GroupPanel.svelte';
   import GroupBar from './lib/components/GroupBar.svelte';
-  import PartsBar from './lib/components/PartsBar.svelte';
+  import PartsPanel from './lib/components/PartsPanel.svelte';
   import LatencyTest from './lib/components/LatencyTest.svelte';
   import { parseJoinLink, savedSession } from './lib/sync/session';
 
   let editorMode = $state<'builder' | 'text'>('builder');
-  let mobileTab = $state<'play' | 'edit'>('play');
+  let showParts = $state(false);
+  let showMenu = $state(false);
   let showSettings = $state(false);
   let showShare = $state(false);
   let showLibrary = $state(false);
@@ -152,6 +153,10 @@
         if (app.focus) app.setFocus(false);
         else app.stop();
         break;
+      case 'e':
+      case 'E':
+        app.editorOpen = !app.editorOpen;
+        break;
       case 'f':
       case 'F':
         app.setFocus(!app.focus);
@@ -200,81 +205,77 @@
       <span>Metronome</span>
     </div>
     <div class="title" title={app.project.title}>{app.project.title || 'Untitled'}</div>
-    <div class="seg tabs mobile-only" role="tablist">
-      <button role="tab" aria-selected={mobileTab === 'play'} class:on={mobileTab === 'play'} onclick={() => (mobileTab = 'play')}>Play</button>
-      <button role="tab" aria-selected={mobileTab === 'edit'} class:on={mobileTab === 'edit'} onclick={() => (mobileTab = 'edit')}>Edit</button>
-    </div>
     <nav>
-      <button class="icon" onclick={() => (showLibrary = true)} title="Open / save" aria-label="Library"><Icon name="folder" /></button>
-      <button class="icon" class:live={!!app.group} onclick={() => (showGroup = true)} title="Play together" aria-label="Group"><Icon name="group" /></button>
-      <button class="icon" onclick={() => (showShare = true)} title="Share link" aria-label="Share"><Icon name="share" /></button>
-      <button class="icon" onclick={() => (showSettings = true)} title="Settings" aria-label="Settings"><Icon name="settings" /></button>
-      <button class="icon help" onclick={() => (showKeys = true)} title="Keyboard shortcuts" aria-label="Help"><Icon name="help" /></button>
+      <button class="pill" onclick={() => (showParts = true)} title="Parts: show, mute, solo, duplicate">
+        <span class="pname">{app.project.parts.length > 1 ? app.activePart.name : 'Parts'}</span>
+        {#if app.project.parts.length > 1}<span class="pcount">· {app.project.parts.length}</span>{/if}
+      </button>
+      <button class="pill" class:on={app.editorOpen} aria-pressed={app.editorOpen} onclick={() => (app.editorOpen = !app.editorOpen)}>
+        Edit<span class="wide-only">piece</span>
+      </button>
+      <button class="pill" class:live={!!app.group} onclick={() => (showGroup = true)} title="Play together" aria-label="Play together">
+        <Icon name="group" size={18} /><span class="wide-only">Play together</span>
+      </button>
+      <div class="menuwrap">
+        <button class="icon" onclick={() => (showMenu = !showMenu)} aria-expanded={showMenu} aria-haspopup="menu" title="More" aria-label="More"><Icon name="more" /></button>
+        {#if showMenu}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <div class="scrim" onclick={() => (showMenu = false)}></div>
+          <div class="menu" role="menu">
+            <button role="menuitem" onclick={() => { showMenu = false; showLibrary = true; }}><Icon name="folder" size={18} /> Open / save</button>
+            <button role="menuitem" onclick={() => { showMenu = false; showShare = true; }}><Icon name="share" size={18} /> Share link</button>
+            <button role="menuitem" onclick={() => { showMenu = false; showSettings = true; }}><Icon name="settings" size={18} /> Settings</button>
+            <button role="menuitem" onclick={() => { showMenu = false; showKeys = true; }}><Icon name="help" size={18} /> Help and shortcuts</button>
+          </div>
+        {/if}
+      </div>
     </nav>
   </header>
 
-  <main>
-    <aside class="editor" class:hide-mobile={mobileTab !== 'edit'}>
-      <div class="edhead">
-        <label class="ptitle">
-          <span class="sr">Title</span>
-          <input type="text" placeholder="Untitled piece" bind:value={app.project.title} />
-        </label>
-        {#if app.project.parts.length > 1 && editorMode === 'builder'}
-          <label class="partsel">
-            <span>Part</span>
-            <select value={app.activeIndex} onchange={(e) => app.setActivePart(Number(e.currentTarget.value))} disabled={app.following}>
-              {#each app.project.parts as p, i}<option value={i}>{p.name}</option>{/each}
-            </select>
+  <main class:editing={app.editorOpen}>
+    {#if app.editorOpen}
+      <aside class="editor">
+        <div class="edhead">
+          <label class="ptitle">
+            <span class="sr">Title</span>
+            <input type="text" placeholder="Untitled piece" bind:value={app.project.title} />
           </label>
-        {/if}
-        <div class="seg" role="tablist" aria-label="Editor mode">
-          <button role="tab" aria-selected={editorMode === 'builder'} class:on={editorMode === 'builder'} onclick={() => (editorMode = 'builder')}>Blocks</button>
-          <button role="tab" aria-selected={editorMode === 'text'} class:on={editorMode === 'text'} onclick={() => (editorMode = 'text')}>Text</button>
+          <div class="seg" role="tablist" aria-label="Editor mode">
+            <button role="tab" aria-selected={editorMode === 'builder'} class:on={editorMode === 'builder'} onclick={() => (editorMode = 'builder')}>Blocks</button>
+            <button role="tab" aria-selected={editorMode === 'text'} class:on={editorMode === 'text'} onclick={() => (editorMode = 'text')}>Text</button>
+          </div>
+          <button class="done" onclick={() => (app.editorOpen = false)}>Done</button>
         </div>
-      </div>
-      <div class="editor-body">
-        {#if editorMode === 'builder'}
-          <Builder />
-        {:else}
-          <TextEditor />
+        {#if app.project.parts.length > 1 && editorMode === 'builder'}
+          <div class="editing-part">
+            Editing <b>{app.activePart.name}</b>
+            {#if app.duplicates[app.activePart.name]}
+              <span class="muted">· copied from {app.duplicates[app.activePart.name].from}; changes are marked</span>
+            {/if}
+          </div>
         {/if}
-      </div>
-    </aside>
+        <div class="editor-body">
+          {#if editorMode === 'builder'}
+            <Builder />
+          {:else}
+            <TextEditor />
+          {/if}
+        </div>
+      </aside>
+    {/if}
 
-    <section class="player" class:hide-mobile={mobileTab !== 'play'}>
+    <section class="player">
       {#if app.group}
         <GroupBar onopen={() => (showGroup = true)} />
       {/if}
-      <PartsBar />
       <Display />
-      <Minimap />
+      <SectionStrip />
       <Transport />
-      {#if app.sections.length}
-        <div class="sections">
-          <span class="lbl">Sections</span>
-          {#each app.sections as s}
-            <span class="chip" class:current={app.currentBar >= s.from && app.currentBar <= s.to}>
-              <button class="go" onclick={() => app.seekBar(s.from)} disabled={!app.canSeek} title="Go to {s.label}">{s.label}</button>
-              <button
-                class="lp"
-                disabled={app.following}
-                class:on={app.loopOn && app.loopRange?.from === s.from && app.loopRange?.to === s.to}
-                onclick={() => app.loopSection(s.from, s.to)}
-                title="Loop {s.label}"
-                aria-label="Loop {s.label}"><Icon name="loop" size={14} /></button
-              >
-            </span>
-          {/each}
-          {#if app.loopRange && !app.following}
-            <button class="link" onclick={() => app.loopWhole()}>Loop whole piece</button>
-          {/if}
-        </div>
-      {/if}
     </section>
   </main>
 </div>
 
+<Dialog bind:open={showParts} title="Parts"><PartsPanel /></Dialog>
 <Dialog bind:open={showSettings} title="Settings"><SettingsPanel onlatency={() => (showLatency = true)} /></Dialog>
 <Dialog bind:open={showShare} title="Share"><SharePanel /></Dialog>
 <Dialog bind:open={showGroup} title="Play together"><GroupPanel bind:invite={joinInvite} onlatency={() => (showLatency = true)} /></Dialog>
@@ -285,6 +286,7 @@
 <Dialog bind:open={showKeys} title="Keyboard shortcuts">
   <table class="keys">
     <tbody>
+      <tr><td><kbd>E</kbd></td><td>Edit the piece (open / close the editor)</td></tr>
       <tr><td><kbd>Space</kbd></td><td>Play / pause · continue from a pause</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Stop and return to the start point</td></tr>
       <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next bar</td></tr>
@@ -308,8 +310,8 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.35rem 0.75rem;
-    padding-top: max(0.35rem, env(safe-area-inset-top));
+    padding: 0.45rem 0.75rem;
+    padding-top: max(0.45rem, env(safe-area-inset-top));
     border-bottom: 1px solid var(--c-border);
     background: var(--c-surface);
   }
@@ -332,17 +334,78 @@
   }
   nav {
     display: flex;
-    gap: 0.1rem;
+    align-items: center;
+    gap: 0.4rem;
   }
-  nav .live {
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    padding: 0.35rem 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill.on {
+    background: var(--c-accent);
+    border-color: var(--c-accent);
+    color: var(--c-on-accent);
+  }
+  .pill.live {
     color: var(--c-accent);
+    border-color: var(--c-accent);
+  }
+  .pname {
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pcount {
+    color: var(--c-muted);
+  }
+  .menuwrap {
+    position: relative;
+  }
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+  }
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.3rem);
+    z-index: 31;
+    min-width: 13rem;
+    display: flex;
+    flex-direction: column;
+    padding: 0.3rem;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .menu button {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border: none;
+    background: none;
+    text-align: left;
+    padding: 0.55rem 0.7rem;
+    border-radius: 8px;
+  }
+  .menu button:hover {
     background: var(--c-surface-2);
   }
   main {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(20rem, 26rem) 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  main.editing {
+    grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr);
   }
   .editor {
     border-right: 1px solid var(--c-border);
@@ -370,16 +433,16 @@
     padding: 0.25rem 0.35rem;
   }
   .ptitle input:hover,
-  .partsel {
-    display: flex;
-    gap: 0.4rem;
-    align-items: center;
-    color: var(--c-muted);
-    font-size: 0.85rem;
-  }
   .ptitle input:focus {
     border-color: var(--c-border);
     background: var(--c-surface);
+  }
+  .done {
+    font-weight: 600;
+  }
+  .editing-part {
+    padding: 0.1rem 1.1rem 0.3rem;
+    font-size: 0.9rem;
   }
   .editor-body {
     flex: 1;
@@ -410,55 +473,15 @@
   .player {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    padding: 0.75rem 1rem 1rem;
+    gap: 0.9rem;
+    width: 100%;
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 1rem 1.25rem 1rem;
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
     min-height: 0;
     min-width: 0;
     overflow-y: auto;
-  }
-  .sections {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    align-items: center;
-  }
-  .lbl {
-    color: var(--c-muted);
-    font-size: 0.85rem;
-    margin-right: 0.2rem;
-  }
-  .chip {
-    display: inline-flex;
-    border: 1px solid var(--c-border);
-    border-radius: 8px;
-    overflow: hidden;
-    background: var(--c-surface);
-  }
-  .chip.current {
-    border-color: var(--c-playhead);
-  }
-  .chip button {
-    border: none;
-    border-radius: 0;
-    background: none;
-    padding: 0.25rem 0.55rem;
-  }
-  .chip .go {
-    font-weight: 700;
-  }
-  .chip .lp {
-    border-left: 1px solid var(--c-border);
-    color: var(--c-muted);
-    display: grid;
-    place-items: center;
-  }
-  .chip .lp.on {
-    color: var(--c-loop);
-    background: var(--c-surface-2);
-  }
-  .tabs {
-    display: none;
   }
   .keys td {
     padding: 0.3rem 1rem 0.3rem 0;
@@ -477,41 +500,38 @@
     font-size: 0.85rem;
     margin: 0;
   }
-  /* Keyboard shortcuts mean little on touch screens. */
-  @media (hover: none) and (pointer: coarse) {
-    .help {
-      display: none;
-    }
-  }
   @media (max-width: 860px) {
-    main {
+    /* Phones: the editor takes the whole screen while it is open. */
+    main.editing {
       grid-template-columns: minmax(0, 1fr);
     }
-    header {
-      gap: 0.5rem;
-      padding-left: max(0.5rem, env(safe-area-inset-left));
-      padding-right: max(0.25rem, env(safe-area-inset-right));
-    }
-    .title,
-    .brand span {
+    main.editing .player {
       display: none;
-    }
-    .tabs {
-      display: flex;
-      margin-right: auto;
-    }
-    .tabs button {
-      padding: 0.35rem 1rem;
-      font-size: 0.95rem;
-    }
-    .hide-mobile {
-      display: none !important;
     }
     .editor {
       border-right: none;
     }
+    header {
+      gap: 0.4rem;
+      padding-left: max(0.5rem, env(safe-area-inset-left));
+      padding-right: max(0.25rem, env(safe-area-inset-right));
+    }
+    .title,
+    .brand span,
+    .wide-only {
+      display: none;
+    }
+    nav {
+      margin-left: auto;
+    }
+    .pill {
+      padding: 0.35rem 0.7rem;
+    }
+    .pname {
+      max-width: 6rem;
+    }
     .player {
-      padding: 0.5rem 0.75rem;
+      padding: 0.6rem 0.75rem;
       padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
     }
   }

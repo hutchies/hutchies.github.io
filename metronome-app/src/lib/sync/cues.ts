@@ -220,6 +220,9 @@ export function applyCue(p: GroupPlayback, cue: Cue, ctx: LocalContext): GroupPl
       const from = Math.min(resolveSyncPoint(tl, sync), tl.duration);
       const ci = countIn(tl, Math.max(0, barAt(tl, from)), ctx.countIn);
       const times = ci.offsets.map((o) => T + o / rate);
+      // Until the downbeat, everyone waits silently at the new start (as a
+      // local restart does), rather than carrying on with the previous run.
+      const waiting: TransportState = { ...st, ...base, playing: false, anchorScore: from, releaseAtAnchor: false };
       return {
         state: withPrev(
           {
@@ -232,7 +235,7 @@ export function applyCue(p: GroupPlayback, cue: Cue, ctx: LocalContext): GroupPl
             releaseAtAnchor: true,
             loop: resolveLoop(tl, pl.loop),
           },
-          st,
+          waiting,
         ),
         countIn: times.length ? { times, levels: ci.levels, startTime: T, startScore: from, rate } : null,
         home: from,

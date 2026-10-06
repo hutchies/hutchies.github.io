@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from '../state/app.svelte';
+  import LatencyInput from './LatencyInput.svelte';
   import { LEVEL_NAMES, DEFAULT_SOUND, type Timbre } from '../audio/sounds';
 
   let { onlatency }: { onlatency: () => void } = $props();
@@ -116,15 +117,15 @@
     <h3>Latency</h3>
     <p class="note">
       The display already allows for the latency your device reports, but wireless headphones and speakers are often
-      later than they say. <button class="link inline" onclick={onlatency}>Measure my latency</button> (tap along for
-      about 20 seconds), or adjust by hand until the clicks match the playhead. Playing in a group, this also starts
+      later than they say. <button class="link inline" onclick={onlatency}>Measure my latency</button> (tap along for a
+      few seconds), or set it by hand: type in the figure if you know it, or adjust until the clicks match the playhead. Playing in a group, this also starts
       your clicks earlier to match everyone else's.
     </p>
     <div class="grid">
       <label for="off">Display delay</label>
       <div class="row">
-        <input id="off" type="range" min="-150" max="500" step="5" bind:value={s.visualOffsetMs} oninput={save} />
-        <span class="val">{s.visualOffsetMs} ms</span>
+        <input type="range" min="-150" max="500" step="5" bind:value={s.visualOffsetMs} oninput={save} aria-label="Display delay slider" />
+        <LatencyInput id="off" />
       </div>
     </div>
   </section>
@@ -163,10 +164,6 @@
   }
   .row input {
     flex: 1;
-  }
-  .val {
-    font-variant-numeric: tabular-nums;
-    min-width: 4rem;
   }
   .note {
     font-size: 0.85rem;

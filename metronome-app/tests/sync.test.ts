@@ -230,6 +230,14 @@ describe('cue reduction', () => {
     expect(positionAt(p.state, 1).score).toBeCloseTo(8);
   });
 
+  it('restarts cleanly after a run has finished', () => {
+    const c = ctx('c=120 4/4 x2'); // 4 s long
+    const p = replay([start(0), { ...start(10_000), seq: 2 }], c);
+    // Before the new downbeat: silent, parked at the start (not frozen at the old end).
+    expect(positionAt(p.state, 9)).toMatchObject({ score: 0, frozen: null, pending: true });
+    expect(positionAt(p.state, 11)).toMatchObject({ score: 1, pending: false });
+  });
+
   it('replays out-of-order deliveries by sequence number', () => {
     const c = ctx('c=120 4/4 x8');
     const a = replay([start(0), { seq: 2, kind: 'pause', at: 2_000, payload: {} }], c);
@@ -238,28 +246,42 @@ describe('cue reduction', () => {
   });
 });
 
-import { asynchronies, latencyFromTaps } from '../src/lib/audio/latency';
+import { asynchronies, converged, estimateTaps, latencyMs, usable } from '../src/lib/audio/latency';
 
 describe('latency measurement', () => {
-  const beats = Array.from({ length: 16 }, (_, k) => 1000 + k * 500);
-  const r = rng(3);
-  // A player who taps ~20 ms early with ±15 ms wobble, on a touchscreen adding 40 ms.
-  const tapsFor = (lag: number) => beats.slice(4).map((b) => b + lag + 40 - 20 + (r() - 0.5) * 30);
+  const beats = Array.from({ length: 24 }, (_, k) => 1000 + k * 500);
+  // A player who taps ~20 ms early with some wobble, on a touchscreen adding 40 ms.
+  const tapsFor = (lag: number, wobble = 30, seed = 3) => {
+    const r = rng(seed);
+    return beats.map((b) => b + lag + 40 - 20 + (r() - 0.5) * wobble);
+  };
 
-  it('recovers the extra audio latency from the two rounds', () => {
-    const res = latencyFromTaps(asynchronies(tapsFor(180 + 15), beats), asynchronies(tapsFor(15), beats));
-    expect(res.reliable).toBe(true);
-    expect(Math.abs(res.offsetMs - 180)).toBeLessThanOrEqual(10);
+  it('recovers the extra audio latency from a click round and the tapping bias', () => {
+    const bias = estimateTaps(asynchronies(tapsFor(0), beats)).value;
+    const audio = estimateTaps(asynchronies(tapsFor(180, 30, 9), beats));
+    expect(Math.abs(latencyMs(audio, bias) - 180)).toBeLessThanOrEqual(10);
   });
 
   it('copes with Bluetooth-sized delays of more than half a beat', () => {
-    const res = latencyFromTaps(asynchronies(tapsFor(300), beats), asynchronies(tapsFor(0), beats));
-    expect(Math.abs(res.offsetMs - 300)).toBeLessThanOrEqual(10);
+    const bias = estimateTaps(asynchronies(tapsFor(0), beats)).value;
+    expect(Math.abs(latencyMs(estimateTaps(asynchronies(tapsFor(300), beats)), bias) - 300)).toBeLessThanOrEqual(10);
   });
 
-  it('ignores stray taps and flags uneven tapping', () => {
+  it('stops early for steady tapping, but not for erratic tapping', () => {
+    const steady = asynchronies(tapsFor(0, 20), beats);
+    const n = [...Array(steady.length).keys()].find((k) => converged(estimateTaps(steady.slice(0, k + 1))))! + 1;
+    expect(n).toBeGreaterThanOrEqual(6);
+    expect(n).toBeLessThanOrEqual(8);
+    const erratic = asynchronies(tapsFor(0, 140), beats);
+    expect(converged(estimateTaps(erratic.slice(0, 12)))).toBe(false);
+  });
+
+  it('ignores stray and fumbled taps', () => {
     expect(asynchronies([1000 - 200, 1500 + 10, 99999], beats)).toEqual([10]);
-    const wild = beats.slice(4).map((b, i) => b + (i % 2 ? 120 : -120));
-    expect(latencyFromTaps(asynchronies(wild, beats), asynchronies(tapsFor(0), beats)).reliable).toBe(false);
+    const taps = asynchronies(tapsFor(0, 10), beats).slice(0, 10);
+    taps[4] += 200; // a fumble
+    const e = estimateTaps(taps);
+    expect(e.count).toBe(9);
+    expect(usable(e)).toBe(true);
   });
 });
