@@ -8,7 +8,7 @@
   /**
    * The project's parts as a mixer: tap a name to show and edit that part
    * (it drives the display), M/S to mute or solo it. Each part can have its
-   * own click sound.
+   * own click sound. Duplicate starts a new part from the shown one.
    */
   const TIMBRE_LABEL: Record<Timbre, string> = { wood: 'Woodblock', beep: 'Beep', click: 'Click', bell: 'Bell' };
 
@@ -30,41 +30,58 @@
   }
 </script>
 
-<div class="parts" role="group" aria-label="Parts">
-  <span class="lbl">{parts.length > 1 ? 'Parts' : 'Part'}</span>
-  {#each parts as p, i (i)}
-    <span class="chip" class:active={i === app.activeIndex} class:silent={!app.audible.has(p.name)}>
-      <button
-        class="name"
-        onclick={() => app.setActivePart(i)}
-        disabled={locked && i !== app.activeIndex}
-        title={locked ? 'The leader assigns your part' : 'Show and edit this part'}
-      >{p.name}</button>
-      {#if parts.length > 1}
+<div class="parts">
+  <p class="note">Tap a part to show and edit it. M mutes and S solos it, just on this device.</p>
+  <ul>
+    {#each parts as p, i (i)}
+      {@const heard = app.audible.has(p.name)}
+      <li class:active={i === app.activeIndex} class:silent={!heard}>
         <button
-          class="ms"
-          class:on={app.mix.muted.includes(p.name)}
-          onclick={() => app.toggleMutePart(p.name)}
-          title="Mute {p.name}"
-          aria-label="Mute {p.name}"
-          aria-pressed={app.mix.muted.includes(p.name)}>M</button
+          class="name"
+          onclick={() => app.setActivePart(i)}
+          disabled={locked && i !== app.activeIndex}
+          title={locked ? 'The leader assigns your part' : 'Show and edit this part'}
         >
-        <button
-          class="ms solo"
-          class:on={app.mix.solo.includes(p.name)}
-          onclick={() => app.toggleSoloPart(p.name)}
-          title="Solo {p.name}"
-          aria-label="Solo {p.name}"
-          aria-pressed={app.mix.solo.includes(p.name)}>S</button
-        >
-      {/if}
-      <button class="ms" onclick={() => openSettings(i)} title="Sound and name" aria-label="{p.name} settings">
-        <Icon name="settings" size={14} />
-      </button>
-    </span>
-  {/each}
+          <b>{p.name}</b>
+          <small>{i === app.activeIndex ? 'Showing' : heard ? 'Playing along' : 'Not heard'}{p.sound.timbre ? ` · ${TIMBRE_LABEL[p.sound.timbre]}` : ''}</small>
+        </button>
+        {#if parts.length > 1}
+          <button
+            class="ms"
+            class:on={app.mix.muted.includes(p.name)}
+            onclick={() => app.toggleMutePart(p.name)}
+            title="Mute {p.name}"
+            aria-label="Mute {p.name}"
+            aria-pressed={app.mix.muted.includes(p.name)}>M</button
+          >
+          <button
+            class="ms solo"
+            class:on={app.mix.solo.includes(p.name)}
+            onclick={() => app.toggleSoloPart(p.name)}
+            title="Solo {p.name}"
+            aria-label="Solo {p.name}"
+            aria-pressed={app.mix.solo.includes(p.name)}>S</button
+          >
+        {/if}
+        <button class="ms gear" onclick={() => openSettings(i)} title="Sound and name" aria-label="{p.name} settings">
+          <Icon name="settings" size={16} />
+        </button>
+      </li>
+    {/each}
+  </ul>
   {#if !locked}
-    <button class="link" onclick={() => app.addPart()} title="Add a part (starts as a copy of this one)">+ Add part</button>
+    <div class="add">
+      <button onclick={() => app.duplicatePart()} title="Copy “{app.activePart.name}” as a new part to change: the editor marks what differs">
+        <Icon name="copy" size={16} /> Duplicate this part
+      </button>
+      <button onclick={() => app.addPart()}><Icon name="plus" size={16} /> New part</button>
+    </div>
+  {/if}
+  {#if parts.length > 1}
+    <label class="check">
+      <input type="checkbox" checked={app.settings.stackParts} onchange={(e) => { app.settings.stackParts = e.currentTarget.checked; app.persistSettings(); }} />
+      Show all parts in the display
+    </label>
   {/if}
 </div>
 
@@ -109,55 +126,91 @@
 <style>
   .parts {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
     gap: 0.4rem;
+  }
+  li {
+    display: flex;
     align-items: center;
-  }
-  .lbl {
-    color: var(--c-muted);
-    font-size: 0.85rem;
-    margin-right: 0.2rem;
-  }
-  .chip {
-    display: inline-flex;
+    gap: 0.35rem;
+    padding: 0.35rem 0.4rem 0.35rem 0.25rem;
     border: 1px solid var(--c-border);
-    border-radius: 8px;
-    overflow: hidden;
+    border-radius: 10px;
     background: var(--c-surface);
   }
-  .chip.active {
+  li.active {
     border-color: var(--c-accent);
     box-shadow: 0 0 0 1px var(--c-accent);
   }
-  .chip.silent .name {
-    color: var(--c-muted);
-    text-decoration: line-through;
+  li.silent .name {
+    opacity: 0.5;
   }
-  .chip button {
+  .name {
+    flex: 1;
+    min-width: 0;
     border: none;
-    border-radius: 0;
     background: none;
-    padding: 0.25rem 0.5rem;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.2rem 0.5rem;
   }
-  .chip .name {
-    font-weight: 700;
-  }
-  .chip .name:disabled {
+  .name:disabled {
     opacity: 1;
   }
-  .ms {
-    border-left: 1px solid var(--c-border) !important;
+  .name small {
     color: var(--c-muted);
-    font-size: 0.75rem;
-    font-weight: 700;
-    min-width: 1.8rem;
+  }
+  .ms {
+    width: 2.2rem;
+    height: 2.2rem;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    color: var(--c-muted);
   }
   .ms.on {
-    background: var(--c-hold) !important;
+    background: var(--c-hold);
+    border-color: var(--c-hold);
     color: #fff;
   }
   .ms.solo.on {
-    background: var(--c-loop) !important;
+    background: var(--c-loop);
+    border-color: var(--c-loop);
+  }
+  .gear {
+    border-color: transparent;
+    background: none;
+  }
+  .add {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .add button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .check {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
   }
   .grid {
     display: grid;

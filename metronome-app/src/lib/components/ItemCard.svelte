@@ -117,16 +117,22 @@
   }
 
   const canJoin = $derived(tree.canJoinPrevious(app.piece.items, item.id));
+  /** In a duplicated part: differs from the part it was copied from. */
+  const change = $derived(app.itemChange(item.id));
 </script>
 
 <div
   class="card {item.kind}"
   class:selected
   class:playing={playingHere}
+  class:changed={!!change}
   onclickcapture={select}
   role="group"
   aria-label={rangeText || item.kind}
 >
+  {#if change}
+    <span class="badge" title="Differs from {app.duplicates[app.activePart.name]?.from}">{change === 'new' ? 'New' : 'Changed'}</span>
+  {/if}
   <div class="row">
     {#if item.kind === 'bars'}
       <span class="where" title={rangeText}>{shortRange}</span>
@@ -302,6 +308,26 @@
   }
   .card.selected {
     border-color: var(--c-accent);
+  }
+  .card.changed {
+    border-color: var(--c-hold);
+  }
+  .card.changed.selected {
+    border-color: var(--c-accent);
+  }
+  .badge {
+    position: absolute;
+    top: -0.55rem;
+    right: 2.2rem;
+    z-index: 1;
+    padding: 0 0.35rem;
+    border-radius: 4px;
+    background: var(--c-hold);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.1rem;
+    pointer-events: none;
   }
   /* Bar under the playhead: a slim marker on the left edge. */
   .card::before {
