@@ -31,6 +31,12 @@ export interface Settings {
   playhead: number;
   /** Display delay calibration, ms. */
   visualOffsetMs: number;
+  /**
+   * How far this player's taps land from a flash (touchscreen lag plus their
+   * own anticipation), ms, from the latency test's flash round. It depends on
+   * the player and device, not the headphones, so it is measured once.
+   */
+  tapBiasMs: number | null;
   british: boolean;
   theme: 'auto' | 'light' | 'dark';
   /** Group sync: PocketBase server URL. */
@@ -56,6 +62,7 @@ const DEFAULT_SETTINGS: Settings = {
   pxPerSecond: 140,
   playhead: 0.25,
   visualOffsetMs: 0,
+  tapBiasMs: null,
   british: true,
   theme: 'auto',
   syncServer: DEFAULT_SERVER,
@@ -377,16 +384,20 @@ export class AppState {
     const main = mixFor(active.sound, audible.has(active.name));
     const { sync, from } = this.layerAnchor;
     const layers: LayerTrack[] = [];
+    let end = 0;
     parts.forEach((p, i) => {
       if (i === this.activeIndex || !audible.has(p.name) || !tls[i]?.bars.length) return;
+      const offset = resolveSyncPoint(tls[i], sync) - from;
       layers.push({
         ...mixFor($state.snapshot(p.sound) as PartSound, true),
         times: tls[i].clickTimes,
         levels: tls[i].clickLevels,
-        offset: resolveSyncPoint(tls[i], sync) - from,
+        offset,
       });
+      // An indefinite part keeps playback going after the active part ends.
+      if (tls[i].open) end = Math.max(end, tls[i].duration - offset);
     });
-    this.engine.setLayers(main, layers);
+    this.engine.setLayers(main, layers, end);
   }
 
   async loadFromLocation() {

@@ -30,8 +30,8 @@ The build uses relative paths, so `dist/` can be served from any sub-path, such 
 The play screen keeps to the essentials: the display, a section strip, and Stop / Play / Loop / Speed. The header has Parts, Edit piece, Play together and ⋯ (Open / save, Share, Settings, Help).
 
 - **Edit piece** (or E) opens the editor beside the display (full screen on phones); Done closes it.
-- **Blocks** (in the editor): one compact row per block of bars, pause or repeat: mark, × number of bars, metre and tempo (tap the note symbol to change the beat unit). Empty fields carry on from the previous block, shown as grey placeholders. The ⋯ button on a row opens rit./accel., renumbering, and move, loop, duplicate, repeat and delete.
-- **Text** (left panel): the same map in a compact syntax (below). Both views edit the same piece.
+- **Blocks** (in the editor): one compact row per block of bars, pause or repeat: mark, × number of bars, metre and tempo (tap the note symbol to change the beat unit). Empty fields carry on from the previous block, shown as grey placeholders. Type ∞ (or "inf") in the × field to keep a block going until stopped. The ⋯ button on a row opens rit./accel., renumbering, and move, loop, duplicate, repeat and delete.
+- **Text** (in the editor): the same map in a compact syntax (below). Both views edit the same piece.
 - **Focus view**: the ⛶ button above the display (or F) shows only the click strip, fullscreen where the browser allows it. On tall (portrait) screens the strip wraps onto 2–3 rows, read like lines of text: the playhead is on the top row and each row continues where the one above ends (Settings → Focus view rows to fix the number). Corner buttons toggle the edge flash and mute. Tap anywhere to play or pause; Esc or the corner button leaves it.
 - **Silent playback**: Settings → Visual beat flash → Screen edges lights the edges of the screen on every beat (brighter on downbeats), in any view; combine it with Mute clicks.
 - **Display**: drag to move the start point, Ctrl/⌘+scroll or pinch to zoom, and tap it to continue from a pause.
@@ -60,7 +60,7 @@ The group button in the header creates or joins a room (a 5-character code, an i
 - **The leader sets the maps.** The leader's project is shared with the room as they edit it, and the leader gives each player a part in the room window. Each player's device shows their part and plays only that part (they can change their own mix), with their own count-in.
 - **Starting:** a big countdown runs over the display until the downbeat, and the room window gets out of the way, so everyone is looking at the metronome when it starts. Players using another metronome (or none) can mute the clicks and play from the countdown.
 - **Pauses (fermatas)** are released by the leader: everyone continues a set delay (default 250 ms) after the leader's tap. A follower whose part pauses where the leader's doesn't can "Continue alone".
-- **Latency:** wireless headphones and speakers are often 150–300 ms late. "Measure my latency" (in the room window or Settings) has you tap along to a click and then to a flash, and sets the delay so your clicks land with everyone else's.
+- **Latency:** wireless headphones and speakers are often 150–300 ms late. "Measure my latency" (in the room window or Settings) has you tap along to a click until the reading is steady (usually under 10 taps), and sets the delay so your clicks land with everyone else's. The first time, a second round of tapping to a silent flash measures your touchscreen's lag and your own habit of tapping early or late, so they can be subtracted; that's remembered, so later measurements (e.g. new headphones) are just the clicks.
 - **Late joiners** come in at the right place mid-piece.
 - The bar above the display shows the room, the leader, your part, who's present, and the clock-sync accuracy (e.g. "±4 ms").
 
@@ -76,6 +76,7 @@ Separate entries with commas or new lines. Each entry is made of space-separated
 | `7/8`, `3+2+2/8` | metre, with optional grouping (6/8, 9/8, 12/8 group in threes automatically) |
 | `c=120`, `q.=80`, `4=96` | tempo: `sb m c q sq ds hd` or `1 2 4 8 16 32 64`, with `.` for dotted |
 | `x8` | number of bars (default 1) |
+| `forever` | keep going until stopped (also `x∞`, `xinf`, `indefinitely`); anything after it is ignored |
 | `rit c=90`, `accel c=140`, `~c=90` | tempo glides across the block, ending at the target |
 | `@17` | renumber: this block starts at bar 17 (`@0` for an upbeat) |
 | `wait`, `wait 3s` | pause until tapped, or for a set time |

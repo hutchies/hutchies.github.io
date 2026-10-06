@@ -35,7 +35,11 @@
       {/each}
     </ul>
   {:else}
-    <p class="ok">✓ {app.timeline.bars.length} bars · {Math.floor(app.timeline.duration / 60)}:{String(Math.round(app.timeline.duration % 60)).padStart(2, '0')}</p>
+    {#if app.timeline.open}
+      <p class="ok">✓ {Math.floor(app.timeline.openStart / 60)}:{String(Math.round(app.timeline.openStart % 60)).padStart(2, '0')}, then indefinitely</p>
+    {:else}
+      <p class="ok">✓ {app.timeline.bars.length} bars · {Math.floor(app.timeline.duration / 60)}:{String(Math.round(app.timeline.duration % 60)).padStart(2, '0')}</p>
+    {/if}
   {/if}
 
   <button class="link" onclick={() => (showHelp = !showHelp)} aria-expanded={showHelp}>
@@ -50,6 +54,7 @@
           <tr><td><code>7/8</code> <code>3+2+2/8</code></td><td>Metre, with optional beat grouping. 6/8, 9/8, 12/8 group in threes automatically.</td></tr>
           <tr><td><code>c=120</code> <code>q.=80</code> <code>4=96</code></td><td>Tempo. Units: <code>sb m c q sq ds</code> (or <code>1 2 4 8 16 32</code>). Add <code>.</code> for dotted.</td></tr>
           <tr><td><code>x8</code></td><td>Number of bars (default 1)</td></tr>
+          <tr><td><code>forever</code></td><td>Keep going until stopped (also <code>x∞</code>); ends the map</td></tr>
           <tr><td><code>rit c=90</code> <code>accel c=140</code></td><td>Gradual tempo change across the block, ending at that tempo</td></tr>
           <tr><td><code>@17</code></td><td>The block's first bar is bar 17 (e.g. <code>@0</code> for an upbeat)</td></tr>
           <tr><td><code>wait</code> · <code>wait 3s</code></td><td>Pause until tapped, or for a set time</td></tr>
