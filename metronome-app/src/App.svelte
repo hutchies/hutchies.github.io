@@ -267,7 +267,7 @@
             </span>
           {/each}
           {#if app.loopRange && !app.following}
-            <button class="link" onclick={() => (app.loopRange = null)}>Loop whole piece</button>
+            <button class="link" onclick={() => app.loopWhole()}>Loop whole piece</button>
           {/if}
         </div>
       {/if}

@@ -32,7 +32,8 @@ The build uses relative paths, so `dist/` can be served from any sub-path, such 
 - **Focus view**: the ⛶ button above the display (or F) shows only the click strip, fullscreen where the browser allows it. On tall (portrait) screens the strip wraps onto 2–3 rows, read like lines of text: the playhead is on the top row and each row continues where the one above ends (Settings → Focus view rows to fix the number). Corner buttons toggle the edge flash and mute. Tap anywhere to play or pause; Esc or the corner button leaves it.
 - **Silent playback**: Settings → Visual beat flash → Screen edges lights the edges of the screen on every beat (brighter on downbeats), in any view; combine it with Mute clicks.
 - **Display**: drag to move the start point, Ctrl/⌘+scroll or pinch to zoom, and tap it to continue from a pause.
-- **Sections**: jump to a rehearsal mark, or loop it.
+- **Tap to continue**: after a "wait" pause, a tap (or Space, or a pedal) gives an upbeat in the tempo and metre that follow, scrolling into the next bar like a count-in. Auto gives one beat at 100 bpm or slower and two when faster (Settings → Upbeat after a pause to fix it at 1 or 2 beats, or none). In a group, the leader's tap sets the upbeat and everyone lands on the same downbeat.
+- **Sections**: jump to a rehearsal mark, or loop it. "Loop whole piece" switches to looping everything.
 - **Keys**: Space play/pause/continue, Esc stop (or leave focus view), F focus view, ←/→ bar, [/] mark, L loop, −/+/0 tempo. Page-turner pedals (PgDn/↓/Enter) continue from pauses.
 
 ### Parts (layered maps)

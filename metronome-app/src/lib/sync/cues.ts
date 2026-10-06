@@ -14,7 +14,7 @@
  * on the same downbeat.
  */
 import { positionAt, STOPPED, withPrev, type LoopRegion, type TransportState } from '../audio/transport';
-import { barAt, countIn, type CountInSpec, type Timeline } from '../model/compile';
+import { barAt, countIn, resumeCountIn, type CountInSpec, type Timeline } from '../model/compile';
 
 export interface SyncPoint {
   /** The start of the piece: resolves to every map's first bar. */
@@ -49,6 +49,14 @@ export interface UpdatePayload {
 }
 export interface SeekPayload {
   sync: SyncPoint;
+}
+/**
+ * The cue's time is when the upbeat starts; the music continues `lead`
+ * seconds later. Each map lays its own `beats` beats back from that downbeat.
+ */
+export interface ReleasePayload {
+  beats: number;
+  lead: number;
 }
 
 export interface Cue {
@@ -269,9 +277,30 @@ export function applyCue(p: GroupPlayback, cue: Cue, ctx: LocalContext): GroupPl
         at = T + Math.max(0, later.frozen.at - pos.score) / st.rate;
         pos = later;
       }
+      const hold = pos.frozen!.at;
+      const pl = cue.payload as Partial<ReleasePayload>;
+      const beats = Math.max(0, Math.min(4, Math.round(Number(pl.beats) || 0)));
+      const lead = Math.max(0, Math.min(10, Number(pl.lead) || 0));
+      const downbeat = Math.max(at, T + lead);
+      let countInOut: ScheduledCountIn | null = null;
+      if (beats > 0) {
+        const ci = resumeCountIn(tl, hold, beats);
+        const times: number[] = [];
+        const levels: number[] = [];
+        ci.offsets.forEach((o, k) => {
+          const t = downbeat + o / st.rate;
+          // Upbeat clicks before the cue (a slower map) or before this map reaches its pause are dropped.
+          if (t >= at - 1e-3) {
+            times.push(t);
+            levels.push(ci.levels[k]);
+          }
+        });
+        if (times.length) countInOut = { times, levels, startTime: downbeat, startScore: hold, rate: st.rate };
+      }
       return {
         ...p,
-        state: withPrev({ ...st, anchorTime: at, anchorScore: pos.frozen!.at, releaseAtAnchor: true }, st),
+        state: withPrev({ ...st, anchorTime: downbeat, anchorScore: hold, releaseAtAnchor: true }, st),
+        countIn: countInOut,
       };
     }
 

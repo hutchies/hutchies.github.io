@@ -7,7 +7,7 @@
  * acting locally (see AppState).
  */
 import { positionAt, type LoopRegion } from '../audio/transport';
-import { barAt, countIn } from '../model/compile';
+import { barAt, countIn, resumeBeats, resumeCountIn } from '../model/compile';
 import type { AppState } from '../state/app.svelte';
 import { ClockSync, type ClockEstimate } from './clock';
 import {
@@ -20,6 +20,7 @@ import {
   type CueKind,
   type GroupPlayback,
   type LoopSpec,
+  type ReleasePayload,
   type UpdatePayload,
 } from './cues';
 import {
@@ -488,9 +489,19 @@ export class GroupSession {
     void this.send('stop', this.serverNow() + CHANGE_LEAD_MS, {});
   }
 
-  /** Continue from a tap pause, `releaseLeadMs` after the tap. */
+  /** Continue from a tap pause: the upbeat (if any) starts `releaseLeadMs` after the tap. */
   release() {
-    void this.send('release', this.serverNow() + (this.room?.settings.releaseLeadMs ?? 250), {});
+    void this.send('release', this.serverNow() + (this.room?.settings.releaseLeadMs ?? 250), this.upbeat());
+  }
+
+  /** The upbeat this device would give at the pause it is held at, for a release cue. */
+  private upbeat(): ReleasePayload {
+    const app = this.app;
+    const at = app.engine.heldAt();
+    if (at === null) return { beats: 0, lead: 0 };
+    const rate = app.engine.state.rate;
+    const beats = resumeBeats(app.timeline, at, rate, app.settings.resumeCountIn);
+    return { beats, lead: resumeCountIn(app.timeline, at, beats).duration / rate };
   }
 
   /**
@@ -500,7 +511,7 @@ export class GroupSession {
    */
   releaseLocally() {
     const seq = Math.max(0, ...this.cues.keys()) + 0.001;
-    this.cues.set(seq, { seq, kind: 'release', at: this.serverNow() + 30, payload: {} });
+    this.cues.set(seq, { seq, kind: 'release', at: this.serverNow() + 30, payload: { ...this.upbeat() } });
     this.recompute();
   }
 

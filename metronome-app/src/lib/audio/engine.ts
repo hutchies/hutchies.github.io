@@ -324,13 +324,30 @@ export class Engine {
     this.apply({ ...this.state, anchorTime: t, anchorScore: score, rate, loop, releaseAtAnchor: false });
   }
 
-  /** Continue from a tap-hold. Returns false if not currently held. */
-  release(): boolean {
+  /**
+   * Continue from a tap-hold, after an upbeat if `upbeat` gives one (from
+   * `resumeCountIn`, which needs the hold's score time: see `heldAt`).
+   * Returns false if not currently held.
+   */
+  release(upbeat?: { offsets: number[]; levels: number[]; duration: number }): boolean {
     const t = this.now + TAP_LEAD;
     const pos = positionAt(this.state, t);
     if (!this.state.playing || pos.frozen?.kind !== 'hold') return false;
-    this.apply({ ...this.state, anchorTime: t, anchorScore: pos.frozen.at, releaseAtAnchor: true });
+    const rate = this.state.rate;
+    const startTime = t + (upbeat?.duration ?? 0) / rate;
+    const times = upbeat ? upbeat.offsets.map((o) => startTime + o / rate) : [];
+    this.countIn = times.length
+      ? { times, levels: upbeat!.levels, startTime, startScore: pos.frozen.at, rate }
+      : null;
+    this.post({ type: 'preroll', times, levels: upbeat?.levels ?? [] });
+    this.apply({ ...this.state, anchorTime: startTime, anchorScore: pos.frozen.at, releaseAtAnchor: true });
     return true;
+  }
+
+  /** Score time of the tap-hold playback is waiting at, if any. */
+  heldAt(): number | null {
+    const pos = positionAt(this.state, this.now + TAP_LEAD);
+    return this.state.playing && pos.frozen?.kind === 'hold' ? pos.frozen.at : null;
   }
 
   /**

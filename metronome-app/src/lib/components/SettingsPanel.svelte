@@ -38,6 +38,21 @@
         <option value={3}>In 3</option>
         <option value={4}>In 4</option>
       </select>
+      <label for="resume" title="Clicks given when you tap to continue from a pause, in the tempo that follows">Upbeat after a pause</label>
+      <select
+        id="resume"
+        value={String(s.resumeCountIn)}
+        onchange={(e) => {
+          const v = e.currentTarget.value;
+          app.settings.resumeCountIn = v === 'auto' ? 'auto' : (Number(v) as 0 | 1 | 2);
+          save();
+        }}
+      >
+        <option value="auto">Auto (1 beat, or 2 if fast)</option>
+        <option value="1">1 beat</option>
+        <option value="2">2 beats</option>
+        <option value="0">None</option>
+      </select>
     </div>
     <details>
       <summary>Accent levels</summary>
