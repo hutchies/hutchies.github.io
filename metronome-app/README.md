@@ -54,7 +54,7 @@ The group button in the header creates or joins a room (a 5-character code, an i
 - **The leader sets the maps.** The leader's project is shared with the room as they edit it, and the leader gives each player a part in the room window. Each player's device shows their part and plays only that part (they can change their own mix), with their own count-in.
 - **Starting:** a big countdown runs over the display until the downbeat, and the room window gets out of the way, so everyone is looking at the metronome when it starts. Players using another metronome (or none) can mute the clicks and play from the countdown.
 - **Pauses (fermatas)** are released by the leader: everyone continues a set delay (default 250 ms) after the leader's tap. A follower whose part pauses where the leader's doesn't can "Continue alone".
-- **Latency:** wireless headphones and speakers are often 150–300 ms late. "Measure my latency" (in the room window or Settings) has you tap along to a click and then to a flash, and sets the delay so your clicks land with everyone else's.
+- **Latency:** wireless headphones and speakers are often 150–300 ms late. "Measure my latency" (in the room window or Settings) has you tap along to a click until the reading is steady (usually under 10 taps), and sets the delay so your clicks land with everyone else's. The first time, a second round of tapping to a silent flash measures your touchscreen's lag and your own habit of tapping early or late, so they can be subtracted; that's remembered, so later measurements (e.g. new headphones) are just the clicks.
 - **Late joiners** come in at the right place mid-piece.
 - The bar above the display shows the room, the leader, your part, who's present, and the clock-sync accuracy (e.g. "±4 ms").
 
