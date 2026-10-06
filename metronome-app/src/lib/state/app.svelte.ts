@@ -30,6 +30,12 @@ export interface Settings {
   playhead: number;
   /** Display delay calibration, ms. */
   visualOffsetMs: number;
+  /**
+   * How far this player's taps land from a flash (touchscreen lag plus their
+   * own anticipation), ms, from the latency test's flash round. It depends on
+   * the player and device, not the headphones, so it is measured once.
+   */
+  tapBiasMs: number | null;
   british: boolean;
   theme: 'auto' | 'light' | 'dark';
   /** Group sync: PocketBase server URL. */
@@ -53,6 +59,7 @@ const DEFAULT_SETTINGS: Settings = {
   pxPerSecond: 140,
   playhead: 0.25,
   visualOffsetMs: 0,
+  tapBiasMs: null,
   british: true,
   theme: 'auto',
   syncServer: DEFAULT_SERVER,

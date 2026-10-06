@@ -26,47 +26,59 @@ export function asynchronies(taps: number[], targets: number[], lo = -150, hi = 
   return out;
 }
 
-function quantile(sorted: number[], q: number): number {
-  if (!sorted.length) return NaN;
-  const pos = (sorted.length - 1) * q;
-  const lo = Math.floor(pos);
-  const hi = Math.ceil(pos);
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  const n = s.length;
+  if (!n) return NaN;
+  return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
 }
 
-export interface TapStats {
-  /** Median asynchrony, ms. */
-  median: number;
-  /** Interquartile range, ms: how steady the tapping was. */
-  spread: number;
+export interface TapEstimate {
+  /** Mean asynchrony after dropping outliers, ms. */
+  value: number;
+  /** Half-width of its 95% confidence interval, ms. */
+  error: number;
+  /** Taps used (after dropping outliers). */
   count: number;
 }
 
-export function tapStats(xs: number[]): TapStats {
-  const s = [...xs].sort((a, b) => a - b);
-  return { median: quantile(s, 0.5), spread: quantile(s, 0.75) - quantile(s, 0.25), count: s.length };
+/**
+ * Average asynchrony, ignoring the odd fumbled tap (more than 3 robust
+ * standard deviations from the median), and how well it is pinned down.
+ */
+export function estimateTaps(xs: number[]): TapEstimate {
+  if (xs.length < 2) return { value: xs[0] ?? NaN, error: Infinity, count: xs.length };
+  const m = median(xs);
+  // Scaled MAD estimates the standard deviation; floor it so a few
+  // identical taps can't make everything else look like an outlier.
+  const sigma = Math.max(5, 1.4826 * median(xs.map((x) => Math.abs(x - m))));
+  const kept = xs.filter((x) => Math.abs(x - m) <= 3 * sigma);
+  const n = kept.length;
+  const mean = kept.reduce((a, b) => a + b, 0) / n;
+  const sd = Math.sqrt(kept.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, n - 1));
+  return { value: mean, error: n >= 2 ? (1.96 * sd) / Math.sqrt(n) : Infinity, count: n };
 }
 
-export interface LatencyResult {
-  /** Suggested display delay, ms (rounded to 5). */
-  offsetMs: number;
-  /** Enough steady taps in both rounds to trust the result. */
-  reliable: boolean;
-  audio: TapStats;
-  visual: TapStats;
-}
-
+/** Stop a round once the average is known to within this (95% interval), ms... */
+export const TARGET_ERROR_MS = 10;
+/** ...from at least this many taps. */
 export const MIN_TAPS = 6;
-export const MAX_SPREAD_MS = 70;
+/** A round that runs out of beats is still usable if within this, ms. */
+export const ACCEPT_ERROR_MS = 20;
 
-export function latencyFromTaps(audio: number[], visual: number[]): LatencyResult {
-  const a = tapStats(audio);
-  const v = tapStats(visual);
-  const raw = a.median - v.median;
-  return {
-    offsetMs: Number.isFinite(raw) ? Math.round(raw / 5) * 5 : 0,
-    reliable: a.count >= MIN_TAPS && v.count >= MIN_TAPS && a.spread <= MAX_SPREAD_MS && v.spread <= MAX_SPREAD_MS,
-    audio: a,
-    visual: v,
-  };
+export function converged(e: TapEstimate): boolean {
+  return e.count >= MIN_TAPS && e.error <= TARGET_ERROR_MS;
+}
+
+export function usable(e: TapEstimate): boolean {
+  return e.count >= MIN_TAPS && e.error <= ACCEPT_ERROR_MS;
+}
+
+/**
+ * The display delay, given the click round and the player's tapping bias
+ * (the flash round, which can be reused: it depends on the player and the
+ * device, not on the headphones). Rounded to 5 ms.
+ */
+export function latencyMs(audio: TapEstimate, bias: number): number {
+  return Math.round((audio.value - bias) / 5) * 5;
 }

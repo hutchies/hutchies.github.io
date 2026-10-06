@@ -354,7 +354,10 @@ export class GroupSession {
     const now = engine.audibleTime();
     app.startPoint = p.home;
     app.setLayerAnchor(p.sync, p.home);
-    if (p.mode === 'playing' && positionAt(state, now).frozen?.kind === 'end') {
+    // Before a new start's downbeat, positionAt reports the previous (perhaps
+    // finished) run, so only an end reached by *this* run counts.
+    const pos = positionAt(state, now);
+    if (p.mode === 'playing' && !pos.pending && pos.frozen?.kind === 'end') {
       // This map has finished (maps can differ in length).
       engine.park(p.home);
       app.status = 'stopped';
