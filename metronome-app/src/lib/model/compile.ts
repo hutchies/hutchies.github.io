@@ -334,3 +334,37 @@ export interface CountInSpec {
   amount: number;
   unit: 'bars' | 'beats';
 }
+
+/** Upbeat after a tap-to-continue pause: 'auto', or a fixed number of beats (0 = none). */
+export type ResumeCountIn = 'auto' | 0 | 1 | 2;
+
+/** In 'auto', a single beat when it lasts at least this long (real seconds); else two. */
+const AUTO_ONE_BEAT_SECONDS = 0.6;
+
+/**
+ * How many beats of upbeat to give when continuing from a tap-hold: the last
+ * beat or two of the bar that follows, in its metre and tempo, so players
+ * hear the new tempo before coming back in. 'auto' gives one beat at 100 bpm
+ * or slower (a conductor's preparatory beat) and two when one beat would be
+ * too short to catch. 0 if nothing follows the hold.
+ */
+export function resumeBeats(tl: Timeline, holdScore: number, rate: number, mode: ResumeCountIn): number {
+  if (mode === 0 || holdScore >= tl.duration - 1e-6) return 0;
+  const bi = barAt(tl, holdScore);
+  if (bi < 0) return 0;
+  if (mode !== 'auto') return mode;
+  const bar = tl.bars[bi];
+  const pulse = 1 / bar.metre.denom / wholesPerSecond(bar.tempoStart);
+  const lastBeat = (bar.groups[bar.groups.length - 1] * pulse) / Math.max(1e-6, rate);
+  return lastBeat >= AUTO_ONE_BEAT_SECONDS ? 1 : 2;
+}
+
+/** The upbeat clicks for `beats` beats into the hold's bar (offsets as for `countIn`). */
+export function resumeCountIn(
+  tl: Timeline,
+  holdScore: number,
+  beats: number,
+): { offsets: number[]; levels: number[]; duration: number } {
+  if (beats <= 0 || holdScore >= tl.duration - 1e-6) return { offsets: [], levels: [], duration: 0 };
+  return countIn(tl, Math.max(0, barAt(tl, holdScore)), { amount: beats, unit: 'beats' });
+}

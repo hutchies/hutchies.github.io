@@ -1,6 +1,6 @@
 import { Engine } from '../audio/engine';
 import { DEFAULT_SOUND, type SoundConfig } from '../audio/sounds';
-import { barAt, compile, countIn, type CountInSpec, type Timeline } from '../model/compile';
+import { barAt, compile, countIn, resumeBeats, resumeCountIn, type CountInSpec, type ResumeCountIn, type Timeline } from '../model/compile';
 import {
   audibleParts,
   defaultSound,
@@ -25,6 +25,8 @@ export type Status = 'stopped' | 'countin' | 'playing' | 'held' | 'paused';
 export interface Settings {
   tempoPercent: number;
   countIn: CountInSpec;
+  /** Upbeat when continuing from a tap-to-continue pause. */
+  resumeCountIn: ResumeCountIn;
   subdivide: number;
   sound: SoundConfig;
   pxPerSecond: number;
@@ -57,6 +59,7 @@ export interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   tempoPercent: 100,
   countIn: { amount: 1, unit: 'bars' },
+  resumeCountIn: 'auto',
   subdivide: 1,
   sound: DEFAULT_SOUND,
   pxPerSecond: 140,
@@ -552,7 +555,10 @@ export class AppState {
       this.group!.release();
       return true;
     }
-    return this.engine.release();
+    const at = this.engine.heldAt();
+    if (at === null) return false;
+    const beats = resumeBeats(this.timeline, at, this.rate, this.settings.resumeCountIn);
+    return this.engine.release(resumeCountIn(this.timeline, at, beats));
   }
 
   /**

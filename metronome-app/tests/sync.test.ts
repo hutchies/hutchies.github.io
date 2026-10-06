@@ -195,6 +195,23 @@ describe('cue reduction', () => {
     expect(replay([start(0), { seq: 2, kind: 'release', at: 1_000, payload: {} }], part).state.anchorTime).toBe(0);
   });
 
+  it('gives the upbeat in each map and lands everyone on the same downbeat', () => {
+    const lead = ctx('c=120 4/4 x2\nwait\n4/4 x2');
+    // Two beats at c=120 starting at the cue (5 s): clicks at 5 and 5.5, downbeat at 6.
+    const cue: Cue = { seq: 2, kind: 'release', at: 5_000, payload: { beats: 2, lead: 1 } };
+    const pl = replay([start(0), cue], lead);
+    expect(pl.countIn!.times).toEqual([5, 5.5]);
+    expect(pl.state.anchorTime).toBeCloseTo(6);
+    expect(positionAt(pl.state, 5.9).frozen?.kind).toBe('hold');
+    expect(positionAt(pl.state, 6.5).score).toBeCloseTo(4.5);
+    // A map that is slower after the pause keeps the downbeat, dropping clicks before the cue.
+    const slow = replay([start(0), cue], ctx('c=120 4/4 x2\nwait\nc=80 4/4 x2'));
+    expect(slow.state.anchorTime).toBeCloseTo(6);
+    expect(slow.countIn!.times).toEqual([5.25]);
+    // Old cues without a payload continue at once.
+    expect(replay([start(0), { ...cue, payload: {} }], lead).countIn).toBeNull();
+  });
+
   it('lets a late joiner compute the current position', () => {
     const c = ctx('c=120 4/4 x100');
     const p = replay([start(1_000_000)], c);

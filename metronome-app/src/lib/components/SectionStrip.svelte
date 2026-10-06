@@ -33,7 +33,11 @@
   function onTap(s: { from: number; to: number }) {
     const inside = app.currentBar >= s.from && app.currentBar <= s.to;
     if (inside && !app.following) {
-      if (isLooped(s)) app.loopRange = null;
+      if (isLooped(s)) {
+        // Clearing the range alone would leave the whole piece looping.
+        app.loopOn = false;
+        app.loopRange = null;
+      }
       else app.loopSection(s.from, s.to);
     } else {
       app.seekBar(s.from);

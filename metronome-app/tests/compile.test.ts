@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barAt, compile, countIn, LEVEL_BAR, LEVEL_BEAT, LEVEL_PULSE } from '../src/lib/model/compile';
+import { barAt, compile, countIn, resumeBeats, resumeCountIn, LEVEL_BAR, LEVEL_BEAT, LEVEL_PULSE } from '../src/lib/model/compile';
 import { parse, serialize } from '../src/lib/model/syntax';
 
 const tl = (s: string, sub = 1) => compile(parse(s).piece, { subdivide: sub });
@@ -106,5 +106,22 @@ describe('indefinite blocks', () => {
     expect(tl.open).toBe(true);
     expect(tl.bars.filter((b) => b.repeatStart)).toHaveLength(1);
     expect(compile(parse('x2').piece)).toMatchObject({ open: false, openStart: 4 });
+  });
+});
+
+describe('upbeat after a tap pause', () => {
+  const t = compile(parse('c=60 4/4\nwait\nc=144 4/4\nwait\nc.=60 6/8\nwait').piece);
+  const [h1, h2, h3] = t.holds;
+  it('picks one beat when slow and two when fast, at the tempo that follows', () => {
+    expect(resumeBeats(t, h1, 1, 'auto')).toBe(2); // c=144
+    expect(resumeBeats(t, h2, 1, 'auto')).toBe(1); // c.=60
+    expect(resumeBeats(t, h2, 2, 'auto')).toBe(2); // tempo at 200%: 0.5 s beats
+  });
+  it('lays the beats back from the next downbeat', () => {
+    const c = resumeCountIn(t, h1, 2);
+    expect(c.offsets.map((o) => +o.toFixed(4))).toEqual([-0.8333, -0.4167]);
+    expect(resumeCountIn(t, h3, 1).duration).toBe(0); // nothing follows
+    expect(resumeBeats(t, h1, 1, 0)).toBe(0);
+    expect(resumeBeats(t, h2, 1, 2)).toBe(2);
   });
 });
